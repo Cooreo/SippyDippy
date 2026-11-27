@@ -1,6 +1,7 @@
 package com.cooreo.sippy.ui
 
 import android.content.Context
+import android.os.Build
 import android.provider.Settings as AndroidSettings
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
@@ -56,7 +57,8 @@ import com.cooreo.sippy.ui.components.Celebration
 import com.cooreo.sippy.ui.components.FloatingNav
 import com.cooreo.sippy.ui.components.NavBarHeight
 import com.cooreo.sippy.ui.components.NavTarget
-import com.cooreo.sippy.ui.glass.GlassTier
+import com.cooreo.sippy.ui.glass.GlassCapabilities
+import com.cooreo.sippy.ui.glass.GlassDiagnostics
 import com.cooreo.sippy.ui.glass.LocalGlassTier
 import com.cooreo.sippy.ui.glass.SippyBackdropHost
 import com.cooreo.sippy.ui.screens.DeveloperScreen
@@ -126,9 +128,29 @@ fun SippyRoot(graph: AppGraph) {
     val accent = accentFor(state.settings.accent)
 
     SippyTheme(dark = dark, accent = accent) {
-        val reduce = state.settings.reduceEffects || animationsDisabled(context)
-        val tier = remember(reduce) { GlassTier.forSdk(reduceEffects = reduce) }
-        CompositionLocalProvider(LocalGlassTier provides tier) {
+        // A2: glass and motion are separate decisions. Only the app's own
+        // "Reduce effects" switch may turn the glass off; the system
+        // "remove animations" setting only makes animations instant.
+        val reduceEffects = state.settings.reduceEffects
+        val systemMotionOff = animationsDisabled(context)
+        val animate = !(reduceEffects || systemMotionOff)
+        val apiLevel = Build.VERSION.SDK_INT
+        val lowRam = remember(context) {
+            val manager = context.getSystemService(android.app.ActivityManager::class.java)
+            manager?.isLowRamDevice ?: false
+        }
+        val diagnostics = remember(apiLevel, reduceEffects, systemMotionOff, lowRam) {
+            GlassDiagnostics(
+                apiLevel = apiLevel,
+                reduceEffects = reduceEffects,
+                systemAnimationsOff = systemMotionOff,
+                lowRamDevice = lowRam,
+                renderEffectSupported = GlassCapabilities.renderEffectSupported(apiLevel),
+                runtimeShaderSupported = GlassCapabilities.runtimeShaderSupported(apiLevel),
+                backdropInitialised = true,
+            )
+        }
+        CompositionLocalProvider(LocalGlassTier provides diagnostics.tier) {
             SippyBackdropHost {
                 // The backdrop stays full-bleed; the content is padded by the
                 // stable status-bar inset so the first row clears the clock even
@@ -145,10 +167,15 @@ fun SippyRoot(graph: AppGraph) {
                             OnboardingScreen(
                                 state = state,
                                 controller = controller,
-                                animate = !reduce,
+                                animate = animate,
                             )
                         }
-                        else -> AppScaffold(state, controller, animate = !reduce)
+                        else -> AppScaffold(
+                            state = state,
+                            controller = controller,
+                            animate = animate,
+                            diagnostics = diagnostics,
+                        )
                     }
                 }
             }
@@ -161,6 +188,7 @@ private fun AppScaffold(
     state: StoredState,
     controller: SippyController,
     animate: Boolean,
+    diagnostics: GlassDiagnostics,
 ) {
     var tab by remember { mutableStateOf(Tab.HOME) }
     var showDeveloper by remember { mutableStateOf(false) }
@@ -342,6 +370,7 @@ private fun AppScaffold(
             state = state,
             controller = controller,
             onClose = { showDeveloper = false },
+            diagnostics = diagnostics,
         )
     }
 }

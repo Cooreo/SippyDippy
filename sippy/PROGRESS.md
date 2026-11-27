@@ -913,3 +913,45 @@ brings them back transiently), pad the content frame by
 whether the bars are shown **or** hidden, pad bottom sheets by the navigation
 inset, and give Settings `pill height + navigation inset + 24.dp` of bottom
 padding so its last card scrolls clear.
+
+## A2 — glass and motion are missing on Android 15: diagnosis (written before code)
+
+**Symptom.** Flat dark cards: no refraction, no lens, no motion. Device is
+Android 15 (API 35).
+
+**What the code actually did.** `SippyRoot` computed
+
+```kotlin
+val reduce = state.settings.reduceEffects || animationsDisabled(context)
+val tier = remember(reduce) { GlassTier.forSdk(reduceEffects = reduce) }
+```
+
+`animationsDisabled()` reads the system **animator duration scale**. So one
+value — "Remove animations" (accessibility toggle, or the developer animator
+scale set to 0, both common on real phones) — did three things at once:
+
+1. forced the glass tier to **FROST** (`forSdk(reduceEffects = true)`), which is
+   tint + rim only, no blur, no lens → "flat dark cards";
+2. set `animate = false` everywhere → no orb waves, no springs, no transitions
+   → "no motion";
+3. did it silently: nothing in the UI said why, so it looked like the lens
+   simply did not work on Android 15.
+
+That is a design bug, not a device limitation: API 35 supports both RenderEffect
+(31+) and AGSL runtime shaders (33+), so a 15 device must get **LENS** whenever
+the app's own *Reduce effects* switch is off. The system "remove animations"
+setting is a motion preference; it must not downgrade the glass.
+
+**Second, independent cause of "flat".** Even at LENS the backdrop had almost
+nothing to refract: `AmbientBackground` was a smooth vertical gradient plus three
+soft radial pools. A blur or a lens over a low-frequency image is
+indistinguishable from a flat fill, so the surfaces read flat even when the
+effects ran. The site's backdrop carries caustics, droplets and light shafts for
+exactly this reason.
+
+**Fix.** (a) Split the two decisions: tier from the app's Reduce effects switch
+(and real capability), motion from either setting; (b) add a diagnostics row to
+Developer options that states the active tier, API level, both settings, low-RAM,
+RenderEffect support, runtime-shader support and whether the backdrop layer
+initialised; (c) give the backdrop the site's detail (caustics, droplets, a light
+shaft) so refraction is visible, and draw a real rim on every glass surface.
