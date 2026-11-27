@@ -63,15 +63,19 @@ export function Hero({
               <motion.span
                 key={w}
                 className="hero-word"
-                initial={{ opacity: 0, y: 26, filter: "blur(10px)" }}
+                initial={
+                  reduced
+                    ? { opacity: 1, y: 0, filter: "blur(0px)" }
+                    : { opacity: 0, y: 26, filter: "blur(10px)" }
+                }
                 animate={
-                  playWords
+                  playWords || reduced
                     ? { opacity: 1, y: 0, filter: "blur(0px)" }
                     : { opacity: 0 }
                 }
                 transition={{
-                  duration: wordDur,
-                  delay: i * wordStagger,
+                  duration: reduced ? 0 : wordDur,
+                  delay: reduced ? 0 : i * wordStagger,
                   ease: [0.22, 1, 0.36, 1],
                 }}
               >
@@ -96,7 +100,7 @@ export function Hero({
             transition={{ delay: wordsFast ? 0.12 : 0.75, duration: wordDur }}
           >
             {/* primary CTA — strongest element; label follows the APK rule */}
-            <CtaButton apk size="lg" arrow />
+            <CtaButton apk size="lg" />
             {/* ghost glass button, same hover behaviour */}
             <CtaButton
               variant="ghost"

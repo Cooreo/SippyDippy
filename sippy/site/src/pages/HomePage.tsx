@@ -27,22 +27,38 @@ const NAV_SECTIONS: GlassNavSection[] = [
 
 /** Nav fades in while the mark flies into its slot (intro beat 3.0–3.8). */
 const NAV_DELAY_INTRO = 3000;
-const NAV_DELAY_NORMAL = 250;
+const NAV_DELAY_NORMAL = 200;
+
+function isReducedMotionPreferred(): boolean {
+  if (
+    typeof document !== "undefined" &&
+    document.documentElement.hasAttribute("data-emulate-motion")
+  ) {
+    return true;
+  }
+  if (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function"
+  ) {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+  return false;
+}
 
 /**
- * The full marketing page (Phase 3, round 2).
+ * The full marketing page (Phase 3, round 3).
  *
- * Intro gating: once per session via sessionStorage; forced with ?intro=1 /
- * ?intro=0; never on /#/gallery (that is a different route); reduced
- * motion → a ~350 ms crossfade and no Intro is rendered at all (so no
- * WebGL context is ever created). While the intro covers the page, the
- * hero is visually hidden but stays focusable (`.intro-cover`, opacity).
- *
- * The nav pill sits inside the same `.wrap` as the hero grid (R2-4):
- * one container, one inline padding — edges align by construction.
+ * Intro gating:
+ *  - once per session via sessionStorage (`sippy-intro-played`)
+ *  - forced with `?intro=1` or skipped with `?intro=0`
+ *  - never on `/#/gallery` (separate route in App.tsx)
+ *  - reduced motion → `SurfaceBreakIntro` plays a 500 ms mark-to-page
+ *    crossfade over `--backdrop-base` (no `<canvas>`, no WebGL, no ring,
+ *    no black frame)
  */
 export function HomePage() {
-  const reduced = useReducedMotion() ?? false;
+  const osReduced = useReducedMotion() ?? false;
+  const reduced = osReduced || isReducedMotionPreferred();
   const [introMode] = useState<IntroMode>(() =>
     getIntroMode({
       search: window.location.search,
@@ -50,26 +66,26 @@ export function HomePage() {
       sessionHasPlayed: sessionHasPlayed(),
     }),
   );
-  // ?intro=1 under reduced motion: the intro renders NOTHING by contract
-  // (RM = no shader, no timeline) — degrade to the 350 ms fade so the
-  // page is never left covered
   const effective: IntroMode =
     reduced && introMode === "play" ? "fade" : introMode;
-  const playing = effective === "play";
+  const playingFull = effective === "play";
+  const showOverlay = effective === "play" || effective === "fade";
 
-  const [introActive, setIntroActive] = useState(playing);
-  const [introCover, setIntroCover] = useState(playing);
-  const [wordsPlay, setWordsPlay] = useState(false);
-  const [wordsFast, setWordsFast] = useState(false);
-  const [navDelay, setNavDelay] = useState(playing ? NAV_DELAY_INTRO : NAV_DELAY_NORMAL);
+  const [introActive, setIntroActive] = useState(showOverlay);
+  const [introCover, setIntroCover] = useState(playingFull);
+  // Critical R3-4 fix: when `!playingFull` (`skip` or `fade`), hero words must
+  // start visible (`true`) rather than waiting for a full-intro reveal!
+  const [wordsPlay, setWordsPlay] = useState(!playingFull);
+  const [wordsFast, setWordsFast] = useState(effective !== "play");
+  const [navDelay, setNavDelay] = useState(
+    playingFull ? NAV_DELAY_INTRO : NAV_DELAY_NORMAL,
+  );
 
-  // stable callbacks — the intro's effect must not re-run mid-flight
   const onReveal = useCallback(() => {
     setIntroCover(false);
     setWordsPlay(true);
   }, []);
   const onSkip = useCallback(() => {
-    // end state within 150 ms: collapse every delay to ~0
     setNavDelay(0);
     setWordsFast(true);
     setWordsPlay(true);
@@ -81,17 +97,13 @@ export function HomePage() {
   }, []);
 
   return (
-    <div
-      className={`page${effective === "fade" ? " fade-in" : ""}${
-        introCover ? " intro-cover" : ""
-      }`}
-    >
+    <div className={`page${introCover ? " intro-cover" : ""}`}>
       <header className="page-nav">
         <div className="wrap">
           <GlassNav
             sections={NAV_SECTIONS}
             enterDelay={navDelay}
-            cta={<CtaButton apk size="sm" arrow />}
+            cta={<CtaButton apk size="sm" />}
           />
         </div>
       </header>

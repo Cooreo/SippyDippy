@@ -12,6 +12,8 @@ import { GlassTabBar } from "./GlassTabBar";
 import { GlassToggle } from "./GlassToggle";
 import { GlassTextField } from "./GlassTextField";
 import { GlassIconButton } from "./GlassIconButton";
+import { CtaButton } from "../CtaButton";
+import { APK_CTA_LABEL } from "../../lib/download";
 
 afterEach(cleanup);
 
@@ -90,5 +92,12 @@ describe("glass components", () => {
       </ThemeProvider>,
     );
     expect(screen.getByRole("button", { name: "Add drink" })).not.toBeNull();
+  });
+
+  it("CtaButton renders single-line APK label with no arrow SVG", () => {
+    const { container } = render(<CtaButton apk size="sm" />);
+    const btn = screen.getByRole("button", { name: APK_CTA_LABEL });
+    expect(btn.classList.contains("cta--sm")).toBe(true);
+    expect(container.querySelector("svg")).toBeNull();
   });
 });

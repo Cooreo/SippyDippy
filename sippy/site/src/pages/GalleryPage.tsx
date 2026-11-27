@@ -217,33 +217,33 @@ export function GalleryPage() {
           <div className="grid-cards">
             <GlassSurface blur="sm" radius="inner" style={{ minHeight: 110 }}>
               <b>blur 24</b>
-              <div style={{ color: "var(--text-3)", fontSize: 13 }}>
+              <div style={{ color: "var(--text-2)", fontSize: 13 }}>
                 small surfaces
               </div>
             </GlassSurface>
             <GlassSurface blur="md" radius="inner" style={{ minHeight: 110 }}>
               <b>blur 32</b>
-              <div style={{ color: "var(--text-3)", fontSize: 13 }}>
+              <div style={{ color: "var(--text-2)", fontSize: 13 }}>
                 cards
               </div>
             </GlassSurface>
             <GlassSurface blur="lg" radius="inner" style={{ minHeight: 110 }}>
               <b>blur 40</b>
-              <div style={{ color: "var(--text-3)", fontSize: 13 }}>
+              <div style={{ color: "var(--text-2)", fontSize: 13 }}>
                 nav / sheets
               </div>
             </GlassSurface>
             <GlassSurface radius="pill" style={{ minHeight: 110 }}>
               <b>radius 999</b>
-              <div style={{ color: "var(--text-3)", fontSize: 13 }}>pill</div>
+              <div style={{ color: "var(--text-2)", fontSize: 13 }}>pill</div>
             </GlassSurface>
             <GlassSurface radius="card" style={{ minHeight: 110 }}>
               <b>radius 28</b>
-              <div style={{ color: "var(--text-3)", fontSize: 13 }}>card</div>
+              <div style={{ color: "var(--text-2)", fontSize: 13 }}>card</div>
             </GlassSurface>
             <GlassSurface radius="inner" style={{ minHeight: 110 }}>
               <b>radius 20</b>
-              <div style={{ color: "var(--text-3)", fontSize: 13 }}>inner</div>
+              <div style={{ color: "var(--text-2)", fontSize: 13 }}>inner</div>
             </GlassSurface>
           </div>
         </div>
@@ -398,7 +398,7 @@ export function GalleryPage() {
                 intensity="present"
                 aria-label="Daily hydration progress"
               />
-              <div style={{ color: "var(--text-3)", fontSize: 13 }}>
+              <div style={{ color: "var(--text-2)", fontSize: 13 }}>
                 1240 ml of {goal} ml
               </div>
               <LiquidSlider
@@ -474,7 +474,7 @@ export function GalleryPage() {
                   />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-3)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-2)" }}>
                     <IconMusic width={16} height={16} />
                     <span style={{ fontSize: 13 }}>Sippy Sound</span>
                   </div>

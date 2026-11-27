@@ -132,16 +132,6 @@ export const ASSETS: AssetInfo[] = [
     "budget": 120000
   },
   {
-    "name": "bg-showcase",
-    "file": "assets/bg-showcase.webp",
-    "width": 1376,
-    "height": 768,
-    "bytes": 21454,
-    "alpha": false,
-    "opaquePct": null,
-    "budget": 120000
-  },
-  {
     "name": "bg-download",
     "file": "assets/bg-download.webp",
     "width": 1376,

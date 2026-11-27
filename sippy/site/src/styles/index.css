@@ -357,6 +357,7 @@ section[id] {
   display: inline-flex;
   align-items: center;
   gap: 9px;
+  flex: none;
   font-family: var(--ff-display);
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -376,6 +377,7 @@ section[id] {
   font-weight: 500;
   padding: 9px 14px;
   border-radius: var(--r-pill);
+  white-space: nowrap;
   transition:
     color var(--t-quick) ease,
     background var(--t-quick) ease;
@@ -388,11 +390,12 @@ section[id] {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: none;
   margin-left: auto;
 }
 .gnav-theme {
   display: inline-flex;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .pill-cta {
   background: #ffffff;
@@ -455,7 +458,7 @@ section[id] {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--text-3);
+  color: var(--text-2);
   padding-left: 8px;
 }
 .gfield-shell {
@@ -475,7 +478,7 @@ section[id] {
   min-width: 0;
 }
 .gfield-input::placeholder {
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .gfield-shell:focus-within {
   box-shadow:
@@ -501,7 +504,7 @@ section[id] {
 }
 /* Glow on the active lyric line (reference 5) */
 .lyric {
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 15px;
   transition: color var(--t-base) ease;
 }
@@ -584,7 +587,7 @@ section[id] {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .fx-pill {
   border: none;
@@ -730,11 +733,11 @@ section[id] {
   flex-wrap: wrap;
 }
 .home-hint {
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 14px;
 }
 .home-foot {
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: var(--fs-caption);
   padding-top: 32px;
 }
@@ -820,6 +823,16 @@ section[id] {
     padding var(--t-base) cubic-bezier(0.3, 0, 0.1, 1),
     box-shadow var(--t-base) ease;
 }
+:root:not(.dark) .page-nav .gnav {
+  background: rgba(255, 255, 255, 0.78);
+}
+:root:not(.dark) .page-nav .gnav-link {
+  color: #24314a;
+}
+:root:not(.dark) .page-nav .gnav-link:hover,
+:root:not(.dark) .page-nav .gnav-link-active {
+  color: #0c1424;
+}
 /* reference 3: the pill compresses once the page has scrolled */
 .gnav-scrolled {
   padding: 7px 8px 7px 16px;
@@ -862,36 +875,58 @@ section[id] {
   align-items: center;
   padding: 120px 0 56px;
 }
+/* In light mode, extend a soft feathered dark cushion across the hero's
+   white/pale text zone so .hero-title and .hero .lead maintain ≥6.5:1 even
+   at the lower mobile hero where .backdrop-scrim fades out. */
+:root:not(.dark) .hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(6, 12, 26, 0.24) 0%,
+    rgba(6, 12, 26, 0.62) 55%,
+    rgba(6, 12, 26, 0) 100%
+  );
+}
 .hero-inner {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: clamp(24px, 4vw, 64px);
+  gap: clamp(36px, 4.5vw, 68px);
 }
 .hero-copy {
   position: relative;
+  min-width: 0;
   z-index: 1;
 }
 .hero-title {
   margin: 0 0 26px;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 0.22em;
+  row-gap: 0.04em;
   font-family: var(--ff-display);
   font-weight: 800;
   font-size: var(--fs-display);
   line-height: 0.99;
   letter-spacing: -0.02em;
   color: #f4f7ff;
-  text-wrap: balance;
 }
 .hero-word {
   display: inline-block;
-  margin-right: 0.22em;
 }
-.lead {
+.hero .lead {
   margin: 0 0 34px;
   max-width: 44ch;
   font-size: clamp(16px, 1.3vw, 19px);
   line-height: 1.6;
-  color: #9fb0cc;
+  color: #c4d3ec;
+}
+:root:not(.dark) .hero .lead {
+  color: #eef3ff;
 }
 .hero-cta {
   display: flex;
@@ -903,6 +938,7 @@ section[id] {
   position: relative;
   display: grid;
   place-items: center;
+  justify-self: end;
   perspective: 1200px;
   z-index: 1;
 }
@@ -916,15 +952,13 @@ section[id] {
   filter: blur(48px);
 }
 
-/* — Hero water ring (replaces the phone preview in the hero column).
-   Sized with clamp() across 360→2560 viewports; the disc is the full
-   bounding box (no extra padding). Motion = transform/opacity only:
-   level = translateY on the fill, wave = translateX on a clipped
-   element (the sanctioned exception), shimmer = transform sweep +
-   opacity. Label uses theme token text-1 → AA on the disc in both
-   themes (see PROGRESS.md contrast table). — */
+/* — Hero water orb (SPEC.md section 2: transform + opacity ONLY).
+   Sized so .hero-copy always retains ≥740px on desktop (zero overlap with
+   "consistently." at 1280, 1440, 1920 and 2560px). Driven by one variable
+   --hr-progress (0..1) for fill saturation and inner glow. — */
 .hr {
-  --hr-size: clamp(260px, 34vw, 520px);
+  --hr-size: clamp(260px, 27vw, 376px);
+  --hr-progress: 0;
   width: var(--hr-size);
   height: var(--hr-size);
 }
@@ -934,8 +968,7 @@ section[id] {
   height: 100%;
   border-radius: 50%;
   overflow: hidden;
-  /* glass depth: soft inner highlight top-left, subtle inner shadow at
-     the bottom (the 1px rim is the ::after gradient ring below) */
+  overflow: clip;
   background:
     radial-gradient(
       circle at 32% 26%,
@@ -949,8 +982,23 @@ section[id] {
     inset 0 -18px 40px rgba(2, 8, 20, 0.32),
     0 26px 60px rgba(2, 8, 20, 0.42);
 }
-/* 1px gradient rim that fades around the shape (bright top-left →
-   near-invisible bottom-right → slight recovery) — mask-composite ring */
+/* inner glow intensifies as --hr-progress rises (transform + opacity only) */
+.hr-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 50% 62%,
+    rgba(91, 155, 255, 0.44) 0%,
+    rgba(46, 124, 246, 0.22) 48%,
+    rgba(29, 95, 224, 0) 76%
+  );
+  opacity: calc(0.1 + 0.9 * var(--hr-progress, 0));
+  transform: scale(calc(0.92 + 0.08 * var(--hr-progress, 0)));
+  will-change: transform, opacity;
+}
+/* 1px gradient rim around the disc */
 .hr-disc::after {
   content: "";
   position: absolute;
@@ -979,36 +1027,108 @@ section[id] {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  overflow: hidden; /* the circular clip the wave rides on */
+  overflow: hidden;
+  overflow: clip;
 }
+/* Slightly wider horizontally (-8%..108%) so gentle slosh rotation never
+   exposes side gaps inside the circular clip. */
 .hr-fill {
   position: absolute;
-  inset: 0;
+  top: 0;
+  bottom: -10%;
+  left: -8%;
+  right: -8%;
+  overflow: hidden;
+  overflow: clip;
   transform: translateY(100%);
+  transform-origin: 50% 12%;
   will-change: transform;
   background: linear-gradient(
     180deg,
-    rgba(59, 130, 246, 0.62) 0%,
-    rgba(37, 99, 235, 0.72) 45%,
-    rgba(29, 78, 216, 0.85) 100%
+    rgba(96, 155, 245, 0.54) 0%,
+    rgba(59, 122, 232, 0.66) 45%,
+    rgba(37, 92, 208, 0.8) 100%
   );
 }
-/* the wave spans from 8 % above the water line to the BOTTOM of the
-   fill and is painted with a gradient identical to the fill's — so the
-   surface is ONLY the wavy crest line; the old 16 %-box (with its
-   straight bottom edge = the "lighter band") is gone */
+/* Vivid saturated fill layer driven by --hr-progress opacity */
+.hr-fill-vivid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(59, 130, 246, 0.72) 0%,
+    rgba(37, 99, 235, 0.84) 45%,
+    rgba(29, 78, 216, 0.94) 100%
+  );
+  opacity: var(--hr-progress, 0);
+  will-change: opacity;
+}
+.hr-wave-vivid {
+  opacity: var(--hr-progress, 0);
+}
+/* Two wave layers at distinct speeds and amplitudes (transform only) */
 .hr-wave {
   position: absolute;
-  top: -8%;
   left: 0;
-  width: 200%; /* two tileable periods — the -50 % drift is seamless */
+  width: 200%;
   height: calc(100% + 16%);
-  animation: hr-wave-drift 3.2s linear infinite;
+  will-change: transform;
+}
+.hr-wave--back {
+  top: -9.5%;
+  animation: hr-wave-drift-rev 4.6s linear infinite;
+}
+.hr-wave--front {
+  top: -8%;
+  animation: hr-wave-drift 2.8s linear infinite;
 }
 .hr-wave svg {
   display: block;
   width: 100%;
   height: 100%;
+}
+/* Rising bubbles inside the water (≤ 8, transform + opacity only) */
+.hr-bubbles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.hr-bubble {
+  position: absolute;
+  bottom: 6%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 35% 30%,
+    rgba(255, 255, 255, 0.9),
+    rgba(190, 224, 255, 0.38) 60%,
+    rgba(190, 224, 255, 0)
+  );
+  animation-name: hr-bubble-rise;
+  animation-timing-function: ease-in;
+  animation-iteration-count: infinite;
+  will-change: transform, opacity;
+}
+@keyframes hr-bubble-rise {
+  0% {
+    transform: translate3d(0, 0, 0) scale(0.7);
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.78;
+  }
+  82% {
+    opacity: 0.62;
+  }
+  100% {
+    transform: translate3d(
+        var(--bub-dx, 6px),
+        calc(var(--hr-size) * -0.82),
+        0
+      )
+      scale(1.08);
+    opacity: 0;
+  }
 }
 /* faint caustic shimmer inside the orb — two soft blobs drifting
    (transform + opacity only), screen-blended, under the label */
@@ -1017,6 +1137,7 @@ section[id] {
   inset: 0;
   border-radius: 50%;
   overflow: hidden;
+  overflow: clip;
   mix-blend-mode: screen;
   pointer-events: none;
 }
@@ -1075,11 +1196,62 @@ section[id] {
     transform: translateX(-50%);
   }
 }
+@keyframes hr-wave-drift-rev {
+  from {
+    transform: translateX(-50%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+/* ~600 ms surface splash ring when hitting 100 % (transform + opacity only) */
+.hr-splash {
+  position: absolute;
+  top: 14%;
+  left: 50%;
+  width: 68%;
+  height: 68%;
+  border-radius: 50%;
+  border: 2px solid rgba(214, 234, 255, 0.88);
+  transform: translate(-50%, -50%) scale(0.28, 0.12);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.hr.is-done .hr-splash {
+  animation: hr-splash-ring 0.6s cubic-bezier(0.22, 1, 0.36, 1) 1 forwards;
+}
+@keyframes hr-splash-ring {
+  0% {
+    transform: translate(-50%, -50%) scale(0.28, 0.12);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.22, 0.38);
+    opacity: 0;
+  }
+}
+/* Pause all CSS keyframes when offscreen */
+.hr[data-paused="true"] .hr-wave,
+.hr[data-paused="true"] .hr-bubble,
+.hr[data-paused="true"] .hr-caustic-a,
+.hr[data-paused="true"] .hr-caustic-b {
+  animation-play-state: paused;
+}
+/* Reduced motion: static fill at current %, no waves, bubbles, or splash */
+.hr[data-reduced="true"] .hr-wave,
+.hr[data-reduced="true"] .hr-bubbles,
+.hr[data-reduced="true"] .hr-splash,
+.hr[data-reduced="true"] .hr-caustic,
+.hr[data-reduced="true"] .hr-shimmer {
+  display: none;
+}
 .hr-shimmer {
   position: absolute;
   inset: 0;
   border-radius: 50%;
   overflow: hidden;
+  overflow: clip;
   pointer-events: none;
 }
 .hr-shimmer-band {
@@ -1177,328 +1349,6 @@ section[id] {
   line-height: 1.15;
 }
 
-/* — Live phone (shared: hero + showcase). Round-2 rebuild (R2-1).
-   A real device is a DARK bezel holding a dark screen (a bright bezel
-   inverts figure/ground and reads as a "tube" around a mismatched
-   rectangle). Frame 9:19.5, `container-type: size`, every inner size a
-   container unit; screen radius = frame radius − bezel so the two rounded
-   rects can never drift. Always dark tokens (`.dark`). — */
-.device {
-  position: relative;
-  width: min(250px, 62vw);
-  aspect-ratio: 9 / 19.5;
-  container-type: size;
-  border-radius: 8cqw;
-  padding: 2cqw;
-  background: linear-gradient(160deg, #2b3345, #12161f 38%, #1d2434 100%);
-  box-shadow:
-    0 34px 70px rgba(0, 0, 0, 0.5),
-    0 4px 14px rgba(0, 0, 0, 0.4);
-}
-/* subtle rim highlight on the frame edge */
-.device::before {
-  content: "";
-  position: absolute;
-  inset: 0.4cqw;
-  border-radius: calc(8cqw - 0.4cqw);
-  box-shadow: inset 0 0 0 0.45cqw rgba(255, 255, 255, 0.14);
-  pointer-events: none;
-  z-index: 3;
-}
-.device-screen {
-  position: relative;
-  height: 100%;
-  border-radius: 6cqw; /* = 8cqw frame radius − 2cqw bezel */
-  overflow: hidden;
-  background:
-    radial-gradient(130% 42% at 50% 0%, rgba(46, 124, 246, 0.13), transparent 62%),
-    #05070d;
-}
-/* dynamic island — inside the screen, not floating over the bezel */
-.device-island {
-  position: absolute;
-  top: 3.2cqw;
-  left: 50%;
-  translate: -50% 0;
-  width: 24cqw;
-  height: 5.4cqw;
-  border-radius: 2.7cqw;
-  background: #000;
-  z-index: 6;
-}
-.pm-statusbar {
-  position: absolute;
-  top: 3.4cqw;
-  left: 5.5cqw;
-  right: 5.5cqw;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  z-index: 5;
-  font-size: 2.5cqw;
-  font-weight: 600;
-  color: var(--text-2);
-}
-.pm-signal {
-  display: inline-flex;
-  align-items: center;
-  gap: 1.2cqw;
-}
-.pm-homebar {
-  position: absolute;
-  bottom: 1.7cqw;
-  left: 50%;
-  translate: -50% 0;
-  width: 34cqw;
-  height: 1.1cqw;
-  border-radius: 1cqw;
-  background: rgba(255, 255, 255, 0.32);
-  z-index: 6;
-}
-.pm-screen-content {
-  position: relative;
-  height: 100%;
-}
-.pm-screen-inner {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  gap: 2.4cqw;
-  padding: 11cqw 3.4cqw 7.5cqw;
-}
-.pm-card {
-  display: flex;
-  flex-direction: column;
-  gap: 2.2cqw;
-  padding: 3cqw;
-  border-radius: 4cqw;
-  background: rgba(255, 255, 255, 0.09);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
-}
-.pm-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 2.7cqw;
-  font-weight: 600;
-  color: var(--text-2);
-}
-.pm-streak {
-  display: inline-flex;
-  align-items: center;
-  gap: 1.2cqw;
-  font-size: 2.7cqw;
-  color: var(--warn);
-}
-/* large water ring with ml (SVG, sized in cqw) */
-.pm-ring {
-  position: relative;
-  width: 44cqw;
-  aspect-ratio: 1;
-  margin: 2cqw auto;
-}
-.pm-ring svg {
-  width: 100%;
-  height: 100%;
-  transform: rotate(-90deg);
-}
-.pm-ring-track {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.12);
-  stroke-width: 6;
-}
-.pm-ring-fill {
-  fill: none;
-  stroke: #5b9bff;
-  stroke-width: 6;
-  stroke-linecap: round;
-}
-.pm-ring-center {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-content: center;
-  text-align: center;
-}
-.pm-ring-ml {
-  font-size: 6.4cqw;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--text-1);
-  font-variant-numeric: tabular-nums;
-}
-.pm-ring-sub {
-  margin-top: 1.4cqw;
-  font-size: 2.4cqw;
-  color: var(--text-3);
-}
-/* Dippy + mood bubble */
-.pm-buddy {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 2.6cqw;
-}
-.pm-buddy svg {
-  flex: none;
-}
-.pm-bubble {
-  font-size: 2.4cqw;
-  line-height: 1.35;
-  color: var(--text-2);
-  background: rgba(255, 255, 255, 0.09);
-  border-radius: 3.2cqw;
-  padding: 2cqw 2.8cqw;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
-}
-/* quick-add chips (Water is the demo-loop target) */
-.pm-chips {
-  display: flex;
-  gap: 2cqw;
-  min-width: 0;
-}
-.pm-chips > * {
-  flex: 1;
-  min-width: 0;
-  justify-content: center;
-}
-.pm-chip-wrap {
-  display: flex;
-  transition: transform 0.15s ease;
-}
-.pm-chip-pressed {
-  transform: scale(0.94);
-}
-/* small friends row */
-.pm-friends-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 2.8cqw;
-  padding: 2.2cqw 3cqw;
-}
-.pm-friend {
-  display: inline-flex;
-  align-items: center;
-  gap: 1.2cqw;
-  font-size: 2.1cqw;
-  font-weight: 600;
-  color: var(--text-2);
-}
-.pm-friend-img {
-  width: 9cqw;
-  height: auto;
-}
-.pm-friend-more {
-  margin-left: auto;
-  font-size: 2.1cqw;
-  font-weight: 600;
-  color: var(--text-3);
-}
-/* tab bar pinned at the bottom, above the home-indicator inset */
-.pm-tabbar {
-  margin-top: auto;
-  padding: 0 0 0.8cqw;
-}
-/* demo-loop pointer + tap ripple (transform/opacity only) */
-.pm-pointer {
-  position: absolute;
-  left: 0;
-  top: 0;
-  z-index: 8;
-  width: 5.5cqw;
-  height: 5.5cqw;
-  margin: -2.75cqw 0 0 -2.75cqw;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle at 35% 30%,
-    rgba(255, 255, 255, 0.95),
-    rgba(91, 155, 255, 0.75) 55%,
-    rgba(46, 124, 246, 0.5)
-  );
-  box-shadow:
-    0 1.2cqw 2.6cqw rgba(0, 0, 0, 0.45),
-    inset 0 0 0 0.35cqw rgba(255, 255, 255, 0.5);
-  transition:
-    transform 0.9s cubic-bezier(0.35, 0.7, 0.3, 1),
-    opacity 0.35s ease;
-  pointer-events: none;
-}
-.pm-tap-ripple {
-  position: absolute;
-  z-index: 7;
-  width: 16cqw;
-  height: 16cqw;
-  margin: -8cqw 0 0 -8cqw;
-  border-radius: 50%;
-  border: 0.6cqw solid rgba(120, 175, 255, 0.75);
-  animation: pm-ripple 0.6s ease-out forwards;
-  pointer-events: none;
-}
-@keyframes pm-ripple {
-  from { transform: scale(0.25); opacity: 0.9; }
-  to { transform: scale(1.6); opacity: 0; }
-}
-.pm-title {
-  margin: 1cqw 1cqw 0;
-  font-size: 3.4cqw;
-  font-weight: 700;
-  color: var(--text-1);
-}
-.pm-search {
-  display: flex;
-  align-items: center;
-  gap: 2cqw;
-  padding: 2.4cqw 3cqw;
-  border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
-  color: var(--text-3);
-  font-size: 2.5cqw;
-}
-.pm-row {
-  display: flex;
-  align-items: center;
-  gap: 2cqw;
-  padding: 2.4cqw 2.8cqw;
-  border-radius: 3cqw;
-  background: rgba(255, 255, 255, 0.07);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
-}
-.pm-row-name {
-  font-size: 2.7cqw;
-  font-weight: 600;
-  color: var(--text-1);
-}
-.pm-row-ml {
-  margin-left: auto;
-  font-size: 2.4cqw;
-  color: var(--text-3);
-}
-.pm-card-friend {
-  flex-direction: row;
-  align-items: center;
-  gap: 2.8cqw;
-}
-.pm-card-friend b {
-  display: block;
-  font-size: 2.9cqw;
-  color: var(--text-1);
-}
-.pm-card-friend .pm-row-ml {
-  margin-left: 0;
-  display: block;
-  font-size: 2.2cqw;
-}
-.pm-card-addfriend {
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: 2.4cqw;
-  color: var(--text-2);
-  font-size: 2.5cqw;
-}
-
 /* — Section scaffolding —
    All sections are TRANSPARENT (root-cause fix A): the only backdrop is
    the unified .backdrop layer; section art (when present) is a feathered,
@@ -1530,7 +1380,7 @@ section[id] {
   margin: 0 0 40px;
   max-width: 56ch;
   font-size: 15.5px;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 
 /* — Features bento — */
@@ -1557,12 +1407,39 @@ section[id] {
   grid-column: span 12;
 }
 .bento-inner {
+  position: relative;
+  overflow: hidden;
+  overflow: clip;
   height: 100%;
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 26px;
   border-radius: var(--r-card);
+}
+/* cursor-following specular highlight (transform + opacity only) */
+.bento-cursor-spec {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 3;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(255, 255, 255, 0) 68%
+  );
+  transform: translate3d(
+    calc(var(--spec-x, 0px) - 50%),
+    calc(var(--spec-y, 0px) - 50%),
+    0
+  );
+  opacity: var(--spec-o, 0);
+  transition: opacity 0.2s ease;
+  will-change: transform, opacity;
 }
 .bento-icon {
   display: grid;
@@ -1605,127 +1482,310 @@ section[id] {
   border-radius: var(--r-pill);
   font-size: 12.5px;
   font-weight: 700;
-  color: var(--text-3);
+  color: var(--text-2);
   background: color-mix(in srgb, var(--text-1) 8%, transparent);
   box-shadow: inset 0 0 0 1px var(--glass-rim-mid);
 }
 .milestone-done {
-  color: var(--accent-bright);
+  color: #1648b8;
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
 }
+.dark .milestone-done {
+  color: #8ec0ff;
+}
 
-/* — Showcase (Phase 3 fix C): pointer/touch driven, NO scroll pinning — */
+/* — Showcase: "Three things Sippy does best." (Phase 3 round 3).
+   Three interactive feature cards built on the shared BentoCard. Scales
+   fluidly with clamp() from 360px to 2560px; 3 columns on desktop, stacked
+   on mobile; inner controls sit on the card's single GlassSurface (no extra
+   backdrop-filter layers). — */
 .showcase {
   position: relative;
-  padding: 96px 0 40px;
+  padding: clamp(72px, 7vw, 112px) 0 clamp(24px, 3vw, 44px);
+}
+.showcase-wrap {
+  width: 100%;
+  max-width: clamp(1280px, 82vw, 1560px);
+  margin-inline: auto;
+  padding-inline: clamp(20px, 5vw, 48px);
 }
 .showcase h2 {
-  margin: 0 0 40px;
+  margin: 0 0 clamp(28px, 3vw, 42px);
   font-family: var(--ff-display);
   font-weight: 700;
-  font-size: clamp(28px, 3.6vw, 40px);
+  font-size: clamp(28px, 3.6vw, 44px);
   letter-spacing: -0.02em;
   color: var(--text-1);
+  text-wrap: balance;
 }
-.showcase-stage {
-  position: relative;
-  width: min(1180px, 100%);
-  margin: 0 auto;
-  padding: 0 16px;
-}
-/* desktop: three phones in a row, fixed gaps, no overlap */
-.sc-row {
+.sc-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(24px, 5vw, 72px);
-  align-items: start;
-  transform-style: preserve-3d;
+  gap: clamp(14px, 1.6vw, 24px);
+  align-items: stretch;
 }
-/* carousel (touch / narrow): slides of 88% so neighbours peek */
-.sc-track {
+.sc-card {
+  grid-column: auto;
+  min-height: clamp(300px, 24vw, 360px);
+}
+.sc-card .bento-inner {
+  padding: clamp(20px, 2vw, 30px);
+}
+.sc-card h3 {
+  font-size: clamp(18px, 1.4vw, 22px);
+}
+.sc-card p {
+  font-size: clamp(14px, 1.05vw, 15.5px);
+}
+.sc-widget {
+  margin-top: auto;
+  padding-top: clamp(14px, 1.4vw, 20px);
   display: flex;
-  width: 264%;
-  cursor: grab;
-}
-.sc-track:active {
-  cursor: grabbing;
-}
-.sc-item {
+  flex-direction: column;
+  gap: 12px;
   position: relative;
+  z-index: 4;
+}
+
+/* Card 1 — Tappable drink list + running ml logged */
+.sc-drinks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.sc-drink-btn {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 18px;
-  outline: none;
-  /* carousel slide width: basis % is relative to the TRACK (264% of the
-     stage), so 33.3333% of the track == 88% of the stage (neighbours peek).
-     A literal 88% here would be 232% of the stage. */
-  flex: 0 0 33.3333%;
-  justify-self: center;
-}
-.sc-row .sc-item {
-  flex: none;
-  width: 100%;
-}
-.sc-item:focus-visible {
-  border-radius: var(--r-card);
-  outline: 2px solid var(--accent);
-  outline-offset: 8px;
-}
-.sc-phone {
-  transform-origin: 50% 60%;
-}
-.sc-row .sc-phone {
-  transform: scale(0.94);
-}
-/* captions: fixed height — can never collide or reflow */
-.sc-caption {
-  height: 58px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: min(260px, 80%);
-  text-align: center;
-  flex: none;
-}
-.sc-caption b {
-  font-size: 15px;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--glass-rim-mid);
+  background: color-mix(in srgb, var(--text-1) 7%, transparent);
   color: var(--text-1);
-}
-.sc-caption span {
-  font-size: 13px;
-  line-height: 1.4;
-  color: var(--text-3);
-}
-.sc-dots {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-  margin-top: 34px;
-}
-.sc-dot {
-  width: 9px;
-  height: 9px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--text-1) 25%, transparent);
+  font-family: var(--ff-body);
+  font-size: 13.5px;
   cursor: pointer;
   transition:
     background var(--t-quick) ease,
-    scale var(--t-quick) ease;
+    border-color var(--t-quick) ease,
+    transform var(--t-quick) cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-.sc-dot:hover {
-  background: color-mix(in srgb, var(--text-1) 45%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .sc-drink-btn:hover {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  }
 }
-.sc-dot-on {
-  background: var(--accent);
-  scale: 1.25;
+.sc-drink-btn:active {
+  transform: scale(0.96);
 }
-.sc-dot:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
+.sc-drink-btn:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+}
+.sc-drink-name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sc-drink-ml {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sc-total-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+}
+.sc-total {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.sc-total-num {
+  font-family: var(--ff-display);
+  font-weight: 600;
+  font-size: clamp(24px, 2vw, 30px);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+.sc-total-unit {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.sc-reset-btn {
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--glass-rim-mid);
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--ff-body);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sc-reset-btn:hover {
+  color: var(--text-1);
+}
+.sc-reset-btn:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+}
+
+/* Card 2 — Focusable friend tiles (hover/focus bounce + click mood cycle) */
+.sc-friends {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.sc-friend {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 12px 6px 10px;
+  min-height: 124px;
+  border-radius: var(--r-inner);
+  border: 1px solid var(--glass-rim-mid);
+  background: color-mix(in srgb, var(--text-1) 6%, transparent);
+  color: var(--text-1);
+  font-family: var(--ff-body);
+  cursor: pointer;
+  transition:
+    background var(--t-quick) ease,
+    border-color var(--t-quick) ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .sc-friend:hover {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  }
+  .sc-friend:hover .sc-friend-bounce {
+    animation: sc-friend-bounce 0.48s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+}
+.sc-friend:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+  border-color: var(--accent-bright);
+}
+.sc-friend:focus-visible .sc-friend-bounce {
+  animation: sc-friend-bounce 0.48s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes sc-friend-bounce {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  40% {
+    transform: translateY(-7px) scale(1.06);
+  }
+  70% {
+    transform: translateY(-2px) scale(0.98);
+  }
+}
+.sc-friend-parallax {
+  display: grid;
+  place-items: center;
+  height: 66px;
+  transform: translate3d(var(--mascot-x, 0px), var(--mascot-y, 0px), 0);
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+.sc-friend-bounce {
+  display: inline-grid;
+  place-items: center;
+}
+.sc-friend-art {
+  max-height: 62px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.24));
+}
+.sc-friend-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.sc-friend-mood {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  line-height: 1.2;
+}
+
+/* Card 3 — Accessible goal range slider (750–3000 ml) + fill bar */
+.sc-goal-widget {
+  gap: 10px;
+}
+.sc-goal-readout {
+  display: flex;
+  align-items: baseline;
+}
+.sc-goal-num {
+  font-family: var(--ff-display);
+  font-weight: 400;
+  font-size: clamp(28px, 2.5vw, 38px);
+  line-height: 1;
+  letter-spacing: -0.025em;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+.sc-goal-unit {
+  font-family: var(--ff-body);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.sc-goal-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  overflow: clip;
+  background: color-mix(in srgb, var(--text-1) 12%, transparent);
+}
+.sc-goal-bar-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: linear-gradient(90deg, var(--accent), var(--accent-bright));
+  transform-origin: left center;
+  transition: transform 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+.sc-goal-slider {
+  width: 100%;
+  height: 28px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+  background: transparent;
+  cursor: pointer;
+}
+.sc-goal-slider:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 4px;
+  border-radius: var(--r-pill);
+}
+.sc-goal-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
 }
 
 /* — How it works — */
@@ -1808,13 +1868,13 @@ section[id] {
 .download-meta {
   margin: 0;
   font-size: 14px;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .download-sha {
   margin: 10px 0 0;
   font-size: 12px;
   word-break: break-all;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .download-btn {
   display: inline-block;
@@ -1828,13 +1888,14 @@ section[id] {
   align-items: flex-start;
 }
 .download-disabled .pill-cta:disabled {
-  opacity: 0.55;
+  background: color-mix(in srgb, var(--text-1) 8%, transparent);
+  color: var(--text-2);
   cursor: not-allowed;
-  box-shadow: none;
+  box-shadow: inset 0 0 0 1px var(--glass-rim-mid);
 }
 .download-disabled span {
   font-size: 13.5px;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .install-steps {
   margin: 32px 0 0;
@@ -1873,7 +1934,7 @@ section[id] {
 .download-note {
   margin: 20px 0 0;
   font-size: 13px;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 
 /* — FAQ (Phase 3 fix D): neutral glass tint, accent only on the open
@@ -2005,7 +2066,7 @@ section[id] {
   margin: 0;
   max-width: 60ch;
   font-size: 13.5px;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .footer-links {
   display: flex;
@@ -2021,29 +2082,53 @@ section[id] {
   color: var(--text-1);
 }
 
-/* — Shared CTA (round 2, R2-2). Hover/press via transform + opacity only;
-   hover styles gated to real hover devices so touch never sticks. — */
+/* — Shared CTA (round 2/3). Content-sized pill with token padding (overrides
+   Glin fixed h-8/h-12), single-line label, no arrow. Hover/press via
+   transform + opacity only; hover gated to real hover devices. — */
 .cta {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  height: auto;
+  width: max-content;
+  max-width: 100%;
+  flex: none;
+  white-space: nowrap;
+  font-family: var(--ff-body);
+  font-weight: 600;
   border-radius: var(--r-pill);
   cursor: pointer;
   transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   -webkit-tap-highlight-color: transparent;
 }
-.cta--lg {
-  font-size: 15.5px;
-}
+/* token padding (8 · 12 · 16 · 24 px from tokens.md):
+   sm = 1px + 8px + 16px + 8px + 1px = 34px single-line height
+   lg = 1px + 12px + 20px + 12px + 1px = 46px single-line height */
 .cta--sm {
+  padding: 8px 16px;
   font-size: 13px;
+  line-height: 16px;
 }
-/* hero/nav primary: deep Sippy Blue, white label. The gradient alpha is
-   high ON PURPOSE: the button must clear 4.5:1 in both themes on every
-   surface it can sit on — worst case is the LIGHT nav pill, whose glass
-   is 52% white over the hero (measured label contrast: 2.8:1 at the old
-   0.5/0.38 alpha, 13.9:1 now). Still translucent (glass sheen kept). */
+.cta--lg {
+  padding: 12px 24px;
+  font-size: 15px;
+  line-height: 20px;
+}
+/* Glin wraps children inside span.relative.z-10 — make that inner wrapper
+   inline-flex + nowrap so content never wraps onto multiple lines. */
+.cta > span.relative {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.cta-label {
+  white-space: nowrap;
+}
+/* hero/nav primary: deep Sippy Blue, white label. Dark-mode recipe kept
+   unchanged (≥5.99:1 everywhere); in light mode the glass tint behind the
+   white label is darkened so every stop clears ≥4.5:1 even when the hero
+   scrim fades to 0 on mobile. */
 .cta--primary {
   background: linear-gradient(
     180deg,
@@ -2056,24 +2141,31 @@ section[id] {
     inset 0 1px 0 rgba(255, 255, 255, 0.4),
     0 2px 16px rgba(29, 95, 224, 0.35);
 }
-/* ghost: transparent glass, rim only ("How it works"). Default label =
-   white in both themes — the HERO scrim is dark in both (light theme
-   measured bg (80,96,118): dark text = 2.87:1, white = 6.41:1). The NAV
-   ghost sits on the 52%-white light glass, where white fails (2.12:1) →
-   dark label there, only in light mode (rule below). */
+:root:not(.dark) .cta--primary {
+  background: linear-gradient(
+    180deg,
+    rgba(25, 70, 200, 0.88),
+    rgba(20, 56, 172, 0.92)
+  );
+}
+/* ghost: transparent glass in dark mode (≥8.53:1); darkened smoked-glass
+   tint behind the white label in light mode so contrast stays ≥7.0:1
+   everywhere without changing the label colour. */
 .cta--ghost {
   background: rgba(255, 255, 255, 0.06);
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.22);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
-:root:not(.dark) .gnav-cta .cta--ghost {
-  color: #0c1424;
+:root:not(.dark) .cta--ghost {
+  background: rgba(12, 20, 36, 0.64);
+  border-color: rgba(12, 20, 36, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26);
 }
 /* brighter rim on hover — an opacity overlay (never an animated shadow) */
 .cta-rim {
   position: absolute;
-  inset: -1px;
+  inset: 0;
   border-radius: inherit;
   pointer-events: none;
   opacity: 0;
@@ -2082,15 +2174,8 @@ section[id] {
     0 0 0 1px rgba(190, 214, 255, 0.75),
     0 0 26px 4px var(--accent-glow);
 }
-.cta-arrow {
-  flex: none;
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
 /* the Glin shimmer sweep is the button's ONLY direct `span.absolute`
-   child — Glin wraps ALL our children (label, arrow, ripples) in its own
-   `span.relative.z-10`, so the old `:not(.cta-label)` selector was
-   matching that wrapper and zeroing the LABEL's opacity (the "no visible
-   text" bug). Target the shimmer span precisely; the wrapper stays 1. */
+   child — target it precisely so the relative wrapper stays at opacity 1. */
 .cta > span.absolute {
   opacity: 0;
   transition: opacity 0.25s ease;
@@ -2104,9 +2189,6 @@ section[id] {
   }
   .cta:hover > span.absolute {
     opacity: 1;
-  }
-  .cta:hover .cta-arrow {
-    transform: translateY(3px);
   }
   .cta:hover:active {
     transform: translateY(-2px) scale(0.97);
@@ -2151,13 +2233,24 @@ section[id] {
    the hole is a transform-scaled 9999px-shadow circle). The page renders
    underneath from t=0 (zero CLS); the ring never distorts the page
    itself (that would require capturing the DOM). — */
+/* — Surface-break intro (SPEC.md section 3: zero #000, transparent .sb over
+   frame-0 <Backdrop />, 800ms smooth opacity exit). — */
 .sb {
   position: fixed;
   inset: 0;
   z-index: 100;
   overflow: hidden;
-  background: #020409;
+  background: transparent;
   cursor: pointer;
+  will-change: opacity;
+}
+.sb--reduced {
+  cursor: pointer;
+}
+.sb-rm-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--backdrop-base, #060a14);
 }
 .sb-canvas {
   position: absolute;
@@ -2166,7 +2259,8 @@ section[id] {
   height: 100%;
   display: block;
 }
-/* CSS fallback world (mirrors the shader's phase timing) */
+/* CSS fallback world (mirrors the shader's phase timing; darkest stop is
+   #060a14 = --bg-0, never #000) */
 .sb-scene {
   position: absolute;
   inset: 0;
@@ -2182,8 +2276,8 @@ section[id] {
   background: linear-gradient(
     180deg,
     #0a1c3f 0%,
-    #04102a 45%,
-    #020614 100%
+    #071226 52%,
+    #060a14 100%
   );
 }
 /* the SAME asset + position as the hero backdrop (.backdrop-caustics) so
@@ -2305,10 +2399,10 @@ section[id] {
 @keyframes sb-dippy-bob {
   0%,
   100% {
-    transform: translateY(0) rotate(-3deg);
+    transform: translate(-50%, 0) rotate(-4deg);
   }
   50% {
-    transform: translateY(-8px) rotate(3deg);
+    transform: translate(-50%, -8px) rotate(4deg);
   }
 }
 /* reduced-motion: a ~350 ms logo crossfade, no rise/ring/shader */
@@ -2366,10 +2460,7 @@ section[id] {
    sections have no backgrounds of their own (the ONE fixed backdrop behind
    the page is the only background system). The old art rects were clipped
    by `overflow: clip` into hard horizontal lines at every section top. */
-.showcase {
-  position: relative; /* positioning context for the friend art */
-}
-/* Dippy floating by the hero phone — idle bob, never over text */
+/* Dippy floating by the hero ring — idle bob, never over text */
 .hero-buddy {
   position: absolute;
   right: 3%;
@@ -2388,24 +2479,7 @@ section[id] {
     transform: translateY(-12px) rotate(2.5deg);
   }
 }
-/* friends art flanking the showcase phones */
-.showcase-friend {
-  position: absolute;
-  bottom: 10%;
-  z-index: 0;
-  opacity: 0.55;
-  pointer-events: none;
-}
-.showcase-friend-l {
-  left: 2.5%;
-}
-.showcase-friend-r {
-  right: 2.5%;
-}
-.dark .showcase-friend {
-  opacity: 0.7;
-}
-/* bento card illustrations */
+/* bento card illustrations (shift against pointer via BentoCard --mascot-x/y) */
 .bento-art {
   align-self: flex-end;
   margin-top: auto;
@@ -2413,6 +2487,9 @@ section[id] {
   height: auto;
   pointer-events: none;
   filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.25));
+  transform: translate3d(var(--mascot-x, 0px), var(--mascot-y, 0px), 0);
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
 }
 .bento-art-lg {
   width: 104px;
@@ -2497,7 +2574,7 @@ section[id] {
 }
 .asset-meta span {
   font-size: 12.5px;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .asset-usage {
   color: var(--text-2) !important;
@@ -2526,6 +2603,7 @@ html.debug-outline [data-overflow-hint] {
   }
   .hero-visual {
     order: -1;
+    justify-self: center;
   }
   .bento-span-7,
   .bento-span-5 {
@@ -2540,18 +2618,26 @@ html.debug-outline [data-overflow-hint] {
     gap: 16px;
   }
   .hero-buddy {
-    right: -6px;
+    right: 0;
     bottom: 1%;
     width: 64px;
   }
-  .showcase-friend {
-    display: none;
+  .sc-grid {
+    grid-template-columns: 1fr;
   }
   .bento-art {
     width: 64px;
   }
   .bento-art-lg {
     width: 76px;
+  }
+}
+@media (max-width: 780px) {
+  .gnav-links {
+    display: none;
+  }
+  .gnav-brand {
+    margin-right: auto;
   }
 }
 @media (max-width: 640px) {
@@ -2564,14 +2650,20 @@ html.debug-outline [data-overflow-hint] {
   .how-line {
     display: none;
   }
-  .gnav-links {
-    display: none;
-  }
-  .gnav-brand {
-    margin-right: auto;
-  }
   .download-card {
     padding: 28px 22px;
+  }
+}
+@media (max-width: 440px) {
+  .gnav {
+    padding: 8px 8px 8px 16px;
+    gap: 8px;
+  }
+  .gnav-actions {
+    gap: 8px;
+  }
+  .gnav-theme {
+    display: none;
   }
 }
 
@@ -2600,6 +2692,20 @@ html.debug-outline [data-overflow-hint] {
   .pressable:active {
     transform: none;
   }
+  .bento-cursor-spec {
+    opacity: 0 !important;
+  }
+  .bento-art,
+  .sc-friend-parallax {
+    transform: none !important;
+  }
+  .hr-wave,
+  .hr-bubbles,
+  .hr-splash,
+  .hr-caustic,
+  .hr-shimmer {
+    display: none !important;
+  }
   html {
     scroll-behavior: auto;
   }
@@ -2613,4 +2719,18 @@ html.debug-outline [data-overflow-hint] {
 }
 [data-emulate-motion] .pressable:active {
   transform: none;
+}
+[data-emulate-motion] .bento-cursor-spec {
+  opacity: 0 !important;
+}
+[data-emulate-motion] .bento-art,
+[data-emulate-motion] .sc-friend-parallax {
+  transform: none !important;
+}
+[data-emulate-motion] .hr-wave,
+[data-emulate-motion] .hr-bubbles,
+[data-emulate-motion] .hr-splash,
+[data-emulate-motion] .hr-caustic,
+[data-emulate-motion] .hr-shimmer {
+  display: none !important;
 }

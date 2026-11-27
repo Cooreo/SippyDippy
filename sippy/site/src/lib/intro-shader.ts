@@ -13,6 +13,8 @@
  * DPR is capped at 1.5 by the caller; the context is released by dispose().
  */
 
+import { DARKEST_BACKDROP_RGB, type Rgb01 } from "./intro2";
+
 const VERT = `
 attribute vec2 a_pos;
 void main() {
@@ -31,6 +33,7 @@ uniform vec2  u_res;      // canvas size in DEVICE px (drawing buffer)
 uniform float u_time;     // seconds into the intro
 uniform float u_revealR;  // reveal hole radius in DEVICE px (0 = closed)
 uniform vec2  u_mark;     // mark centre in uv (0.5, 0.5)
+uniform vec3  u_base;     // darkest page backdrop tone (#060a14, never #000)
 uniform sampler2D u_tex;  // hero caustics texture
 uniform float u_hasTex;
 
@@ -65,8 +68,8 @@ vec3 scene(vec2 q, float t) {
   float sc = mix(1.12, 1.0, smoothstep(0.4, 1.6, t)); // rise: 1.12 -> 1.0
   vec2 uv = (q / 2.0) / sc + 0.5;
 
-  // deep water, dark -> lit
-  vec3 deep = mix(vec3(0.006, 0.016, 0.045), vec3(0.045, 0.11, 0.26),
+  // deep water: darkest frame is u_base (#060a14, never #000) -> lit
+  vec3 deep = mix(u_base, vec3(0.045, 0.11, 0.26),
                   smoothstep(0.0, 1.0, uv.y));
   deep = mix(deep, deep * 1.7 + vec3(0.015, 0.045, 0.10), light * 0.8);
 
@@ -184,14 +187,24 @@ export interface IntroGL {
   dispose(): void;
 }
 
-/** Create the intro GL context; returns null when WebGL is unavailable. */
-export function createIntroGL(canvas: HTMLCanvasElement): IntroGL | null {
+/**
+ * Create the intro GL context; returns null when WebGL is unavailable.
+ * Clears to the page's darkest backdrop tone at alpha = 1 (never transparent
+ * black `(0, 0, 0, 0)` and never `#000`).
+ */
+export function createIntroGL(
+  canvas: HTMLCanvasElement,
+  clearTone: Rgb01 = DARKEST_BACKDROP_RGB,
+): IntroGL | null {
   const gl = canvas.getContext("webgl", {
     premultipliedAlpha: true,
     antialias: false,
     powerPreference: "high-performance",
   });
   if (!gl) return null;
+
+  gl.clearColor(clearTone.r, clearTone.g, clearTone.b, 1.0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
 
   const compile = (type: number, src: string): WebGLShader | null => {
     const sh = gl.createShader(type);
@@ -237,6 +250,7 @@ export function createIntroGL(canvas: HTMLCanvasElement): IntroGL | null {
     time: gl.getUniformLocation(prog, "u_time"),
     revealR: gl.getUniformLocation(prog, "u_revealR"),
     mark: gl.getUniformLocation(prog, "u_mark"),
+    base: gl.getUniformLocation(prog, "u_base"),
     tex: gl.getUniformLocation(prog, "u_tex"),
     hasTex: gl.getUniformLocation(prog, "u_hasTex"),
   };
@@ -252,10 +266,15 @@ export function createIntroGL(canvas: HTMLCanvasElement): IntroGL | null {
   return {
     render(t, revealRpx) {
       if (disposed) return;
+      if (revealRpx <= 0) {
+        gl.clearColor(clearTone.r, clearTone.g, clearTone.b, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+      }
       gl.uniform2f(u.res, gl.drawingBufferWidth, gl.drawingBufferHeight);
       gl.uniform1f(u.time, t);
       gl.uniform1f(u.revealR, revealRpx);
       gl.uniform2f(u.mark, 0.5, 0.5);
+      gl.uniform3f(u.base, clearTone.r, clearTone.g, clearTone.b);
       gl.uniform1f(u.hasTex, hasTex ? 1 : 0);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     },

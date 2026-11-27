@@ -22,7 +22,7 @@ Notes:
 - **Sippy asset pack (Phase 3 richness pass, AI-generated 2026-11-27)** — `site/public/assets/*.webp`
   (hero caustics backdrop; Dippy set: happy/dancing/sleepy/waving; friends:
   plant sprout & bloom, pet cub & adult; droplet sprite; ripple ring;
-  section backdrops features/showcase/download). Style: glossy translucent
+  section backdrops features/download). Style: glossy translucent
   water-droplet character, soft studio lighting, subtle rim light, Sippy
   Blue #2E7CF6 with violet accents, clean 3D render style, no text, no
   watermark. Generated with Arena's image generation; no third-party rights.

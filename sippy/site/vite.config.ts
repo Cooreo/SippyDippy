@@ -41,7 +41,13 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: "happy-dom",
+      css: true,
       setupFiles: ["./src/test/setup.ts"],
+      server: {
+        deps: {
+          inline: ["@glinui/ui"],
+        },
+      },
     },
   };
 });
