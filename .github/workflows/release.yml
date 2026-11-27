@@ -335,50 +335,90 @@ jobs:
           api-level: 34
           target: google_apis
           arch: x86_64
-          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          disable-animations: true
           script: |
             set -e
-            apk="$(ls smoke/new/*.apk | head -1)"
-            echo "installing $apk"
-            adb install -r "$apk"
+            fail() { echo "::error::$1"; exit 1; }
+            note() { echo "::warning::$1"; }
+
+            apk="$(ls smoke/new/*.apk 2>/dev/null | head -1 || true)"
+            [ -n "$apk" ] && [ -f "$apk" ] || fail "No APK was downloaded into smoke/new"
+            echo "apk: $apk ($(stat -c %s "$apk") bytes)"
+
+            adb start-server >/dev/null 2>&1 || true
+            adb wait-for-device || fail "adb wait-for-device failed — no emulator device appeared"
+            sdk_level=""
+            booted=""
+            for i in $(seq 1 100); do
+              booted="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+              [ "$booted" = "1" ] && break
+              sleep 3
+            done
+            sdk_level="$(adb shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r' || true)"
+            note "device: sdk=$sdk_level boot_completed=$booted"
+            [ "$booted" = "1" ] || fail "The emulator never reported sys.boot_completed=1 (sdk=$sdk_level)"
+            adb devices -l || true
+
+            install_apk() {
+              if out="$(adb install -r "$1" 2>&1)"; then
+                printf '%s\n' "$out"
+                return 0
+              fi
+              printf '%s\n' "$out"
+              return 1
+            }
+
+            installed=0
+            for attempt in 1 2 3; do
+              if install_apk "$apk"; then installed=1; break; fi
+              note "adb install attempt $attempt failed; retrying in 10 s"
+              sleep 10
+            done
+            if [ "$installed" -ne 1 ]; then
+              echo "::error::adb install failed three times (device sdk=$sdk_level, apk=$apk) — see the log and the smoke artifact"
+              adb logcat -d -t 300 2>&1 | tail -40 || true
+              exit 1
+            fi
+
             adb shell pm grant com.cooreo.sippy android.permission.POST_NOTIFICATIONS || true
-            adb shell monkey -p com.cooreo.sippy -c android.intent.category.LAUNCHER 1
+            if ! out="$(adb shell monkey -p com.cooreo.sippy -c android.intent.category.LAUNCHER 1 2>&1)"; then
+              echo "::error::monkey could not launch Sippy: $(printf '%s' "$out" | tr '\n' ' ' | cut -c1-300)"
+              exit 1
+            fi
             sleep 20
             adb shell screencap -p /sdcard/sippy.png && adb pull /sdcard/sippy.png smoke/sippy.png || true
             pid="$(adb shell pidof com.cooreo.sippy | tr -d '\r')"
             echo "pid=$pid"
             adb logcat -b crash -d > smoke/crash.txt || true
-            if [ -z "$pid" ]; then
-              echo "::error::Sippy is not running after launch (boot crash)."
-              exit 1
-            fi
+            [ -n "$pid" ] || fail "Sippy is not running after launch (boot crash) — see smoke/crash.txt in the artifact"
             if grep -q "Process: com.cooreo.sippy" smoke/crash.txt; then
-              echo "::error::Sippy crashed during the boot test; see the crash buffer in the step log."
+              echo "::error::Sippy crashed during the boot test; see the crash buffer in the step log"
               tail -100 smoke/crash.txt
               exit 1
             fi
-            echo "boot ok"
+            note "boot ok (pid=$pid)"
+
             if [ -f smoke/old/sippy-previous.apk ]; then
               echo "installing the previous release and upgrading over it"
               adb uninstall com.cooreo.sippy || true
-              adb install smoke/old/sippy-previous.apk
-              adb shell monkey -p com.cooreo.sippy -c android.intent.category.LAUNCHER 1
+              install_apk smoke/old/sippy-previous.apk || fail "Could not install the previous release for the upgrade test"
+              adb shell monkey -p com.cooreo.sippy -c android.intent.category.LAUNCHER 1 || true
               sleep 8
-              adb install -r "$apk"
-              adb shell am start -n com.cooreo.sippy/.MainActivity
+              install_apk "$apk" || fail "The in-place upgrade over the previous release was refused (adb install -r)"
+              adb shell am start -n com.cooreo.sippy/.MainActivity || true
               sleep 20
               upid="$(adb shell pidof com.cooreo.sippy | tr -d '\r')"
-              if [ -z "$upid" ]; then
-                echo "::error::Sippy did not survive the in-place upgrade."
-                exit 1
-              fi
+              [ -n "$upid" ] || fail "Sippy did not survive the in-place upgrade"
               adb logcat -b crash -d > smoke/crash-upgrade.txt || true
               if grep -q "Process: com.cooreo.sippy" smoke/crash-upgrade.txt; then
-                echo "::error::Sippy crashed after the in-place upgrade."
+                echo "::error::Sippy crashed after the in-place upgrade"
                 tail -100 smoke/crash-upgrade.txt
                 exit 1
               fi
-              echo "upgrade ok"
+              note "upgrade ok (pid=$upid)"
+            else
+              note "no previous release to upgrade from — upgrade test skipped"
             fi
 
       - name: Upload smoke artifacts
