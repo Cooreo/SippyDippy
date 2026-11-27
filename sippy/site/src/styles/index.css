@@ -867,27 +867,30 @@ section[id] {
 }
 .hero-inner {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: clamp(24px, 4vw, 64px);
+  gap: clamp(36px, 4.5vw, 68px);
 }
 .hero-copy {
   position: relative;
+  min-width: 0;
   z-index: 1;
 }
 .hero-title {
   margin: 0 0 26px;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 0.22em;
+  row-gap: 0.04em;
   font-family: var(--ff-display);
   font-weight: 800;
   font-size: var(--fs-display);
   line-height: 0.99;
   letter-spacing: -0.02em;
   color: #f4f7ff;
-  text-wrap: balance;
 }
 .hero-word {
   display: inline-block;
-  margin-right: 0.22em;
 }
 .lead {
   margin: 0 0 34px;
@@ -906,6 +909,7 @@ section[id] {
   position: relative;
   display: grid;
   place-items: center;
+  justify-self: end;
   perspective: 1200px;
   z-index: 1;
 }
@@ -919,15 +923,13 @@ section[id] {
   filter: blur(48px);
 }
 
-/* — Hero water ring (replaces the phone preview in the hero column).
-   Sized with clamp() across 360→2560 viewports; the disc is the full
-   bounding box (no extra padding). Motion = transform/opacity only:
-   level = translateY on the fill, wave = translateX on a clipped
-   element (the sanctioned exception), shimmer = transform sweep +
-   opacity. Label uses theme token text-1 → AA on the disc in both
-   themes (see PROGRESS.md contrast table). — */
+/* — Hero water orb (SPEC.md section 2: transform + opacity ONLY).
+   Sized so .hero-copy always retains ≥740px on desktop (zero overlap with
+   "consistently." at 1280, 1440, 1920 and 2560px). Driven by one variable
+   --hr-progress (0..1) for fill saturation and inner glow. — */
 .hr {
-  --hr-size: clamp(260px, 34vw, 520px);
+  --hr-size: clamp(260px, 27vw, 376px);
+  --hr-progress: 0;
   width: var(--hr-size);
   height: var(--hr-size);
 }
@@ -937,8 +939,6 @@ section[id] {
   height: 100%;
   border-radius: 50%;
   overflow: hidden;
-  /* glass depth: soft inner highlight top-left, subtle inner shadow at
-     the bottom (the 1px rim is the ::after gradient ring below) */
   background:
     radial-gradient(
       circle at 32% 26%,
@@ -952,8 +952,23 @@ section[id] {
     inset 0 -18px 40px rgba(2, 8, 20, 0.32),
     0 26px 60px rgba(2, 8, 20, 0.42);
 }
-/* 1px gradient rim that fades around the shape (bright top-left →
-   near-invisible bottom-right → slight recovery) — mask-composite ring */
+/* inner glow intensifies as --hr-progress rises (transform + opacity only) */
+.hr-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 50% 62%,
+    rgba(91, 155, 255, 0.44) 0%,
+    rgba(46, 124, 246, 0.22) 48%,
+    rgba(29, 95, 224, 0) 76%
+  );
+  opacity: calc(0.1 + 0.9 * var(--hr-progress, 0));
+  transform: scale(calc(0.92 + 0.08 * var(--hr-progress, 0)));
+  will-change: transform, opacity;
+}
+/* 1px gradient rim around the disc */
 .hr-disc::after {
   content: "";
   position: absolute;
@@ -982,36 +997,105 @@ section[id] {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  overflow: hidden; /* the circular clip the wave rides on */
+  overflow: hidden;
 }
+/* Slightly wider horizontally (-8%..108%) so gentle slosh rotation never
+   exposes side gaps inside the circular clip. */
 .hr-fill {
   position: absolute;
-  inset: 0;
+  top: 0;
+  bottom: -10%;
+  left: -8%;
+  right: -8%;
   transform: translateY(100%);
+  transform-origin: 50% 12%;
   will-change: transform;
   background: linear-gradient(
     180deg,
-    rgba(59, 130, 246, 0.62) 0%,
-    rgba(37, 99, 235, 0.72) 45%,
-    rgba(29, 78, 216, 0.85) 100%
+    rgba(96, 155, 245, 0.54) 0%,
+    rgba(59, 122, 232, 0.66) 45%,
+    rgba(37, 92, 208, 0.8) 100%
   );
 }
-/* the wave spans from 8 % above the water line to the BOTTOM of the
-   fill and is painted with a gradient identical to the fill's — so the
-   surface is ONLY the wavy crest line; the old 16 %-box (with its
-   straight bottom edge = the "lighter band") is gone */
+/* Vivid saturated fill layer driven by --hr-progress opacity */
+.hr-fill-vivid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(59, 130, 246, 0.72) 0%,
+    rgba(37, 99, 235, 0.84) 45%,
+    rgba(29, 78, 216, 0.94) 100%
+  );
+  opacity: var(--hr-progress, 0);
+  will-change: opacity;
+}
+.hr-wave-vivid {
+  opacity: var(--hr-progress, 0);
+}
+/* Two wave layers at distinct speeds and amplitudes (transform only) */
 .hr-wave {
   position: absolute;
-  top: -8%;
   left: 0;
-  width: 200%; /* two tileable periods — the -50 % drift is seamless */
+  width: 200%;
   height: calc(100% + 16%);
-  animation: hr-wave-drift 3.2s linear infinite;
+  will-change: transform;
+}
+.hr-wave--back {
+  top: -9.5%;
+  animation: hr-wave-drift-rev 4.6s linear infinite;
+}
+.hr-wave--front {
+  top: -8%;
+  animation: hr-wave-drift 2.8s linear infinite;
 }
 .hr-wave svg {
   display: block;
   width: 100%;
   height: 100%;
+}
+/* Rising bubbles inside the water (≤ 8, transform + opacity only) */
+.hr-bubbles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.hr-bubble {
+  position: absolute;
+  bottom: 6%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 35% 30%,
+    rgba(255, 255, 255, 0.9),
+    rgba(190, 224, 255, 0.38) 60%,
+    rgba(190, 224, 255, 0)
+  );
+  animation-name: hr-bubble-rise;
+  animation-timing-function: ease-in;
+  animation-iteration-count: infinite;
+  will-change: transform, opacity;
+}
+@keyframes hr-bubble-rise {
+  0% {
+    transform: translate3d(0, 0, 0) scale(0.7);
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.78;
+  }
+  82% {
+    opacity: 0.62;
+  }
+  100% {
+    transform: translate3d(
+        var(--bub-dx, 6px),
+        calc(var(--hr-size) * -0.82),
+        0
+      )
+      scale(1.08);
+    opacity: 0;
+  }
 }
 /* faint caustic shimmer inside the orb — two soft blobs drifting
    (transform + opacity only), screen-blended, under the label */
@@ -1077,6 +1161,56 @@ section[id] {
   to {
     transform: translateX(-50%);
   }
+}
+@keyframes hr-wave-drift-rev {
+  from {
+    transform: translateX(-50%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+/* ~600 ms surface splash ring when hitting 100 % (transform + opacity only) */
+.hr-splash {
+  position: absolute;
+  top: 14%;
+  left: 50%;
+  width: 68%;
+  height: 68%;
+  border-radius: 50%;
+  border: 2px solid rgba(214, 234, 255, 0.88);
+  transform: translate(-50%, -50%) scale(0.28, 0.12);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.hr.is-done .hr-splash {
+  animation: hr-splash-ring 0.6s cubic-bezier(0.22, 1, 0.36, 1) 1 forwards;
+}
+@keyframes hr-splash-ring {
+  0% {
+    transform: translate(-50%, -50%) scale(0.28, 0.12);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.22, 0.38);
+    opacity: 0;
+  }
+}
+/* Pause all CSS keyframes when offscreen */
+.hr[data-paused="true"] .hr-wave,
+.hr[data-paused="true"] .hr-bubble,
+.hr[data-paused="true"] .hr-caustic-a,
+.hr[data-paused="true"] .hr-caustic-b {
+  animation-play-state: paused;
+}
+/* Reduced motion: static fill at current %, no waves, bubbles, or splash */
+.hr[data-reduced="true"] .hr-wave,
+.hr[data-reduced="true"] .hr-bubbles,
+.hr[data-reduced="true"] .hr-splash,
+.hr[data-reduced="true"] .hr-caustic,
+.hr[data-reduced="true"] .hr-shimmer {
+  display: none;
 }
 .hr-shimmer {
   position: absolute;
@@ -2416,6 +2550,7 @@ html.debug-outline [data-overflow-hint] {
   }
   .hero-visual {
     order: -1;
+    justify-self: center;
   }
   .bento-span-7,
   .bento-span-5 {
@@ -2511,6 +2646,13 @@ html.debug-outline [data-overflow-hint] {
   .sc-friend-parallax {
     transform: none !important;
   }
+  .hr-wave,
+  .hr-bubbles,
+  .hr-splash,
+  .hr-caustic,
+  .hr-shimmer {
+    display: none !important;
+  }
   html {
     scroll-behavior: auto;
   }
@@ -2531,4 +2673,11 @@ html.debug-outline [data-overflow-hint] {
 [data-emulate-motion] .bento-art,
 [data-emulate-motion] .sc-friend-parallax {
   transform: none !important;
+}
+[data-emulate-motion] .hr-wave,
+[data-emulate-motion] .hr-bubbles,
+[data-emulate-motion] .hr-splash,
+[data-emulate-motion] .hr-caustic,
+[data-emulate-motion] .hr-shimmer {
+  display: none !important;
 }
