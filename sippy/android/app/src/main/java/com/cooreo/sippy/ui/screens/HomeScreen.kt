@@ -310,6 +310,8 @@ private fun OrbBlock(
     onGoalReached: () -> Unit,
     onFriendTap: (Friend) -> Unit,
 ) {
+    // B11: one gravity registration for both pinned friends, off with Reduce effects.
+    val parallax = com.cooreo.sippy.ui.system.rememberTiltParallax(enabled = animate)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         // 360dp phones get 320dp of content: the orb drops to 72% of that so the
         // pins, the number and the pills all still fit without scrolling apart.
@@ -357,6 +359,7 @@ private fun OrbBlock(
                         animate = animate,
                         dancing = dancing,
                         onTap = onFriendTap,
+                        parallax = parallax,
                     )
                     PinnedChip(
                         friend = pins.getOrNull(1),
@@ -366,6 +369,7 @@ private fun OrbBlock(
                         animate = animate,
                         dancing = dancing,
                         onTap = onFriendTap,
+                        parallax = parallax,
                     )
                 }
             }
@@ -395,6 +399,8 @@ private fun PinnedChip(
     animate: Boolean,
     dancing: Boolean,
     onTap: (Friend) -> Unit,
+    /** B11: the same tilt the backdrop leans with, read in the layer. */
+    parallax: com.cooreo.sippy.ui.system.TiltParallax? = null,
 ) {
     val c = LocalSippyColors.current
     if (friend == null) {
@@ -440,7 +446,13 @@ private fun PinnedChip(
             hat = worn.firstOrNull { it.slot == ItemSlot.HAT },
             outfit = worn.firstOrNull { it.slot == ItemSlot.OUTFIT },
             modifier = Modifier.graphicsLayer {
-                translationY = phase * 4.dp.toPx() - dance * 6.dp.toPx()
+                // B11: the friend leans with the backdrop, a couple of dp the
+                // other way. Read here, in the layer, so a sample never recomposes.
+                parallax?.let {
+                    translationX = it.x.floatValue * 2f * density
+                    translationY = it.y.floatValue * 2f * density
+                }
+                translationY += phase * 4.dp.toPx() - dance * 6.dp.toPx()
                 val scale = 1f + 0.16f * dance
                 scaleX = scale
                 scaleY = scale

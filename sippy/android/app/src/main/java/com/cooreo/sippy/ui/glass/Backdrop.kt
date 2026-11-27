@@ -1,7 +1,7 @@
 package com.cooreo.sippy.ui.glass
 
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -24,15 +24,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.cooreo.sippy.R
 import com.cooreo.sippy.ui.system.LocalMotionAllowed
+import com.cooreo.sippy.ui.system.rememberTiltParallax
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -97,12 +99,21 @@ fun AmbientBackground(modifier: Modifier = Modifier) {
     }
     val t = if (live) clock.value else frozen
 
+    // B11: the art leans a few dp against the phone, and the shafts and bubbles
+    // keep their own drift. Off under Reduce effects (and then the sensor is never
+    // registered), and read in the layer so a sample never recomposes a screen.
+    val parallax = rememberTiltParallax(enabled = live)
     Box(modifier) {
         Image(
             painter = painterResource(R.drawable.backdrop),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    translationX = parallax.x.floatValue * 3f * density
+                    translationY = parallax.y.floatValue * 3f * density
+                },
         )
         if (tint != Color.Transparent) {
             Box(Modifier.fillMaxSize().background(tint.copy(alpha = 0.26f)))
