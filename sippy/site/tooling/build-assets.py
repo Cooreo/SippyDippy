@@ -30,6 +30,7 @@ MANIFEST_OUT = os.path.join(SITE, "src", "lib", "assets.ts")
 # name -> (max_side_or_width, key_alpha, target_bytes)
 ASSETS = {
     "hero-caustics": (1600, False, 250_000),
+    "hero-caustics-light": (1600, False, 250_000),
     "dippy-happy": (512, True, 120_000),
     "dippy-dancing": (512, True, 120_000),
     "dippy-sleepy": (512, True, 120_000),

@@ -7,7 +7,8 @@ import { ASSETS, PENDING_ASSETS } from "../lib/assets";
  * pack can be reviewed in one place.
  */
 const USAGE: Record<string, string> = {
-  "hero-caustics": "Backdrop layer — hero region (fixed, behind glass)",
+  "hero-caustics": "Backdrop layer — hero region, DARK theme (fixed, behind glass)",
+  "hero-caustics-light": "Backdrop layer — hero region, LIGHT theme (fixed, behind glass)",
   "dippy-happy": "Hero (floating by the phone) · Friends bento card",
   "dippy-dancing": "Streaks & reminders bento card (goal reached)",
   "dippy-sleepy": "Your goal bento card (thirsty, needs a sip)",

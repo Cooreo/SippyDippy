@@ -2,7 +2,7 @@
 
 **CURRENT STATE (2026-11-27, post-round-4 merge — start here for new sessions):** `main` is up to date and deployed (PR #6 "Fix CTA labels, improve water orb", Pages deploy green). Shipped so far: glass design system + gallery, CTA contrast fixes, surface-break intro, hero water ring (fill 0→100% loop + counting label, wave/caustics, glass rim depth), no-cache Pages headers. **Nothing pending; all gates green** (tsc 0 · lint 0 err / 3 pre-existing warn · 37/37 tests · build ~4.6 s · `VITE_BASE=/sippy/` subpath build ✓). Standing rules: every completed round → commit + push session branch → PR → merge to main → verify Pages deploy green → report (PLAN.md top note + decision log #12); **no SPEC.md exists** in the repo — work from the round's inline brief + this file; the live site only updates on merge to `main` (workflow) and serves no-cache via `public/_headers`; no headless browser in the sandbox — "computed" values are CSS/PIL-derived, label them as such; keep `PhoneMock`/Showcase and the intro out of scope unless asked.
 
-**STEP 1 (performance, quality tiers, mobile fit) is merged to `main` (`130f9d2`, PR #10) and deployed (Pages run `46000103961` green) — measured before/after table, gates and the list of what still needs human eyes are in the `STEP 1` section at the bottom of this file. STEP 2 (light theme) has not been started.**
+**STEP 1 (performance, quality tiers, mobile fit) is merged to `main` (`130f9d2`, PR #10) and deployed (Pages run `46000103961` green) — measured before/after table, gates and the list of what still needs human eyes are in the `STEP 1` section at the bottom of this file. STEP 2 (light theme) has started with the light wallpaper (see the `LIGHT WALLPAPER` section at the bottom).**
 
 ## Phase 0 (plan) — ✅ approved with changes
 Old repo: empty (README only). Toolchain: Node 22 only — no Java/SDK/browser/KVM. Network: npm + GitHub API + codeload only (all Maven/Google hosts blocked) → APK built by user (Option A, agreed). See PLAN.md v2.
@@ -440,3 +440,66 @@ gallery route now carries it in one `GalleryPage` chunk, same total bytes).
 - Real GPU `backdrop-filter` cost and the felt smoothness of the paused loops.
 - The visual result at `1440x900` (desktop `high`), `?quality=low`, and `360x800` / `390x844`.
 - That the compacted nav pill fits `360px` in a real engine (computed box math only).
+
+## LIGHT WALLPAPER — light mode now has its own backdrop (2026-11-27)
+
+The light theme used to show the same night-reef photo as dark (only re-tinted by
+`--backdrop-base`), so switching the theme barely changed the page. Light mode now
+paints a *different* wallpaper.
+
+### What changed
+- **New asset** — `hero-caustics-light.webp` (`1376x768`, `69.4 kB`) + `-960`
+  (`42.6 kB`) + `-640` (`24.3 kB`): the same underwater composition (rays from the
+  surface, caustic net on the sand) shot in bright daylight. Master lives in
+  `.assets-src/hero-caustics-light.png` (gitignored, like every other source) and is
+  registered in `tooling/build-assets.py`.
+- **`src/lib/wallpaper.ts`** — one theme → wallpaper map (`src`, `srcSet` with the
+  three widths, `width`/`height`, per-theme `object-position`); every URL goes
+  through `asset()` so the Pages base path still works.
+- **`<Backdrop />`** — reads `useTheme()`, renders `<img data-wallpaper="dark|light">`
+  and reuses the same element on a flip (no blank frame). On the high tier the
+  inactive theme's file is warmed 2.4 s after paint, so toggling is instant.
+- **Theme boot in `index.html`** — a tiny inline script stamps `.dark` *before first
+  paint* (dark-mode visitors no longer flash light) and preloads only the wallpaper
+  of the active theme. Vite substitutes `%VITE_BASE%` inside the inline script
+  (verified: `var base = "/SippyDippy/"` in the subpath build).
+- **Light theme styling** (`src/styles/index.css`):
+  - `:root:not(.dark) .backdrop-caustics` — full-strength wallpaper, slightly wider mask.
+  - `:root:not(.dark) .backdrop-scrim` — the near-black veil is replaced by a pale
+    sky-tinted veil (`rgba(240, 247, 253, 0.70)` → transparent), so the page below the
+    hero is genuinely light.
+  - `:root:not(.dark) .hero::before` — the old *dark* cushion (added for the
+    always-dark hero) is now a soft white lift, weighted to the left so the copy
+    column reads and the water still shows behind the orb.
+  - `.hero-title` → `var(--text-1)` and `.hero .lead` → `var(--text-2)` in light mode;
+    the previous white lead (`#eef3ff`) is gone. Dark mode is untouched.
+- **Intro** — stays the dark "dive" in both themes (deliberate: it is the brand
+  splash); in light mode it samples the `640` reef texture so it never competes with
+  the daylight wallpaper the page loads.
+
+### Contrast, measured over the real wallpaper pixels
+Composited the light scrim + cushion over `hero-caustics-light.webp` samples of the
+actual hero-copy region (worst pixel, desktop `1440x900` and mobile `390x844`):
+
+| Region | Headline `--text-1` | Lead `--text-2` |
+|---|---|---|
+| Desktop y=260 / 420 / 560 / 700 | `12.8 / 12.5 / 11.9 / 11.0` :1 | `5.63 / 5.50 / 5.24 / 4.81` :1 |
+| Mobile y=400 / 560 / 700 | `15.1 / 14.5 / 13.8` :1 | `6.63 / 6.36 / 6.08` :1 |
+
+All above AA (4.5:1), headline above AAA.
+
+### Gates
+- `npx tsc --noEmit` → 0
+- `npx vitest run` → **13 files / 76 tests** (new `wallpaper.test.tsx`: theme→asset map,
+  srcset purity, `<Backdrop />` renders the light wallpaper and swaps to dark on
+  toggle, light scrim/cushion/hero-colour rules)
+- `npx eslint .` → 0 errors / 11 pre-existing warnings
+- `npx vite build` → clean (`5.40 s`); home chunk `362.25 kB / 117.19 kB gzip` (+0.16 kB gzip for the theme map)
+- `VITE_BASE=/SippyDippy/ npx vite build` → clean, base substituted inside the boot script
+- dev server: `/` 200 and `assets/hero-caustics-light.webp` → 200 (`69,416 B`)
+
+### Unverified (needs your eyes)
+- The actual rendering of the light hero (I checked a composed still frame made from
+  the real wallpaper + scrim + a font mock, not the live DOM).
+- Whether the pale veil is the right strength for your taste — it is the knob to turn
+  (`.backdrop-scrim` light stops); anything lighter starts to eat the `4.5:1` margin.

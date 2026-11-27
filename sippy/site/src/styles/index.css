@@ -804,6 +804,15 @@ section[id] {
 .dark .backdrop-caustics {
   opacity: 0.85;
 }
+/* Light theme — a DIFFERENT wallpaper, not the night reef re-tinted: bright
+   daylight water (lib/wallpaper.ts → `hero-caustics-light*.webp`). It runs at
+   full strength with a slightly wider mask, and the pale scrim below
+   (`.backdrop-scrim`) turns it into the airy top of a light page. */
+:root:not(.dark) .backdrop-caustics {
+  opacity: 1;
+  mask-image: linear-gradient(180deg, transparent 0%, #000 4%, #000 46%, transparent 80%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 4%, #000 46%, transparent 80%);
+}
 /* responsive <img> instead of an inline CSS background (Step 1a): the
    browser can pick the 640/960/1376 variant and preload it from index.html.
    The asset's own top rows are its brightest band (measured) — offset it
@@ -825,6 +834,23 @@ section[id] {
     radial-gradient(120% 70% at 85% 0%, rgba(46, 124, 246, 0.16), transparent 60%),
     radial-gradient(80% 60% at 10% 40%, rgba(91, 155, 255, 0.1), transparent 55%),
     linear-gradient(180deg, rgba(3, 6, 12, 0.88) 0%, rgba(3, 6, 12, 0.5) 280px, rgba(3, 6, 12, 0) 660px);
+}
+/* Light theme scrim: a PALE veil instead of the night tint. Measured over the
+   real wallpaper pixels behind the hero copy, it keeps ≥ 4.5:1 for
+   `--text-2` and ≥ 9:1 for `--text-1` all the way down the hero, while the
+   sun rays and caustics still read through. */
+:root:not(.dark) .backdrop-scrim {
+  background:
+    radial-gradient(120% 70% at 85% 0%, rgba(78, 160, 255, 0.14), transparent 62%),
+    radial-gradient(80% 60% at 8% 38%, rgba(120, 200, 235, 0.12), transparent 58%),
+    linear-gradient(
+      180deg,
+      rgba(240, 247, 253, 0.7) 0%,
+      rgba(238, 246, 252, 0.58) 420px,
+      rgba(236, 245, 252, 0.46) 760px,
+      rgba(234, 243, 251, 0.18) 1040px,
+      rgba(232, 242, 251, 0) 1320px
+    );
 }
 
 /* — Shared layout container: nav rail, hero, sections all align to it — */
@@ -908,21 +934,33 @@ section[id] {
   align-items: center;
   padding: 120px 0 56px;
 }
-/* In light mode, extend a soft feathered dark cushion across the hero's
-   white/pale text zone so .hero-title and .hero .lead maintain ≥6.5:1 even
-   at the lower mobile hero where .backdrop-scrim fades out. */
+/* In light mode the hero copy is DARK on a bright wallpaper, so the cushion
+   is a soft white lift (not the old dark one). It is weighted to the LEFT
+   (the copy column) so the water stays legible behind the orb on the right,
+   and it holds ≥ 4.8:1 for `.lead` / ≥ 10:1 for the headline over the real
+   wallpaper pixels, even at the lower mobile hero where `.backdrop-scrim`
+   fades out. */
 :root:not(.dark) .hero::before {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(6, 12, 26, 0.24) 0%,
-    rgba(6, 12, 26, 0.62) 55%,
-    rgba(6, 12, 26, 0) 100%
-  );
+  background:
+    linear-gradient(
+      100deg,
+      rgba(255, 255, 255, 0.16) 0%,
+      rgba(255, 255, 255, 0.1) 46%,
+      rgba(255, 255, 255, 0) 72%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.02) 0%,
+      rgba(255, 255, 255, 0.12) 62%,
+      /* keeps lifting the copy as the hero scrolls past the fixed scrim,
+         then lands on the page's own pale base — no seam */
+      rgba(255, 255, 255, 0.16) 100%
+    );
 }
 .hero-inner {
   display: grid;
@@ -948,6 +986,11 @@ section[id] {
   letter-spacing: -0.02em;
   color: #f4f7ff;
 }
+/* light theme = light wallpaper → the headline flips to ink */
+:root:not(.dark) .hero-title {
+  color: var(--text-1);
+  text-wrap: balance;
+}
 .hero-word {
   display: inline-block;
 }
@@ -959,7 +1002,7 @@ section[id] {
   color: #c4d3ec;
 }
 :root:not(.dark) .hero .lead {
-  color: #eef3ff;
+  color: var(--text-2);
 }
 .hero-cta {
   display: flex;

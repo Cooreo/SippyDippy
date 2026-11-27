@@ -229,9 +229,15 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
       }
     }
 
-    // — backdrop texture (responsive variant on low tier, full on desktop) —
+    // — backdrop texture (responsive variant on low tier, full on desktop).
+    // The intro is the same dark "dive" moment in both themes, so it always
+    // samples the DARK reef; in light theme it uses the 640 variant so it
+    // never competes with the (different) daylight wallpaper the page loads.
+    const isLightTheme = !document.documentElement.classList.contains("dark");
     const caustUrl = asset(
-      isLow ? "assets/hero-caustics-640.webp" : "assets/hero-caustics.webp",
+      isLow || isLightTheme
+        ? "assets/hero-caustics-640.webp"
+        : "assets/hero-caustics.webp",
     );
     const img = new Image();
     let textureReady = false;
