@@ -294,13 +294,15 @@ jobs:
           retention-days: 14
 
   smoke:
-    name: Emulator smoke test
+    name: Emulator smoke test (advisory)
     needs: build
-    # The emulator stack is the one part of this pipeline that depends on the
-    # runner image rather than on our code: 22.04 is the image the emulator
-    # action is known-good on, and the SDK pieces are installed explicitly
-    # below so a missing "emulator" binary can never surface as a bare
-    # "exit code 127" again.
+    # ADVISORY, NOT A GATE: the emulator stack fails on GitHub's runners with
+    # an opaque "exit code 127" from the third-party action before our script
+    # runs (environment issue, not the APK — the APK is verified by aapt2 and
+    # apksigner in the build job). The owner's decision is to publish anyway,
+    # so a failure here is reported but does not block the release. Remove
+    # continue-on-error once the emulator job is green.
+    continue-on-error: true
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
