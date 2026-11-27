@@ -9,7 +9,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -28,7 +27,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
-import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,6 +35,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -290,15 +289,23 @@ private fun RowScope.NavItem(
 @Composable
 private fun LogButton(onLog: () -> Unit, onBounds: (Rect) -> Unit) {
     val c = LocalSippyColors.current
-    // B7: the press is a squash and a ripple from wherever the finger landed; the
-    // ripple is the platform's own, so it is bounded to the circle and free.
+    // B7: a press squashes the button and sends one ripple out through it. Drawn,
+    // not the platform's indication: the rest of the app silences indications on
+    // purpose, and a drawn ripple cannot be clipped differently per API level.
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val squash by animateFloatAsState(
         targetValue = if (pressed) 0.90f else 1f,
-        animationSpec = spring(dampingRatio = 0.34f, stiffness = 900f),
+        animationSpec = spring(dampingRatio = 0.30f, stiffness = 780f),
         label = "logSquash",
     )
+    val ripple = remember { Animatable(0f) }
+    LaunchedEffect(pressed) {
+        if (pressed) {
+            ripple.snapTo(0f)
+            ripple.animateTo(1f, tween(420))
+        }
+    }
     Box(
         modifier = Modifier
             .size(56.dp)
@@ -309,7 +316,18 @@ private fun LogButton(onLog: () -> Unit, onBounds: (Rect) -> Unit) {
             }
             .clip(CircleShape)
             .background(c.accent)
-            .indication(interaction, ripple())
+            .drawBehind {
+                // Clipped by the circle above, so it can never bleed out of the
+                // button as it grows.
+                val p = ripple.value.coerceIn(0f, 1f)
+                if (p > 0f && p < 1f) {
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.30f * (1f - p)),
+                        radius = size.minDimension * 0.62f * p,
+                        center = center,
+                    )
+                }
+            }
             .clickable(
                 interactionSource = interaction,
                 indication = null,
