@@ -1196,3 +1196,45 @@ item parameters and there is no anchor data — and the Shop's only action is
 Ownership is already keyed by item id, which is why removal survives; equip state
 is keyed by friend id, which is why renaming survives, but neither slot nor
 renderer exists.
+
+## Round 8, Round 1 — what shipped
+
+One commit per lettered item, each pushed on its own:
+
+| item | commit | CI on that commit |
+| --- | --- | --- |
+| root causes (before any code) | `3a7221b` | skipped by design |
+| A1 labels, icon-only buttons, Layout check | `9da1ab8` | cancelled (the next push superseded it) |
+| A2 status bar, scrim, insets | `9d7b270` | failed — see below |
+| A3 full dated log | `34597f8` | failed — see below |
+| A4 cosmetics, one avatar, dress-up, tuner | `22c8afe` | **green** |
+| A5 Home rebuild | `2a82747` | **green** |
+
+**Two build breaks were introduced by the blind edits and are repaired in `22c8afe`.**
+(1) A2 used `Brush`, `Color` and `WindowInsets.statusBars` in `SippyRoot` without
+importing them. (2) A1's Layout check called `GlassIconButton` without its required
+`onClick`. Neither was visible from the sandbox: the Gradle log host
+(`results-receiver.actions.githubusercontent.com`) is blocked, so `gh run view
+--log` returns EOF and the job page needs a login. The causes were found by
+diffing every new call site against its declaration — the same class of error will
+keep happening until the log is readable, which is worth fixing before Round 2.
+
+**Design notes worth keeping:**
+- `ShopRules` + `Wardrobe` hold every cosmetic rule (`purchase`, `canEquip`,
+  `worn`, `toggle`, `unequip`), and the two maps are `equipped` (hats) and
+  `equippedOutfits`. A pre-round-8 scarf left in the hat map is promoted on read,
+  so old saves keep it.
+- `FriendAvatar` is the only renderer; `ui/friends/Anchors.kt` is the only place an
+  overlay position lives. The Developer-options Anchor tuner prints the four
+  numbers to paste back into it. Otter, turtle and axolotl outfits have no art, so
+  the table and the Shop still list only the five painted items.
+- Home is now one `LazyColumn` of four items (header, orb, pills, today card), so
+  the whole screen scrolls as one surface; the orb is centred and the pinned
+  friends overlay its corners rather than sitting in a row beside it.
+- `LogGroups.byDay` is the single source of day grouping, labels and goal ticks;
+  History, Home's three rows and the tests all read it.
+
+**Not verified, on purpose:** everything visual — orb size at 360dp, the anchor
+numbers, the speech bubble timing, the nested-glass look of the log card. The
+round-8 sketch and screenshots never reached the sandbox, so the written
+description was the authority for A5. All of it needs a phone check.
