@@ -6,13 +6,13 @@ import android.provider.Settings as AndroidSettings
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,11 +28,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -44,9 +44,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -59,8 +60,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cooreo.sippy.BuildConfig
 import com.cooreo.sippy.R
 import com.cooreo.sippy.data.AppGraph
-import com.cooreo.sippy.domain.friends.MoodRules
+import com.cooreo.sippy.domain.drinks.DrinkCategory
 import com.cooreo.sippy.domain.drinks.DrinkTable
+import com.cooreo.sippy.domain.friends.MoodRules
+import com.cooreo.sippy.domain.points.PointsRules
 import com.cooreo.sippy.domain.water.WaterMath
 import com.cooreo.sippy.model.Friend
 import com.cooreo.sippy.model.LogEntry
@@ -68,14 +71,13 @@ import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.model.ThemeMode
 import com.cooreo.sippy.ui.components.Celebration
 import com.cooreo.sippy.ui.components.FloatingNav
-import com.cooreo.sippy.ui.system.LocalMotionAllowed
-import com.cooreo.sippy.ui.system.rememberHaptics
 import com.cooreo.sippy.ui.components.NavBarHeight
 import com.cooreo.sippy.ui.components.NavTarget
+import com.cooreo.sippy.ui.components.OrbAnchor
 import com.cooreo.sippy.ui.glass.BackdropTints
-import com.cooreo.sippy.ui.glass.LocalBackdropTint
 import com.cooreo.sippy.ui.glass.GlassCapabilities
 import com.cooreo.sippy.ui.glass.GlassDiagnostics
+import com.cooreo.sippy.ui.glass.LocalBackdropTint
 import com.cooreo.sippy.ui.glass.LocalGlassBoost
 import com.cooreo.sippy.ui.glass.LocalGlassTier
 import com.cooreo.sippy.ui.glass.SippyBackdropHost
@@ -93,8 +95,14 @@ import com.cooreo.sippy.ui.sheets.AddDrinkSheet
 import com.cooreo.sippy.ui.sheets.CustomVolumeSheet
 import com.cooreo.sippy.ui.sheets.DressUpSheet
 import com.cooreo.sippy.ui.sheets.EditEntrySheet
+import com.cooreo.sippy.ui.sheets.LogDrinkFlow
+import com.cooreo.sippy.ui.sheets.LogFly
+import com.cooreo.sippy.ui.sheets.LogFlyData
 import com.cooreo.sippy.ui.sheets.UpdateSheet
 import com.cooreo.sippy.ui.state.SippyController
+import com.cooreo.sippy.ui.system.LocalMotionAllowed
+import com.cooreo.sippy.ui.system.rememberHaptics
+import com.cooreo.sippy.ui.theme.DrinkTints
 import com.cooreo.sippy.ui.theme.LocalSippyColors
 import com.cooreo.sippy.ui.theme.SippyTheme
 import com.cooreo.sippy.ui.theme.accentFor
@@ -252,7 +260,10 @@ private fun AppScaffold(
         }
     }
     var showDeveloper by remember { mutableStateOf(false) }
-    var showAddDrink by remember { mutableStateOf(false) }
+    // B7: the Log flow grows out of the + button and flies its droplet into the orb.
+    var logFlowOpen by remember { mutableStateOf(false) }
+    var logButtonRect by remember { mutableStateOf(Rect.Zero) }
+    var logFly by remember { mutableStateOf<LogFlyData?>(null) }
     var showCustomVolume by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<LogEntry?>(null) }
     var celebrationAt by remember { mutableStateOf(0L) }
@@ -417,9 +428,10 @@ private fun AppScaffold(
                 showHistory = false
                 showShop = false
             },
-            onLog = { showAddDrink = true },
+            onLog = { logFlowOpen = true },
             modifier = Modifier.align(Alignment.BottomCenter),
             animate = animate,
+            onLogBounds = { logButtonRect = it },
         )
 
         toast?.let { message ->
@@ -437,17 +449,43 @@ private fun AppScaffold(
         }
     }
 
-    if (showAddDrink) {
-        AddDrinkSheet(
-            onDismiss = { showAddDrink = false },
-            onPick = { drink, volume ->
+    if (logFlowOpen) {
+        LogDrinkFlow(
+            origin = logButtonRect,
+            animate = animate,
+            onDismiss = { logFlowOpen = false },
+            onLog = { drink, volume ->
+                logFlowOpen = false
+                val counted = WaterMath.hydrate(volume, drink.hydrationFactor)
+                val gained = PointsRules.credit(
+                    points = state.points,
+                    carryMl = state.pointsCarryMl,
+                    countedMl = counted,
+                ).gained
+                logFly = LogFlyData(
+                    id = System.currentTimeMillis(),
+                    from = logButtonRect,
+                    to = OrbAnchor.bounds,
+                    volumeMl = volume,
+                    points = gained,
+                    tint = DrinkTints.of(DrinkCategory.of(drink.id)),
+                )
+                haptics.thud()
                 controller.addDrink(drink, volume)
-                showAddDrink = false
             },
             onCustom = {
-                showAddDrink = false
+                logFlowOpen = false
                 showCustomVolume = true
             },
+        )
+    }
+
+    logFly?.let { flight ->
+        LogFly(
+            data = flight,
+            animate = animate,
+            onFinished = { logFly = null },
+            modifier = Modifier.fillMaxSize(),
         )
     }
 

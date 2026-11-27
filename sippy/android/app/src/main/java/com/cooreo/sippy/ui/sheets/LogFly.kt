@@ -94,6 +94,7 @@ fun LogFly(
 
         // The labels rise from the orb and fade out just before the end.
         val p = progress.value.coerceIn(0f, 1f)
+        // A composable body is not a Density scope, so the conversions happen in one.
         val density = LocalDensity.current
         val risePx = with(density) { 34.dp.toPx() } * p
         val liftPx = with(density) { 18.dp.toPx() }
