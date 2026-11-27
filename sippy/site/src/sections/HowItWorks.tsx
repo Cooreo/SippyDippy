@@ -1,5 +1,6 @@
 import { useRef } from "react";
-import { motion, useScroll, useSpring } from "motion/react";
+import { motion, useReducedMotion, useScroll, useSpring } from "motion/react";
+import { isReducedMotionActive, useQualityTier } from "../lib/quality";
 import { springs } from "../lib/tokens";
 
 const STEPS = [
@@ -21,11 +22,16 @@ const STEPS = [
 ];
 
 /**
- * How it works — 3 steps with scroll-linked reveal (blur-to-sharp) and a
- * progress line that draws as you scroll.
+ * How it works — 3 steps in a 2-column grid (step badge in the left column,
+ * title + body in the right column — never absolutely positioned over text).
  */
 export function HowItWorks() {
   const ref = useRef<HTMLElement>(null);
+  const tier = useQualityTier();
+  const osReduced = useReducedMotion() ?? false;
+  const reduced = osReduced || isReducedMotionActive();
+  const useBlurReveal = tier === "high" && !reduced;
+
   const { scrollYProgress } = useScroll({
     target: ref,
     offset: ["start 0.8", "end 0.45"],
@@ -34,34 +40,45 @@ export function HowItWorks() {
 
   return (
     <section id="how" className="how" ref={ref}>
-      {/* focus target for the "How it works" CTA landing (preventScroll) */}
       <h2 id="how-heading" tabIndex={-1}>
         How it works
       </h2>
       <div className="how-track">
         <motion.div
           className="how-line"
-          style={{ scaleY: lineScale }}
+          style={reduced ? undefined : { scaleY: lineScale }}
           aria-hidden="true"
         />
         {STEPS.map((s, i) => (
           <motion.div
             key={s.n}
             className="how-step"
-            initial={{ opacity: 0, y: 28, filter: "blur(6px)" }}
-            whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            initial={
+              reduced
+                ? { opacity: 1, y: 0 }
+                : useBlurReveal
+                  ? { opacity: 0, y: 28, filter: "blur(6px)" }
+                  : { opacity: 0, y: 20 }
+            }
+            whileInView={
+              useBlurReveal
+                ? { opacity: 1, y: 0, filter: "blur(0px)" }
+                : { opacity: 1, y: 0 }
+            }
             viewport={{ once: true, margin: "-12% 0px" }}
             transition={{
-              duration: 0.55,
+              duration: reduced ? 0 : 0.55,
               ease: [0.22, 1, 0.36, 1],
-              delay: i * 0.05,
+              delay: reduced ? 0 : i * 0.05,
             }}
           >
             <div className="how-num" aria-hidden="true">
               {s.n}
             </div>
-            <h3>{s.title}</h3>
-            <p>{s.body}</p>
+            <div className="how-step-body">
+              <h3>{s.title}</h3>
+              <p>{s.body}</p>
+            </div>
           </motion.div>
         ))}
       </div>

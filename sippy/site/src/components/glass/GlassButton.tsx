@@ -1,5 +1,5 @@
 import type { ButtonHTMLAttributes } from "react";
-import { ShimmerButton } from "@glinui/ui";
+import { ShimmerButton } from "./ShimmerButton";
 import { useTheme } from "../../lib/theme";
 
 export interface GlassButtonProps

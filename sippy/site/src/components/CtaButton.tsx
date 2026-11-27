@@ -1,5 +1,5 @@
 import { useRef, useState, type PointerEvent, type ReactNode } from "react";
-import { ShimmerButton } from "@glinui/ui";
+import { ShimmerButton } from "./glass/ShimmerButton";
 import { APK_CTA_LABEL, APK_CTA_LABELS, getDownloadState } from "../lib/download";
 import { focusHeading, flashRim, scrollToId } from "../lib/scroll";
 

@@ -18,6 +18,7 @@
  */
 import { useEffect, useRef } from "react";
 import { useReducedMotion } from "motion/react";
+import { isReducedMotionActive, resolveQualityTier } from "../../lib/quality";
 import { asset } from "../../lib/router";
 import { createIntroGL, type IntroGL } from "../../lib/intro-shader";
 import {
@@ -51,13 +52,7 @@ function easeInOut(p: number): number {
 }
 
 function isReducedMotionPreferred(): boolean {
-  if (typeof document !== "undefined" && document.documentElement.hasAttribute("data-emulate-motion")) {
-    return true;
-  }
-  if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  }
-  return false;
+  return isReducedMotionActive();
 }
 
 /** Layout position (offsets ignore transforms — the nav's entry
@@ -198,59 +193,87 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
 
     overlay.style.opacity = "1";
 
+    const isLow = resolveQualityTier() === "low";
+    const computeDpr = () => {
+      const base = Math.min(window.devicePixelRatio || 1, 1.5);
+      return isLow ? Math.max(0.5, base * 0.5) : base;
+    };
+
     const vp: Viewport = { w: window.innerWidth, h: window.innerHeight };
-    let dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    let dpr = computeDpr();
     let gl: IntroGL | null = null;
     let mode: "pending" | "shader" | "css" = "pending";
 
     const onResize = () => {
       vp.w = window.innerWidth;
       vp.h = window.innerHeight;
-      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      dpr = computeDpr();
       gl?.resize(vp.w, vp.h, dpr);
     };
-    window.addEventListener("resize", onResize);
+    window.addEventListener("resize", onResize, { passive: true });
 
-    // — backdrop texture (the SAME asset as the hero backdrop) —
+    // Low tier: pre-compile WebGL shader at half resolution BEFORE the intro
+    // clock starts so no compilation stall can ever interrupt the animation.
+    if (isLow) {
+      const pre = createIntroGL(canvas, DARKEST_BACKDROP_RGB);
+      if (pre) {
+        gl = pre;
+        pre.resize(vp.w, vp.h, dpr);
+        pre.precompile();
+        mode = "shader";
+        canvas.style.opacity = "1";
+        const s = overlay.querySelector<HTMLElement>(".sb-scene");
+        if (s) s.style.display = "none";
+      } else {
+        mode = "css";
+      }
+    }
+
+    // — backdrop texture (responsive variant on low tier, full on desktop) —
+    const caustUrl = asset(
+      isLow ? "assets/hero-caustics-640.webp" : "assets/hero-caustics.webp",
+    );
     const img = new Image();
     let textureReady = false;
     img.onload = () => {
       textureReady = true;
       caustRef.current?.style.setProperty(
         "background-image",
-        `url(${asset("assets/hero-caustics.webp")})`,
+        `url(${caustUrl})`,
       );
-    };
-    img.src = asset("assets/hero-caustics.webp");
-
-    // 300 ms window: texture ready + WebGL → shader, otherwise CSS fallback.
-    // While pending (`0..300 ms`), cssFrame drives `.sb-scene` immediately so
-    // frame 0 is never blank or `#000`.
-    const decide = window.setTimeout(() => {
-      if (mode !== "pending") return;
-      if (textureReady) {
-        const g = createIntroGL(canvas, DARKEST_BACKDROP_RGB);
-        if (g) {
-          gl = g;
-          g.resize(vp.w, vp.h, dpr);
-          g.setTexture(img);
-          mode = "shader";
-          canvas.style.transition = "opacity 0.15s ease";
-          canvas.style.opacity = "0";
-          requestAnimationFrame(() => {
-            canvas.style.opacity = "1";
-          });
-          // Once the shader canvas crossfade completes, hide `.sb-scene` so the
-          // shader's alpha hole reveals the live `<Backdrop />` directly.
-          window.setTimeout(() => {
-            const s = rootRef.current?.querySelector<HTMLElement>(".sb-scene");
-            if (s) s.style.display = "none";
-          }, 180);
-          return;
-        }
+      if (gl) {
+        gl.setTexture(img);
       }
-      mode = "css";
-    }, 300);
+    };
+    img.src = caustUrl;
+
+    // Desktop high-tier 300 ms window: texture ready + WebGL → shader, else CSS.
+    const decide = isLow
+      ? 0
+      : window.setTimeout(() => {
+          if (mode !== "pending") return;
+          if (textureReady) {
+            const g = createIntroGL(canvas, DARKEST_BACKDROP_RGB);
+            if (g) {
+              gl = g;
+              g.resize(vp.w, vp.h, dpr);
+              g.precompile();
+              g.setTexture(img);
+              mode = "shader";
+              canvas.style.transition = "opacity 0.15s ease";
+              canvas.style.opacity = "0";
+              requestAnimationFrame(() => {
+                canvas.style.opacity = "1";
+              });
+              window.setTimeout(() => {
+                const s = rootRef.current?.querySelector<HTMLElement>(".sb-scene");
+                if (s) s.style.display = "none";
+              }, 180);
+              return;
+            }
+          }
+          mode = "css";
+        }, 300);
 
     // — timeline clock (pauses while the tab is hidden) —
     let t0 = performance.now();
@@ -273,10 +296,17 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
     const onVisibility = () => {
       if (document.hidden) {
         pausedAt = performance.now();
+        if (raf) {
+          cancelAnimationFrame(raf);
+          raf = 0;
+        }
       } else if (pausedAt !== null) {
         t0 += performance.now() - pausedAt;
         lastNow = performance.now();
         pausedAt = null;
+        if (!finished && !raf) {
+          raf = requestAnimationFrame(frameFn);
+        }
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
@@ -409,7 +439,10 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
     };
 
     const frameFn = (now: number) => {
-      if (finished) return;
+      if (finished || pausedAt !== null) {
+        raf = 0;
+        return;
+      }
 
       // 150 ms skip crossfade to opacity = 0 before unmounting
       if (skipped) {
@@ -617,6 +650,8 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
         ref={dippyRef}
         className="sb-dippy"
         src={asset("assets/dippy-waving.webp")}
+        srcSet={`${asset("assets/dippy-waving-128.webp")} 128w, ${asset("assets/dippy-waving.webp")} 227w`}
+        sizes="74px"
         alt=""
         width={74}
         height={80}

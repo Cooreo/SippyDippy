@@ -1,11 +1,16 @@
 /**
- * AuroraBackdrop — the procedural gradient-mesh backdrop (spec:
- * shared/docs/aurora.md). Single canvas, 4 blobs, time-based drift, 30fps
- * cap, DPR capped at 1.5, pointer parallax (spring-lagged), one static frame
- * under reduced motion (OS setting OR the gallery's "reduce effects" switch
- * via [data-emulate-motion]).
+ * AuroraBackdrop — procedural gradient-mesh backdrop (spec:
+ * shared/docs/aurora.md). Single canvas, 4 blobs, time-based drift, 30fps cap,
+ * DPR capped at 1.5 on high tier / 0.75 on low tier, pointer parallax only
+ * where fine hover exists, paused when offscreen or `document.hidden`, and one
+ * static frame (zero rAF) under reduced motion.
  */
 import { useEffect, useRef } from "react";
+import {
+  canHoverFine,
+  isReducedMotionActive,
+  useQualityTier,
+} from "../lib/quality";
 
 interface BlobDef {
   h: number;
@@ -25,16 +30,9 @@ const BLOBS: BlobDef[] = [
 ];
 const BASE_ALPHA = [0.5, 0.34, 0.3, 0.16];
 
-function isReduced(): boolean {
-  const root = document.documentElement;
-  const os =
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  return os || root.hasAttribute("data-emulate-motion");
-}
-
 export function AuroraBackdrop() {
   const ref = useRef<HTMLCanvasElement | null>(null);
+  const tier = useQualityTier();
 
   useEffect(() => {
     const canvas = ref.current;
@@ -42,9 +40,15 @@ export function AuroraBackdrop() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const DPR = Math.min(window.devicePixelRatio || 1, 1.5);
+    const maxDpr = tier === "low" ? 0.75 : 1.5;
+    const DPR = Math.min(window.devicePixelRatio || 1, maxDpr);
+    const enablePointer = tier === "high" && canHoverFine();
+
     let W = 0;
     let H = 0;
+    let inView = true;
+    let raf = 0;
+    let last = 0;
     let blobs: { def: BlobDef; img: HTMLCanvasElement; ox: number; oy: number }[] =
       [];
 
@@ -77,18 +81,8 @@ export function AuroraBackdrop() {
       });
     };
 
-    const resize = () => {
-      W = canvas.clientWidth;
-      H = canvas.clientHeight;
-      canvas.width = Math.round(W * DPR);
-      canvas.height = Math.round(H * DPR);
-      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      prerender();
-      if (isReduced()) draw(0);
-    };
-
     const draw = (t: number) => {
-      if (!blobs.length) return;
+      if (!blobs.length || W <= 0 || H <= 0) return;
       ctx.clearRect(0, 0, W, H);
       ctx.globalCompositeOperation = "screen";
       const v = Math.max(W, H);
@@ -103,50 +97,104 @@ export function AuroraBackdrop() {
       ctx.globalCompositeOperation = "source-over";
     };
 
+    const resize = () => {
+      W = canvas.clientWidth;
+      H = canvas.clientHeight;
+      canvas.width = Math.max(1, Math.round(W * DPR));
+      canvas.height = Math.max(1, Math.round(H * DPR));
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      prerender();
+      draw(isReducedMotionActive() ? 0 : performance.now() / 1000);
+    };
+
     let ptrX = 0;
     let ptrY = 0;
     const onPointer = (e: PointerEvent) => {
-      ptrX = e.clientX / window.innerWidth - 0.5;
-      ptrY = e.clientY / window.innerHeight - 0.5;
+      ptrX = e.clientX / (W || window.innerWidth || 1) - 0.5;
+      ptrY = e.clientY / (H || window.innerHeight || 1) - 0.5;
     };
 
-    let raf = 0;
-    let last = 0;
+    const shouldRun = () =>
+      inView && !document.hidden && !isReducedMotionActive();
+
     const tick = (now: number) => {
-      if (isReduced()) {
-        draw(0);
-      } else {
-        for (const b of blobs) {
-          b.ox += (-ptrX * (10 + blobs.indexOf(b) * 3) - b.ox) * 0.05;
-          b.oy += (-ptrY * (8 + blobs.indexOf(b) * 2) - b.oy) * 0.05;
+      if (!shouldRun()) {
+        raf = 0;
+        if (isReducedMotionActive()) draw(0);
+        return;
+      }
+      if (enablePointer) {
+        for (let i = 0; i < blobs.length; i += 1) {
+          const b = blobs[i];
+          b.ox += (-ptrX * (10 + i * 3) - b.ox) * 0.05;
+          b.oy += (-ptrY * (8 + i * 2) - b.oy) * 0.05;
         }
-        if (now - last >= 33) {
-          draw(now / 1000);
-          last = now;
-        }
+      }
+      if (now - last >= 33) {
+        draw(now / 1000);
+        last = now;
       }
       raf = requestAnimationFrame(tick);
     };
 
-    // Re-tint blobs when the theme flips.
-    const mo = new MutationObserver(() => prerender());
+    const syncLoop = () => {
+      if (shouldRun()) {
+        if (!raf) raf = requestAnimationFrame(tick);
+      } else {
+        if (raf) {
+          cancelAnimationFrame(raf);
+          raf = 0;
+        }
+        if (isReducedMotionActive()) draw(0);
+      }
+    };
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        inView = entries[0]?.isIntersecting ?? true;
+        syncLoop();
+      },
+      { threshold: 0 },
+    );
+    io.observe(canvas);
+
+    // Re-tint blobs on theme flip and react to [data-emulate-motion].
+    const mo = new MutationObserver(() => {
+      prerender();
+      draw(isReducedMotionActive() ? 0 : performance.now() / 1000);
+      syncLoop();
+    });
     mo.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["class"],
+      attributeFilter: ["class", "data-emulate-motion"],
     });
 
-    window.addEventListener("resize", resize);
-    window.addEventListener("pointermove", onPointer, { passive: true });
+    const mql =
+      typeof window.matchMedia === "function"
+        ? window.matchMedia("(prefers-reduced-motion: reduce)")
+        : null;
+    mql?.addEventListener("change", syncLoop);
+
     resize();
-    raf = requestAnimationFrame(tick);
+    window.addEventListener("resize", resize, { passive: true });
+    document.addEventListener("visibilitychange", syncLoop);
+    if (enablePointer) {
+      window.addEventListener("pointermove", onPointer, { passive: true });
+    }
+    syncLoop();
 
     return () => {
-      cancelAnimationFrame(raf);
+      if (raf) cancelAnimationFrame(raf);
+      io.disconnect();
       mo.disconnect();
+      mql?.removeEventListener("change", syncLoop);
       window.removeEventListener("resize", resize);
-      window.removeEventListener("pointermove", onPointer);
+      document.removeEventListener("visibilitychange", syncLoop);
+      if (enablePointer) {
+        window.removeEventListener("pointermove", onPointer);
+      }
     };
-  }, []);
+  }, [tier]);
 
   return <canvas ref={ref} className="aurora" aria-hidden="true" />;
 }

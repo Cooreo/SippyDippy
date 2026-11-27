@@ -10,6 +10,7 @@ import {
   type HTMLAttributes,
 } from "react";
 import { useFxMode } from "../../lib/fx";
+import { useQualityTier } from "../../lib/quality";
 import { blur as blurTokens, glassSaturation, radius as radiusTokens } from "../../lib/tokens";
 
 export interface GlassSurfaceProps extends HTMLAttributes<HTMLDivElement> {
@@ -24,6 +25,8 @@ export interface GlassSurfaceProps extends HTMLAttributes<HTMLDivElement> {
   specular?: boolean;
   /** Override the glass tint (any CSS color). */
   tint?: string;
+  /** Keep live backdrop-filter on the low quality tier (capped at ≤3 surfaces). */
+  lowTierBlur?: boolean;
 }
 
 export function GlassSurface({
@@ -32,34 +35,51 @@ export function GlassSurface({
   refraction,
   specular = false,
   tint,
+  lowTierBlur = false,
   className,
   style,
   children,
   ...rest
 }: GlassSurfaceProps) {
   const fx = useFxMode();
+  const tier = useQualityTier();
+  const isLow = tier === "low";
+  const useLiveBlur = !isLow || lowTierBlur;
 
-  const doRefract = (refraction ?? true) && fx === "full";
-  const bpx = blurTokens[blur];
+  const doRefract = !isLow && (refraction ?? true) && fx === "full";
+  const bpx = isLow ? Math.min(blurTokens[blur], 16) : blurTokens[blur];
+  const sat = isLow ? 140 : glassSaturation;
   const rpx =
     radius === "pill"
       ? `${radiusTokens.pill}px`
       : `${radiusTokens[radius]}px`;
 
-  const filterChain = `blur(${bpx}px) saturate(${glassSaturation}%)${
+  const filterChain = `blur(${bpx}px) saturate(${sat}%)${
     doRefract ? " url(#sippyRefraction)" : ""
   }`;
 
   const glassStyle: CSSProperties = {
     borderRadius: rpx,
-    backdropFilter: filterChain,
-    WebkitBackdropFilter: filterChain,
+    ...(useLiveBlur
+      ? {
+          backdropFilter: filterChain,
+          WebkitBackdropFilter: filterChain,
+        }
+      : {
+          backdropFilter: "none",
+          WebkitBackdropFilter: "none",
+        }),
     ...(tint ? { background: tint } : null),
     ...style,
   };
 
   return (
-    <div className={`glass${className ? ` ${className}` : ""}`} style={glassStyle} {...rest}>
+    <div
+      className={`glass${className ? ` ${className}` : ""}`}
+      data-glass-static={useLiveBlur ? undefined : "true"}
+      style={glassStyle}
+      {...rest}
+    >
       {specular && <span aria-hidden="true" className="spec" />}
       {children}
     </div>

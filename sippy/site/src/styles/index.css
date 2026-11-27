@@ -5,9 +5,32 @@
    Phase 4 binds the same values — see tokens.md for app impact notes.)
    ========================================================================= */
 
-/* 1 — Fonts (bundled via npm, zero CDN) */
-@import "@fontsource-variable/inter";
-@import "@fontsource-variable/inter-tight";
+/* 1 — Fonts (self-hosted, zero CDN, Latin subset ONLY).
+   The old `@fontsource-variable` imports pulled the whole family: 14 files /
+   431 kB in dist, because ONE glyph (the "→" in the download steps, U+2192)
+   lives outside the Latin subset and dragged in the Latin-Ext files. We now
+   ship exactly two variable faces (48.3 kB + 44.9 kB), preloaded from
+   index.html, with `font-display: swap` and no reliance on a webfont CDN. */
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/inter-latin-var.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+    U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Inter Tight Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/inter-tight-latin-var.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+    U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
 /* 2 — Glin tokens (their components read these; we override their VALUES below) */
 @import "@glinui/tokens/theme.css";
@@ -200,9 +223,14 @@
 html {
   scroll-behavior: smooth;
   background: var(--backdrop-base);
+  /* the fixed nav pill is wider than a 360px viewport once the CTA grows —
+     clip the horizontal overflow at the ROOT so no dark strip past 100vw
+     can ever be exposed (Step 1d) */
+  overflow-x: clip;
 }
 body {
   margin: 0;
+  overflow-x: clip;
   background: var(--backdrop-base);
   color: var(--text-1);
   font-family: var(--ff-body);
@@ -333,7 +361,6 @@ section[id] {
 /* 9 — Press, focus */
 .pressable {
   transition: transform var(--t-base) cubic-bezier(0.34, 1.56, 0.64, 1);
-  will-change: transform;
 }
 .pressable:active {
   transform: scale(0.97);
@@ -769,11 +796,6 @@ section[id] {
   inset: 0 0 auto 0;
   height: 170%;
   max-height: 2200px;
-  background-size: cover;
-  /* the asset's own top rows are its brightest band (measured) — offset it
-     above the viewport so NO content edge sits at the top edge (R2-3);
-     the top mask ramp softens whatever remains there. */
-  background-position: 50% -16%;
   opacity: 0.55;
   /* soft ramps on BOTH ends — no background may end inside the viewport */
   mask-image: linear-gradient(180deg, transparent 0%, #000 5%, #000 45%, transparent 82%);
@@ -781,6 +803,17 @@ section[id] {
 }
 .dark .backdrop-caustics {
   opacity: 0.85;
+}
+/* responsive <img> instead of an inline CSS background (Step 1a): the
+   browser can pick the 640/960/1376 variant and preload it from index.html.
+   The asset's own top rows are its brightest band (measured) — offset it
+   above the viewport so NO content edge sits at the top edge (R2-3). */
+.backdrop-caustics-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% -16%;
 }
 .backdrop .aurora {
   position: absolute;
@@ -942,14 +975,24 @@ section[id] {
   perspective: 1200px;
   z-index: 1;
 }
+/* the glow behind the orb: a WIDE multi-stop radial gradient instead of a
+   `filter: blur(48px)` — same soft falloff, zero filter cost (Step 1c) */
 .hero-visual::before {
   content: "";
   position: absolute;
-  width: 72%;
+  width: 118%;
   aspect-ratio: 1;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(46, 124, 246, 0.4), transparent 62%);
-  filter: blur(48px);
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    rgba(46, 124, 246, 0.34) 0%,
+    rgba(46, 124, 246, 0.21) 26%,
+    rgba(46, 124, 246, 0.11) 45%,
+    rgba(46, 124, 246, 0.04) 63%,
+    rgba(46, 124, 246, 0.01) 76%,
+    rgba(46, 124, 246, 0) 86%
+  );
 }
 
 /* — Hero water orb (SPEC.md section 2: transform + opacity ONLY).
@@ -996,7 +1039,6 @@ section[id] {
   );
   opacity: calc(0.1 + 0.9 * var(--hr-progress, 0));
   transform: scale(calc(0.92 + 0.08 * var(--hr-progress, 0)));
-  will-change: transform, opacity;
 }
 /* 1px gradient rim around the disc */
 .hr-disc::after {
@@ -1042,7 +1084,6 @@ section[id] {
   overflow: clip;
   transform: translateY(100%);
   transform-origin: 50% 12%;
-  will-change: transform;
   background: linear-gradient(
     180deg,
     rgba(96, 155, 245, 0.54) 0%,
@@ -1062,7 +1103,6 @@ section[id] {
     rgba(29, 78, 216, 0.94) 100%
   );
   opacity: var(--hr-progress, 0);
-  will-change: opacity;
 }
 .hr-wave-vivid {
   opacity: var(--hr-progress, 0);
@@ -1073,7 +1113,6 @@ section[id] {
   left: 0;
   width: 200%;
   height: calc(100% + 16%);
-  will-change: transform;
 }
 .hr-wave--back {
   top: -9.5%;
@@ -1107,7 +1146,6 @@ section[id] {
   animation-name: hr-bubble-rise;
   animation-timing-function: ease-in;
   animation-iteration-count: infinite;
-  will-change: transform, opacity;
 }
 @keyframes hr-bubble-rise {
   0% {
@@ -1150,7 +1188,6 @@ section[id] {
     rgba(170, 210, 255, 0.5),
     rgba(170, 210, 255, 0) 65%
   );
-  will-change: transform;
 }
 .hr-caustic-a {
   width: 55%;
@@ -1216,7 +1253,6 @@ section[id] {
   transform: translate(-50%, -50%) scale(0.28, 0.12);
   opacity: 0;
   pointer-events: none;
-  will-change: transform, opacity;
 }
 .hr.is-done .hr-splash {
   animation: hr-splash-ring 0.6s cubic-bezier(0.22, 1, 0.36, 1) 1 forwards;
@@ -1439,7 +1475,6 @@ section[id] {
   );
   opacity: var(--spec-o, 0);
   transition: opacity 0.2s ease;
-  will-change: transform, opacity;
 }
 .bento-icon {
   display: grid;
@@ -1700,7 +1735,6 @@ section[id] {
   height: 66px;
   transform: translate3d(var(--mascot-x, 0px), var(--mascot-y, 0px), 0);
   transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
 }
 .sc-friend-bounce {
   display: inline-grid;
@@ -1764,7 +1798,6 @@ section[id] {
   background: linear-gradient(90deg, var(--accent), var(--accent-bright));
   transform-origin: left center;
   transition: transform 0.14s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
 }
 .sc-goal-slider {
   width: 100%;
@@ -1807,14 +1840,22 @@ section[id] {
   opacity: 0.7;
   transform-origin: top;
 }
+/* 2 real columns (badge | copy) instead of padding + an absolutely
+   positioned badge — on <=640px the old `padding-left: 0` dropped the
+   badge ON TOP of the heading (Step 1d defect). */
 .how-step {
   position: relative;
-  padding-left: 86px;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  column-gap: 32px;
+  align-items: start;
+  padding-left: 0;
+}
+.how-step-body {
+  min-width: 0;
 }
 .how-num {
-  position: absolute;
-  top: 0;
-  left: 0;
+  grid-column: 1;
   display: grid;
   place-items: center;
   width: 54px;
@@ -1829,6 +1870,7 @@ section[id] {
 }
 .how-step h3 {
   margin: 6px 0 8px;
+  overflow-wrap: anywhere;
   font-size: 20px;
   letter-spacing: -0.01em;
   color: var(--text-1);
@@ -2242,7 +2284,6 @@ section[id] {
   overflow: hidden;
   background: transparent;
   cursor: pointer;
-  will-change: opacity;
 }
 .sb--reduced {
   cursor: pointer;
@@ -2268,7 +2309,6 @@ section[id] {
 .sb-world {
   position: absolute;
   inset: 0;
-  will-change: transform;
 }
 .sb-deep {
   position: absolute;
@@ -2460,15 +2500,34 @@ section[id] {
    sections have no backgrounds of their own (the ONE fixed backdrop behind
    the page is the only background system). The old art rects were clipped
    by `overflow: clip` into hard horizontal lines at every section top. */
-/* Dippy floating by the hero ring — idle bob, never over text */
+/* Dippy floating by the hero ring — CSS bob (was a Framer `repeat: Infinity`
+   motion value, i.e. a per-frame JS loop). Paused whenever the hero is
+   offscreen, the tab is hidden, or the user asked for reduced motion. */
+.hero-buddy-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
 .hero-buddy {
   position: absolute;
   right: 3%;
   bottom: 9%;
-  z-index: 2;
   width: 76px;
   height: auto;
+  animation: buddy-bob 9s ease-in-out infinite;
   filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.35));
+}
+.hero-orb-bob {
+  display: grid;
+  place-items: center;
+}
+.hero[data-offscreen="true"] .hero-buddy,
+.hero[data-offscreen="true"] .hr-wave,
+.hero[data-offscreen="true"] .hr-bubble,
+.hero[data-offscreen="true"] .hr-caustic-a,
+.hero[data-offscreen="true"] .hr-caustic-b {
+  animation-play-state: paused;
 }
 @keyframes buddy-bob {
   0%,
@@ -2489,7 +2548,6 @@ section[id] {
   filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.25));
   transform: translate3d(var(--mascot-x, 0px), var(--mascot-y, 0px), 0);
   transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
 }
 .bento-art-lg {
   width: 104px;
@@ -2506,7 +2564,6 @@ section[id] {
   animation-name: drop-drift;
   animation-timing-function: ease-in-out;
   animation-iteration-count: infinite;
-  will-change: transform;
 }
 @keyframes drop-drift {
   0%,
@@ -2622,6 +2679,64 @@ html.debug-outline [data-overflow-hint] {
   color: #f4f7ff;
 }
 
+/* — Step 1c: idle / offscreen / quality gates — */
+/* The CTA shimmer is a continuous CSS animation on up to 3 buttons. Keep the
+   DOM contract (Glin span) but only RUN the sweep while hovered/focused. */
+.cta-shimmer-sweep {
+  animation: cta-shimmer-sweep var(--shimmer-duration, 2s) ease-in-out infinite;
+  animation-play-state: paused;
+}
+@keyframes cta-shimmer-sweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+@media (hover: hover) and (pointer: fine) {
+  .cta:hover .cta-shimmer-sweep,
+  .cta:focus-visible .cta-shimmer-sweep {
+    animation-play-state: running;
+  }
+}
+/* Tab hidden: freeze every CSS animation (the rAF loops self-pause in JS,
+   driven by the same `data-doc-hidden` attribute). */
+html[data-doc-hidden] *,
+html[data-doc-hidden] *::before,
+html[data-doc-hidden] *::after {
+  animation-play-state: paused !important;
+}
+
+/* Low quality tier: the glass look is PRESERVED, but the compositing cost of
+   live backdrop-filters is dropped everywhere except the three surfaces that
+   sit directly over the moving backdrop (nav pill, hero ghost CTA, download
+   card — all of which opt into `lowTierBlur`). Result: <= 3 live filters in
+   the DOM, <= 2 in view at once, and 0 SVG refraction on the whole page. */
+html[data-quality="low"] [data-glass-static="true"],
+html[data-quality="low"] .step-num,
+html[data-quality="low"] .faq-item,
+html[data-quality="low"] .cta {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+html[data-quality="low"] .step-num {
+  background: color-mix(in srgb, var(--glass-neutral) 86%, var(--bg-1));
+}
+html[data-quality="low"] .faq-item {
+  background: color-mix(in srgb, var(--glass-neutral) 90%, var(--bg-1));
+}
+/* the three survivors keep a cheaper, capped live blur */
+html[data-quality="low"] .page-nav .gnav,
+html[data-quality="low"] .download-card {
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+}
+html[data-quality="low"] .hero .cta--ghost {
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  backdrop-filter: blur(12px) saturate(140%);
+}
+
 /* — Responsive — */
 @media (max-width: 1000px) {
   .hero {
@@ -2669,6 +2784,27 @@ html.debug-outline [data-overflow-hint] {
   }
   .gnav-brand {
     margin-right: auto;
+    min-width: 0;
+  }
+  /* the fixed pill rail can never widen the document (Step 1d) */
+  .page-nav {
+    overflow-x: clip;
+  }
+  .gnav {
+    min-width: 0;
+    max-width: 100%;
+  }
+  /* >= 44 x 44 px touch targets on phones */
+  .pill-cta,
+  .sc-drink-btn,
+  .sc-reset-btn,
+  .sc-friend,
+  .glass-icon-btn,
+  .faq-q {
+    min-height: 44px;
+  }
+  .sc-friend {
+    min-width: 44px;
   }
 }
 @media (max-width: 640px) {
@@ -2676,7 +2812,13 @@ html.debug-outline [data-overflow-hint] {
     grid-column: span 12;
   }
   .how-step {
-    padding-left: 0;
+    grid-template-columns: 44px minmax(0, 1fr);
+    column-gap: 16px;
+  }
+  .how-num {
+    width: 44px;
+    height: 44px;
+    font-size: 13px;
   }
   .how-line {
     display: none;
@@ -2686,15 +2828,25 @@ html.debug-outline [data-overflow-hint] {
   }
 }
 @media (max-width: 440px) {
+  /* 360px fit: brand + theme switch + APK pill inside 320px of content */
   .gnav {
-    padding: 8px 8px 8px 16px;
-    gap: 8px;
+    padding: 6px 6px 6px 12px;
+    gap: 6px;
+  }
+  .gnav-brand {
+    font-size: 15px;
+    gap: 6px;
   }
   .gnav-actions {
-    gap: 8px;
+    gap: 6px;
+    min-width: 0;
   }
   .gnav-theme {
     display: none;
+  }
+  .gnav .pill-cta {
+    padding: 8px 12px;
+    font-size: 12.5px;
   }
 }
 

@@ -1,14 +1,16 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import {
+  canHoverFine,
+  isReducedMotionActive,
+  useQualityTier,
+} from "../lib/quality";
 import { asset } from "../lib/router";
 
 /**
- * Ambient droplets (Phase 3 richness pass) — at most 12 small droplet
- * sprites drifting slowly across the backdrop layer, with subtle pointer
- * parallax. Paused off-screen (IntersectionObserver per droplet) and not
- * rendered at all under reduced motion / reduced effects.
- *
- * Deterministic pseudo-random layout (fixed seed) so it's stable between
- * visits and testable.
+ * Ambient droplets — at most 12 small droplet sprites on high tier and 4 on
+ * low tier, drifting slowly across the backdrop layer. Pointer parallax runs
+ * ONLY where fine hover exists, wakes on pointermove, and sleeps (`raf = 0`)
+ * once eased to rest or when `document.hidden` / reduced motion is active.
  */
 interface DropSpec {
   x: number; // % of viewport width
@@ -37,38 +39,86 @@ function seededSpecs(n: number): DropSpec[] {
   }));
 }
 
-export function AmbientDroplets({ count = 12 }: { count?: number }) {
+export function AmbientDroplets({ count }: { count?: number }) {
+  const tier = useQualityTier();
+  const cap = tier === "low" ? 4 : 12;
+  const resolvedCount = Math.min(count ?? cap, cap);
   const layerRef = useRef<HTMLDivElement>(null);
-  const specs = useRef<DropSpec[]>(seededSpecs(Math.min(count, 12))).current;
+  const specs = useMemo(() => seededSpecs(resolvedCount), [resolvedCount]);
 
-  // pointer parallax on the whole layer (subtle)
+  // Pointer parallax — high tier + fine hover only, sleeps when settled/hidden
   useEffect(() => {
     const layer = layerRef.current;
-    if (!layer) return;
+    if (!layer || tier === "low" || !canHoverFine()) {
+      if (layer) layer.style.transform = "";
+      return;
+    }
+
     let tx = 0;
     let ty = 0;
     let cx = 0;
     let cy = 0;
     let raf = 0;
-    const onMove = (e: PointerEvent) => {
-      tx = (e.clientX / window.innerWidth - 0.5) * 2;
-      ty = (e.clientY / window.innerHeight - 0.5) * 2;
-    };
+    let inView = true;
+
     const tick = () => {
+      if (!inView || document.hidden || isReducedMotionActive()) {
+        raf = 0;
+        return;
+      }
       cx += (tx - cx) * 0.04;
       cy += (ty - cy) * 0.04;
       layer.style.transform = `translate3d(${(-cx * 5).toFixed(2)}px, ${(-cy * 4).toFixed(2)}px, 0)`;
-      raf = requestAnimationFrame(tick);
+      if (Math.abs(tx - cx) > 0.002 || Math.abs(ty - cy) > 0.002) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        raf = 0;
+      }
     };
-    window.addEventListener("pointermove", onMove, { passive: true });
-    raf = requestAnimationFrame(tick);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      cancelAnimationFrame(raf);
-    };
-  }, []);
 
-  // pause offscreen droplets
+    const wake = () => {
+      if (!raf && inView && !document.hidden && !isReducedMotionActive()) {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+
+    const onMove = (e: PointerEvent) => {
+      tx = (e.clientX / (window.innerWidth || 1) - 0.5) * 2;
+      ty = (e.clientY / (window.innerHeight || 1) - 0.5) * 2;
+      wake();
+    };
+
+    const onVisibility = () => {
+      if (document.hidden && raf) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+    };
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        inView = entries[0]?.isIntersecting ?? true;
+        if (!inView && raf) {
+          cancelAnimationFrame(raf);
+          raf = 0;
+        }
+      },
+      { threshold: 0 },
+    );
+    io.observe(layer);
+
+    window.addEventListener("pointermove", onMove, { passive: true });
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      io.disconnect();
+      window.removeEventListener("pointermove", onMove);
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [tier]);
+
+  // Pause offscreen droplets via IntersectionObserver (`document.hidden` is
+  // also handled globally by `html[data-doc-hidden]`).
   useEffect(() => {
     const io = new IntersectionObserver(
       (entries) => {
@@ -83,7 +133,7 @@ export function AmbientDroplets({ count = 12 }: { count?: number }) {
       ?.querySelectorAll<HTMLElement>(".ambient-drop")
       .forEach((el) => io.observe(el));
     return () => io.disconnect();
-  }, []);
+  }, [specs]);
 
   return (
     <div ref={layerRef} className="ambient" aria-hidden="true">
@@ -101,7 +151,6 @@ export function AmbientDroplets({ count = 12 }: { count?: number }) {
             opacity: sp.o,
             animationDuration: `${sp.d}s`,
             animationDelay: `${sp.delay}s`,
-            // --depth used by the CSS drift for per-droplet variance
             ["--depth" as string]: sp.depth,
           }}
           loading="lazy"

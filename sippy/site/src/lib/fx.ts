@@ -14,6 +14,7 @@
  *      filter references inside backdrop-filter (Chromium).
  */
 import { useSyncExternalStore } from "react";
+import { resolveQualityTier, useQualityTier } from "./quality";
 
 export type FxMode = "full" | "blur";
 
@@ -42,8 +43,12 @@ export function supportsCssRefraction(): boolean {
 export function getFxMode(): FxMode {
   if (override) return override;
   const fromQuery =
-    typeof window !== "undefined" ? fxFromQuery(window.location.search) : null;
+    typeof window !== "undefined" ? fxFromQuery(window.location.search ?? "") : null;
   if (fromQuery) return fromQuery;
+  // Android Chrome supports CSS `backdrop-filter: url(#svg)`, which otherwise
+  // executes live SVG feTurbulence + feDisplacementMap on every glass surface.
+  // Suppress SVG refraction on the low quality tier unless explicitly forced.
+  if (resolveQualityTier() === "low") return "blur";
   return supportsCssRefraction() ? "full" : "blur";
 }
 
@@ -56,7 +61,14 @@ function subscribe(fn: () => void): () => void {
 
 const snapshot = (): FxMode => getFxMode();
 
-/** Re-render-safe access (components update when the gallery switch flips). */
+/** Re-render-safe access (components update when quality tier or gallery switch flips). */
 export function useFxMode(): FxMode {
-  return useSyncExternalStore(subscribe, snapshot, snapshot);
+  const tier = useQualityTier();
+  const mode = useSyncExternalStore(subscribe, snapshot, snapshot);
+  if (mode === "blur") return "blur";
+  if (override === "full") return "full";
+  const fromQuery =
+    typeof window !== "undefined" ? fxFromQuery(window.location.search ?? "") : null;
+  if (fromQuery === "full") return "full";
+  return tier === "low" ? "blur" : mode;
 }

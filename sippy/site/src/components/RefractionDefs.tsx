@@ -1,11 +1,16 @@
+import { useFxMode } from "../lib/fx";
+
 /**
  * RefractionDefs — the SVG displacement filter referenced by GlassSurface's
  * backdrop-filter (`url(#sippyRefraction)`). Progressive enhancement:
  * Chromium honours filter references inside backdrop-filter; Safari/Firefox
- * ignore it and keep the clean blur-only fallback. Also never applied when
- * ?fx=blur (see lib/fx.ts).
+ * ignore it and keep the clean blur-only fallback. Unmounted on the low
+ * quality tier and under `?fx=blur` so mobile GPUs never evaluate SVG
+ * `feTurbulence` + `feDisplacementMap`.
  */
 export function RefractionDefs() {
+  const fx = useFxMode();
+  if (fx !== "full") return null;
   return (
     <svg
       width="0"

@@ -1,4 +1,5 @@
-import { getLenis } from "./lenis";
+import { getLenis, wakeLenis } from "./lenis";
+import { isReducedMotionActive } from "./quality";
 
 /**
  * In-page scrolling + landing feedback (root-cause R2-2).
@@ -16,11 +17,7 @@ import { getLenis } from "./lenis";
 export const NAV_OFFSET_PX = 88;
 
 export function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
+  return isReducedMotionActive();
 }
 
 export function scrollToId(id: string): void {
@@ -29,9 +26,10 @@ export function scrollToId(id: string): void {
   const lenis = getLenis();
   const reduced = prefersReducedMotion();
   if (lenis && !reduced) {
+    wakeLenis();
     lenis.scrollTo(el, { offset: -NAV_OFFSET_PX, duration: 1.1 });
   } else {
-    // instant under reduced motion; smooth native otherwise (no Lenis)
+    // instant under reduced motion; smooth native otherwise (no Lenis on touch/low tier)
     el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
   }
 }
@@ -44,13 +42,18 @@ export function focusHeading(id: string): void {
 
 /**
  * Flash a card's rim once (~1.2 s). Adds `.rim-flash` (an opacity-only
- * overlay animation) and removes it when the animation ends.
+ * overlay animation) and removes it when the animation ends, restarting cleanly
+ * via rAF without forcing synchronous layout (`offsetWidth`).
  */
 export function flashRim(el: HTMLElement | null, ms = 1200): void {
   if (!el) return;
-  el.classList.remove("rim-flash");
-  // force reflow so the animation can restart on rapid re-clicks
-  void el.offsetWidth;
-  el.classList.add("rim-flash");
+  if (el.classList.contains("rim-flash")) {
+    el.classList.remove("rim-flash");
+    requestAnimationFrame(() => {
+      el.classList.add("rim-flash");
+    });
+  } else {
+    el.classList.add("rim-flash");
+  }
   window.setTimeout(() => el.classList.remove("rim-flash"), ms);
 }
