@@ -60,3 +60,41 @@ Pipeline for the backdrop: `convert src.png -resize 1080x2400^ -gravity center
 -extent 1080x2400 -strip -quality 84 backdrop.webp` (WebP, method 6). Budget was
 250 KB; it lands at 35 KB, so there is room to raise quality later if the banding
 ever shows on a phone.
+
+### Drink icons — what actually worked
+
+Asking for "a transparent background" does not produce transparency: the model
+paints the *checkerboard* that means transparency, and it is then part of the
+image. Keying that out leaves grey crumbs inside the glass and is not worth
+shipping (tried on three icons, rejected). What works:
+
+1. Ask for one flat solid magenta `#FF00FF` background, square canvas, no frame,
+   no badge, no plate, no shadow. Three of the first nine attempts also came back
+   with a rounded-square badge; the word "badge" and "plate" in the prompt fixed it.
+2. Key it: `-alpha set -fuzz 24% -transparent "#FF00FF"`.
+3. Trim, then fit: `-fuzz 30% -trim +repage -resize 192x192`.
+4. **De-spill the magenta that shows through the glass.** A translucent body picks
+   up the key colour and turns every rim pink — the one thing that makes an icon
+   unusable. Per pixel, `m = min(R-G, B-G)`; where `m > 0`, subtract `m` from R and
+   from B. Orange and amber drinks are untouched (`B < G` there), green and aqua
+   are untouched, and the pink rims come back as the blue-violet a glass edge
+   should be.
+5. `-strip -quality 90`, which lands every icon between 5.7 and 9.2 KB — the budget
+   was 40 KB.
+
+| Icon | Size | Shipped |
+| --- | --- | --- |
+| `drink_water.webp` | 192px, 5.7 KB | yes |
+| `drink_sparkling.webp` | 192px, 7.1 KB | yes |
+| `drink_tea.webp` | 192px, 8.6 KB | yes |
+| `drink_coffee.webp` | 192px, 9.2 KB | yes |
+| `drink_juice.webp` | 192px, 8.6 KB | yes |
+| `drink_milk.webp` | 192px, 7.3 KB | yes |
+| `drink_smoothie.webp` | 192px, 7.8 KB | yes |
+| `drink_soda.webp` | — | **not yet** — category falls back to the drawn droplet |
+| `drink_alcohol.webp` | — | **not yet** — same fallback |
+| `drink_other.webp` | — | **not yet** — same fallback |
+
+Rejected along the way: nine earlier attempts with checkerboard transparency (all
+discarded), and one milk where the key left a magenta slab on the right shoulder
+that the de-spill turned grey enough to keep.

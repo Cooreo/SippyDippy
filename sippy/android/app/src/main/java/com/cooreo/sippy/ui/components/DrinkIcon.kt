@@ -1,6 +1,7 @@
 package com.cooreo.sippy.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -9,10 +10,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.cooreo.sippy.R
+import com.cooreo.sippy.domain.drinks.DrinkCategory
 import com.cooreo.sippy.ui.theme.LocalSippyColors
 import com.cooreo.sippy.ui.theme.SippyColors
 
@@ -76,8 +81,30 @@ object DrinkGroups {
 }
 
 /**
- * A drink's icon: a glass disc with a tinted droplet. Drawn, not an image, so it
- * scales to any size and keeps the app free of new art assets.
+ * The painted icon for a category, or null while that category's art is still
+ * missing (round 8, B4). Kept as a `when` over resource ids so a missing file is
+ * a compile error rather than a blank square at runtime.
+ */
+private fun iconRes(category: DrinkCategory): Int? = when (category) {
+    DrinkCategory.WATER -> R.drawable.drink_water
+    DrinkCategory.SPARKLING -> R.drawable.drink_sparkling
+    DrinkCategory.TEA -> R.drawable.drink_tea
+    DrinkCategory.COFFEE -> R.drawable.drink_coffee
+    DrinkCategory.JUICE -> R.drawable.drink_juice
+    DrinkCategory.MILK -> R.drawable.drink_milk
+    DrinkCategory.SMOOTHIE -> R.drawable.drink_smoothie
+    // Still to be painted; these fall back to the drawn droplet below.
+    DrinkCategory.SODA -> null
+    DrinkCategory.ALCOHOL -> null
+    DrinkCategory.OTHER -> null
+}
+
+/**
+ * A drink's icon: the painted glass for its category when that art exists, and the
+ * drawn glass disc with a tinted droplet when it does not. Both paths take the same
+ * box, so a row never shifts as categories gain art. The painting is a transparent
+ * WebP at 192px, fitted rather than stretched, so the height of every glass matches
+ * and the aspect ratio is the artist's.
  */
 @Composable
 fun DrinkIcon(
@@ -86,6 +113,16 @@ fun DrinkIcon(
     /** TalkBack text; null when the surrounding row already describes the drink. */
     label: String? = null,
 ) {
+    val painted = iconRes(DrinkCategory.of(drinkId))
+    if (painted != null) {
+        Image(
+            painter = painterResource(painted),
+            contentDescription = label,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.size(size),
+        )
+        return
+    }
     val c = LocalSippyColors.current
     val tint = DrinkGroups.tint(DrinkGroups.of(drinkId), c)
     Canvas(
