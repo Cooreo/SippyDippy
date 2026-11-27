@@ -73,6 +73,7 @@ import com.cooreo.sippy.ui.components.NavBarHeight
 import com.cooreo.sippy.ui.components.NavTarget
 import com.cooreo.sippy.ui.glass.GlassCapabilities
 import com.cooreo.sippy.ui.glass.GlassDiagnostics
+import com.cooreo.sippy.ui.glass.LocalGlassBoost
 import com.cooreo.sippy.ui.glass.LocalGlassTier
 import com.cooreo.sippy.ui.glass.SippyBackdropHost
 import com.cooreo.sippy.ui.screens.DeveloperScreen
@@ -167,7 +168,10 @@ fun SippyRoot(graph: AppGraph) {
                 backdropInitialised = true,
             )
         }
-        CompositionLocalProvider(LocalGlassTier provides diagnostics.tier) {
+        CompositionLocalProvider(
+            LocalGlassTier provides diagnostics.tier,
+            LocalGlassBoost provides if (controller.glassBoost) 2.4f else 1f,
+        ) {
             SippyBackdropHost {
                 // A2: the bars are visible and transparent over the backdrop. A
                 // soft scrim sits behind the status icons so they stay legible on

@@ -77,6 +77,13 @@ val LocalBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 val LocalGlassTier = staticCompositionLocalOf { GlassTier.FROST }
 
 /**
+ * Developer-only exaggeration factor for the glass (round 8, B1). 1f is the
+ * shipping look; 2.4f makes the refraction and the blur impossible to miss, so
+ * "is the lens actually running?" is a switch, not an argument.
+ */
+val LocalGlassBoost = staticCompositionLocalOf { 1f }
+
+/**
  * The one fixed backdrop the whole app is drawn on (SPEC §1: a single
  * full-viewport layer; content is transparent). It is captured once into a
  * layer, and every glass surface samples it — no per-surface backdrops.
@@ -231,6 +238,7 @@ fun GlassSurface(
     val c = LocalSippyColors.current
     val backdrop = LocalBackdrop.current
     val tier = LocalGlassTier.current
+    val boost = LocalGlassBoost.current
     val surface = tint ?: c.glassTint
 
     val glass = if (backdrop != null) {
@@ -239,11 +247,16 @@ fun GlassSurface(
             shape = { shape },
             effects = {
                 when (tier) {
+                    // B1: the lens is real on API 33+ — a blur plus an AGSL
+                    // refraction pass — and the boost scales both.
                     GlassTier.LENS -> {
-                        blur(radius = 14.dp.toPx())
-                        lens(refractionHeight = 26.dp.toPx(), refractionAmount = 22.dp.toPx())
+                        blur(radius = 14.dp.toPx() * boost)
+                        lens(
+                            refractionHeight = 26.dp.toPx() * boost,
+                            refractionAmount = 22.dp.toPx() * boost,
+                        )
                     }
-                    GlassTier.BLUR -> blur(radius = 18.dp.toPx())
+                    GlassTier.BLUR -> blur(radius = 18.dp.toPx() * boost)
                     // Static frosting: tint + rim only, zero GPU work.
                     GlassTier.FROST -> Unit
                 }

@@ -75,6 +75,25 @@ fun DeveloperScreen(
                     DevRow("RenderEffect (31+)", if (diagnostics.renderEffectSupported) "supported" else "missing")
                     DevRow("Runtime shaders (33+)", if (diagnostics.runtimeShaderSupported) "supported" else "missing")
                     DevRow("Backdrop layer", if (backdropReady) "initialised" else "NOT initialised")
+                    Spacer(Modifier.height(8.dp))
+                    // B1: the switch that answers "is the lens really running?".
+                    GlassChip(
+                        label = if (controller.glassBoost) {
+                            "Exaggerate glass: ON (x2.4)"
+                        } else {
+                            "Exaggerate glass: OFF"
+                        },
+                        selected = controller.glassBoost,
+                        onClick = { controller.glassBoost = !controller.glassBoost },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Boosts the blur radius and the lens refraction by 2.4x so the " +
+                            "effect is obvious on a still phone screen.",
+                        color = c.text3,
+                        fontSize = 11.sp,
+                    )
                 }
             }
 

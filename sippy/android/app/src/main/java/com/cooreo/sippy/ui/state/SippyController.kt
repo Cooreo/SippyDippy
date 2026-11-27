@@ -65,6 +65,11 @@ class SippyController(
     var ringOverride by mutableStateOf<Float?>(null)
         private set
     var moodOverride by mutableStateOf<Mood?>(null)
+    /**
+     * Developer options → "Exaggerate glass" (B1). Not persisted: it is a
+     * diagnostic, and a restart should hand the phone back its normal glass.
+     */
+    var glassBoost by mutableStateOf(false)
         private set
 
     /** A newer build is available and the sheet should be shown. */
