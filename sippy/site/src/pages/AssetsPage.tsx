@@ -12,14 +12,13 @@ const USAGE: Record<string, string> = {
   "dippy-dancing": "Streaks & reminders bento card (goal reached)",
   "dippy-sleepy": "Your goal bento card (thirsty, needs a sip)",
   "dippy-waving": "Download card head · intro: Dippy pops from the hole edge",
-  "friend-plant-sprout": "Showcase friends art · phone friends row · plant stage 1",
-  "friend-plant-bloom": "Your look bento card · plant growth stage 2",
-  "friend-pet-cub": "Developer options bento card · phone friends row · pet stage 1",
-  "friend-pet-adult": "Pet growth stage 2 (contact sheet review)",
+  "friend-plant-sprout": "Showcase friends card · plant growth stage 1",
+  "friend-plant-bloom": "Your look bento card · Showcase friends card · plant stage 2",
+  "friend-pet-cub": "Developer options bento card · Showcase friends card · pet stage 1",
+  "friend-pet-adult": "Showcase friends card · pet growth stage 2",
   "droplet-sprite": "Ambient droplets (≤12 on the page) · Drinks bento card",
   "ripple-ring": "Footer ambient ripple",
   "bg-features": "Reserved — section art disabled in round 2 (sections have no backgrounds)",
-  "bg-showcase": "Reserved — section art disabled in round 2 (sections have no backgrounds)",
   "bg-download": "Reserved — section art disabled in round 2 (sections have no backgrounds)",
 };
 

@@ -41,7 +41,6 @@ ASSETS = {
     "droplet-sprite": (256, True, 120_000),
     "ripple-ring": (512, True, 120_000),
     "bg-features": (1600, False, 120_000),
-    "bg-showcase": (1600, False, 120_000),
     "bg-download": (1600, False, 120_000),
 }
 

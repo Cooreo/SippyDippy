@@ -1180,328 +1180,6 @@ section[id] {
   line-height: 1.15;
 }
 
-/* — Live phone (shared: hero + showcase). Round-2 rebuild (R2-1).
-   A real device is a DARK bezel holding a dark screen (a bright bezel
-   inverts figure/ground and reads as a "tube" around a mismatched
-   rectangle). Frame 9:19.5, `container-type: size`, every inner size a
-   container unit; screen radius = frame radius − bezel so the two rounded
-   rects can never drift. Always dark tokens (`.dark`). — */
-.device {
-  position: relative;
-  width: min(250px, 62vw);
-  aspect-ratio: 9 / 19.5;
-  container-type: size;
-  border-radius: 8cqw;
-  padding: 2cqw;
-  background: linear-gradient(160deg, #2b3345, #12161f 38%, #1d2434 100%);
-  box-shadow:
-    0 34px 70px rgba(0, 0, 0, 0.5),
-    0 4px 14px rgba(0, 0, 0, 0.4);
-}
-/* subtle rim highlight on the frame edge */
-.device::before {
-  content: "";
-  position: absolute;
-  inset: 0.4cqw;
-  border-radius: calc(8cqw - 0.4cqw);
-  box-shadow: inset 0 0 0 0.45cqw rgba(255, 255, 255, 0.14);
-  pointer-events: none;
-  z-index: 3;
-}
-.device-screen {
-  position: relative;
-  height: 100%;
-  border-radius: 6cqw; /* = 8cqw frame radius − 2cqw bezel */
-  overflow: hidden;
-  background:
-    radial-gradient(130% 42% at 50% 0%, rgba(46, 124, 246, 0.13), transparent 62%),
-    #05070d;
-}
-/* dynamic island — inside the screen, not floating over the bezel */
-.device-island {
-  position: absolute;
-  top: 3.2cqw;
-  left: 50%;
-  translate: -50% 0;
-  width: 24cqw;
-  height: 5.4cqw;
-  border-radius: 2.7cqw;
-  background: #000;
-  z-index: 6;
-}
-.pm-statusbar {
-  position: absolute;
-  top: 3.4cqw;
-  left: 5.5cqw;
-  right: 5.5cqw;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  z-index: 5;
-  font-size: 2.5cqw;
-  font-weight: 600;
-  color: var(--text-2);
-}
-.pm-signal {
-  display: inline-flex;
-  align-items: center;
-  gap: 1.2cqw;
-}
-.pm-homebar {
-  position: absolute;
-  bottom: 1.7cqw;
-  left: 50%;
-  translate: -50% 0;
-  width: 34cqw;
-  height: 1.1cqw;
-  border-radius: 1cqw;
-  background: rgba(255, 255, 255, 0.32);
-  z-index: 6;
-}
-.pm-screen-content {
-  position: relative;
-  height: 100%;
-}
-.pm-screen-inner {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  gap: 2.4cqw;
-  padding: 11cqw 3.4cqw 7.5cqw;
-}
-.pm-card {
-  display: flex;
-  flex-direction: column;
-  gap: 2.2cqw;
-  padding: 3cqw;
-  border-radius: 4cqw;
-  background: rgba(255, 255, 255, 0.09);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
-}
-.pm-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 2.7cqw;
-  font-weight: 600;
-  color: var(--text-2);
-}
-.pm-streak {
-  display: inline-flex;
-  align-items: center;
-  gap: 1.2cqw;
-  font-size: 2.7cqw;
-  color: var(--warn);
-}
-/* large water ring with ml (SVG, sized in cqw) */
-.pm-ring {
-  position: relative;
-  width: 44cqw;
-  aspect-ratio: 1;
-  margin: 2cqw auto;
-}
-.pm-ring svg {
-  width: 100%;
-  height: 100%;
-  transform: rotate(-90deg);
-}
-.pm-ring-track {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.12);
-  stroke-width: 6;
-}
-.pm-ring-fill {
-  fill: none;
-  stroke: #5b9bff;
-  stroke-width: 6;
-  stroke-linecap: round;
-}
-.pm-ring-center {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-content: center;
-  text-align: center;
-}
-.pm-ring-ml {
-  font-size: 6.4cqw;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--text-1);
-  font-variant-numeric: tabular-nums;
-}
-.pm-ring-sub {
-  margin-top: 1.4cqw;
-  font-size: 2.4cqw;
-  color: var(--text-3);
-}
-/* Dippy + mood bubble */
-.pm-buddy {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 2.6cqw;
-}
-.pm-buddy svg {
-  flex: none;
-}
-.pm-bubble {
-  font-size: 2.4cqw;
-  line-height: 1.35;
-  color: var(--text-2);
-  background: rgba(255, 255, 255, 0.09);
-  border-radius: 3.2cqw;
-  padding: 2cqw 2.8cqw;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
-}
-/* quick-add chips (Water is the demo-loop target) */
-.pm-chips {
-  display: flex;
-  gap: 2cqw;
-  min-width: 0;
-}
-.pm-chips > * {
-  flex: 1;
-  min-width: 0;
-  justify-content: center;
-}
-.pm-chip-wrap {
-  display: flex;
-  transition: transform 0.15s ease;
-}
-.pm-chip-pressed {
-  transform: scale(0.94);
-}
-/* small friends row */
-.pm-friends-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 2.8cqw;
-  padding: 2.2cqw 3cqw;
-}
-.pm-friend {
-  display: inline-flex;
-  align-items: center;
-  gap: 1.2cqw;
-  font-size: 2.1cqw;
-  font-weight: 600;
-  color: var(--text-2);
-}
-.pm-friend-img {
-  width: 9cqw;
-  height: auto;
-}
-.pm-friend-more {
-  margin-left: auto;
-  font-size: 2.1cqw;
-  font-weight: 600;
-  color: var(--text-3);
-}
-/* tab bar pinned at the bottom, above the home-indicator inset */
-.pm-tabbar {
-  margin-top: auto;
-  padding: 0 0 0.8cqw;
-}
-/* demo-loop pointer + tap ripple (transform/opacity only) */
-.pm-pointer {
-  position: absolute;
-  left: 0;
-  top: 0;
-  z-index: 8;
-  width: 5.5cqw;
-  height: 5.5cqw;
-  margin: -2.75cqw 0 0 -2.75cqw;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle at 35% 30%,
-    rgba(255, 255, 255, 0.95),
-    rgba(91, 155, 255, 0.75) 55%,
-    rgba(46, 124, 246, 0.5)
-  );
-  box-shadow:
-    0 1.2cqw 2.6cqw rgba(0, 0, 0, 0.45),
-    inset 0 0 0 0.35cqw rgba(255, 255, 255, 0.5);
-  transition:
-    transform 0.9s cubic-bezier(0.35, 0.7, 0.3, 1),
-    opacity 0.35s ease;
-  pointer-events: none;
-}
-.pm-tap-ripple {
-  position: absolute;
-  z-index: 7;
-  width: 16cqw;
-  height: 16cqw;
-  margin: -8cqw 0 0 -8cqw;
-  border-radius: 50%;
-  border: 0.6cqw solid rgba(120, 175, 255, 0.75);
-  animation: pm-ripple 0.6s ease-out forwards;
-  pointer-events: none;
-}
-@keyframes pm-ripple {
-  from { transform: scale(0.25); opacity: 0.9; }
-  to { transform: scale(1.6); opacity: 0; }
-}
-.pm-title {
-  margin: 1cqw 1cqw 0;
-  font-size: 3.4cqw;
-  font-weight: 700;
-  color: var(--text-1);
-}
-.pm-search {
-  display: flex;
-  align-items: center;
-  gap: 2cqw;
-  padding: 2.4cqw 3cqw;
-  border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
-  color: var(--text-3);
-  font-size: 2.5cqw;
-}
-.pm-row {
-  display: flex;
-  align-items: center;
-  gap: 2cqw;
-  padding: 2.4cqw 2.8cqw;
-  border-radius: 3cqw;
-  background: rgba(255, 255, 255, 0.07);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
-}
-.pm-row-name {
-  font-size: 2.7cqw;
-  font-weight: 600;
-  color: var(--text-1);
-}
-.pm-row-ml {
-  margin-left: auto;
-  font-size: 2.4cqw;
-  color: var(--text-3);
-}
-.pm-card-friend {
-  flex-direction: row;
-  align-items: center;
-  gap: 2.8cqw;
-}
-.pm-card-friend b {
-  display: block;
-  font-size: 2.9cqw;
-  color: var(--text-1);
-}
-.pm-card-friend .pm-row-ml {
-  margin-left: 0;
-  display: block;
-  font-size: 2.2cqw;
-}
-.pm-card-addfriend {
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: 2.4cqw;
-  color: var(--text-2);
-  font-size: 2.5cqw;
-}
-
 /* — Section scaffolding —
    All sections are TRANSPARENT (root-cause fix A): the only backdrop is
    the unified .backdrop layer; section art (when present) is a feathered,
@@ -1560,12 +1238,38 @@ section[id] {
   grid-column: span 12;
 }
 .bento-inner {
+  position: relative;
+  overflow: hidden;
   height: 100%;
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 26px;
   border-radius: var(--r-card);
+}
+/* cursor-following specular highlight (transform + opacity only) */
+.bento-cursor-spec {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 3;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(255, 255, 255, 0) 68%
+  );
+  transform: translate3d(
+    calc(var(--spec-x, 0px) - 50%),
+    calc(var(--spec-y, 0px) - 50%),
+    0
+  );
+  opacity: var(--spec-o, 0);
+  transition: opacity 0.2s ease;
+  will-change: transform, opacity;
 }
 .bento-icon {
   display: grid;
@@ -1618,117 +1322,296 @@ section[id] {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
-/* — Showcase (Phase 3 fix C): pointer/touch driven, NO scroll pinning — */
+/* — Showcase: "Three things Sippy does best." (Phase 3 round 3).
+   Three interactive feature cards built on the shared BentoCard. Scales
+   fluidly with clamp() from 360px to 2560px; 3 columns on desktop, stacked
+   on mobile; inner controls sit on the card's single GlassSurface (no extra
+   backdrop-filter layers). — */
 .showcase {
   position: relative;
-  padding: 96px 0 40px;
+  padding: clamp(72px, 7vw, 112px) 0 clamp(24px, 3vw, 44px);
+}
+.showcase-wrap {
+  width: 100%;
+  max-width: clamp(1280px, 82vw, 1560px);
+  margin-inline: auto;
+  padding-inline: clamp(20px, 5vw, 48px);
 }
 .showcase h2 {
-  margin: 0 0 40px;
+  margin: 0 0 clamp(28px, 3vw, 42px);
   font-family: var(--ff-display);
   font-weight: 700;
-  font-size: clamp(28px, 3.6vw, 40px);
+  font-size: clamp(28px, 3.6vw, 44px);
   letter-spacing: -0.02em;
   color: var(--text-1);
+  text-wrap: balance;
 }
-.showcase-stage {
-  position: relative;
-  width: min(1180px, 100%);
-  margin: 0 auto;
-  padding: 0 16px;
-}
-/* desktop: three phones in a row, fixed gaps, no overlap */
-.sc-row {
+.sc-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(24px, 5vw, 72px);
-  align-items: start;
-  transform-style: preserve-3d;
+  gap: clamp(14px, 1.6vw, 24px);
+  align-items: stretch;
 }
-/* carousel (touch / narrow): slides of 88% so neighbours peek */
-.sc-track {
+.sc-card {
+  grid-column: auto;
+  min-height: clamp(300px, 24vw, 360px);
+}
+.sc-card .bento-inner {
+  padding: clamp(20px, 2vw, 30px);
+}
+.sc-card h3 {
+  font-size: clamp(18px, 1.4vw, 22px);
+}
+.sc-card p {
+  font-size: clamp(14px, 1.05vw, 15.5px);
+}
+.sc-widget {
+  margin-top: auto;
+  padding-top: clamp(14px, 1.4vw, 20px);
   display: flex;
-  width: 264%;
-  cursor: grab;
-}
-.sc-track:active {
-  cursor: grabbing;
-}
-.sc-item {
+  flex-direction: column;
+  gap: 12px;
   position: relative;
+  z-index: 4;
+}
+
+/* Card 1 — Tappable drink list + running ml logged */
+.sc-drinks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.sc-drink-btn {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 18px;
-  outline: none;
-  /* carousel slide width: basis % is relative to the TRACK (264% of the
-     stage), so 33.3333% of the track == 88% of the stage (neighbours peek).
-     A literal 88% here would be 232% of the stage. */
-  flex: 0 0 33.3333%;
-  justify-self: center;
-}
-.sc-row .sc-item {
-  flex: none;
-  width: 100%;
-}
-.sc-item:focus-visible {
-  border-radius: var(--r-card);
-  outline: 2px solid var(--accent);
-  outline-offset: 8px;
-}
-.sc-phone {
-  transform-origin: 50% 60%;
-}
-.sc-row .sc-phone {
-  transform: scale(0.94);
-}
-/* captions: fixed height — can never collide or reflow */
-.sc-caption {
-  height: 58px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: min(260px, 80%);
-  text-align: center;
-  flex: none;
-}
-.sc-caption b {
-  font-size: 15px;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--glass-rim-mid);
+  background: color-mix(in srgb, var(--text-1) 7%, transparent);
   color: var(--text-1);
-}
-.sc-caption span {
-  font-size: 13px;
-  line-height: 1.4;
-  color: var(--text-3);
-}
-.sc-dots {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-  margin-top: 34px;
-}
-.sc-dot {
-  width: 9px;
-  height: 9px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--text-1) 25%, transparent);
+  font-family: var(--ff-body);
+  font-size: 13.5px;
   cursor: pointer;
   transition:
     background var(--t-quick) ease,
-    scale var(--t-quick) ease;
+    border-color var(--t-quick) ease,
+    transform var(--t-quick) cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-.sc-dot:hover {
-  background: color-mix(in srgb, var(--text-1) 45%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .sc-drink-btn:hover {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  }
 }
-.sc-dot-on {
-  background: var(--accent);
-  scale: 1.25;
+.sc-drink-btn:active {
+  transform: scale(0.96);
 }
-.sc-dot:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
+.sc-drink-btn:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+}
+.sc-drink-name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sc-drink-ml {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sc-total-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+}
+.sc-total {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.sc-total-num {
+  font-family: var(--ff-display);
+  font-weight: 600;
+  font-size: clamp(24px, 2vw, 30px);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+.sc-total-unit {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.sc-reset-btn {
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--glass-rim-mid);
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--ff-body);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sc-reset-btn:hover {
+  color: var(--text-1);
+}
+.sc-reset-btn:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+}
+
+/* Card 2 — Focusable friend tiles (hover/focus bounce + click mood cycle) */
+.sc-friends {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.sc-friend {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 12px 6px 10px;
+  min-height: 124px;
+  border-radius: var(--r-inner);
+  border: 1px solid var(--glass-rim-mid);
+  background: color-mix(in srgb, var(--text-1) 6%, transparent);
+  color: var(--text-1);
+  font-family: var(--ff-body);
+  cursor: pointer;
+  transition:
+    background var(--t-quick) ease,
+    border-color var(--t-quick) ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .sc-friend:hover {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  }
+  .sc-friend:hover .sc-friend-bounce {
+    animation: sc-friend-bounce 0.48s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+}
+.sc-friend:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+  border-color: var(--accent-bright);
+}
+.sc-friend:focus-visible .sc-friend-bounce {
+  animation: sc-friend-bounce 0.48s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes sc-friend-bounce {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  40% {
+    transform: translateY(-7px) scale(1.06);
+  }
+  70% {
+    transform: translateY(-2px) scale(0.98);
+  }
+}
+.sc-friend-parallax {
+  display: grid;
+  place-items: center;
+  height: 66px;
+  transform: translate3d(var(--mascot-x, 0px), var(--mascot-y, 0px), 0);
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+.sc-friend-bounce {
+  display: inline-grid;
+  place-items: center;
+}
+.sc-friend-art {
+  max-height: 62px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.24));
+}
+.sc-friend-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.sc-friend-mood {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  line-height: 1.2;
+}
+
+/* Card 3 — Accessible goal range slider (750–3000 ml) + fill bar */
+.sc-goal-widget {
+  gap: 10px;
+}
+.sc-goal-readout {
+  display: flex;
+  align-items: baseline;
+}
+.sc-goal-num {
+  font-family: var(--ff-display);
+  font-weight: 400;
+  font-size: clamp(28px, 2.5vw, 38px);
+  line-height: 1;
+  letter-spacing: -0.025em;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+.sc-goal-unit {
+  font-family: var(--ff-body);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.sc-goal-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-1) 12%, transparent);
+}
+.sc-goal-bar-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: linear-gradient(90deg, var(--accent), var(--accent-bright));
+  transform-origin: left center;
+  transition: transform 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+.sc-goal-slider {
+  width: 100%;
+  height: 28px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+  background: transparent;
+  cursor: pointer;
+}
+.sc-goal-slider:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 4px;
+  border-radius: var(--r-pill);
+}
+.sc-goal-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
 }
 
 /* — How it works — */
@@ -2390,10 +2273,7 @@ section[id] {
    sections have no backgrounds of their own (the ONE fixed backdrop behind
    the page is the only background system). The old art rects were clipped
    by `overflow: clip` into hard horizontal lines at every section top. */
-.showcase {
-  position: relative; /* positioning context for the friend art */
-}
-/* Dippy floating by the hero phone — idle bob, never over text */
+/* Dippy floating by the hero ring — idle bob, never over text */
 .hero-buddy {
   position: absolute;
   right: 3%;
@@ -2412,24 +2292,7 @@ section[id] {
     transform: translateY(-12px) rotate(2.5deg);
   }
 }
-/* friends art flanking the showcase phones */
-.showcase-friend {
-  position: absolute;
-  bottom: 10%;
-  z-index: 0;
-  opacity: 0.55;
-  pointer-events: none;
-}
-.showcase-friend-l {
-  left: 2.5%;
-}
-.showcase-friend-r {
-  right: 2.5%;
-}
-.dark .showcase-friend {
-  opacity: 0.7;
-}
-/* bento card illustrations */
+/* bento card illustrations (shift against pointer via BentoCard --mascot-x/y) */
 .bento-art {
   align-self: flex-end;
   margin-top: auto;
@@ -2437,6 +2300,9 @@ section[id] {
   height: auto;
   pointer-events: none;
   filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.25));
+  transform: translate3d(var(--mascot-x, 0px), var(--mascot-y, 0px), 0);
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
 }
 .bento-art-lg {
   width: 104px;
@@ -2568,8 +2434,8 @@ html.debug-outline [data-overflow-hint] {
     bottom: 1%;
     width: 64px;
   }
-  .showcase-friend {
-    display: none;
+  .sc-grid {
+    grid-template-columns: 1fr;
   }
   .bento-art {
     width: 64px;
@@ -2638,6 +2504,13 @@ html.debug-outline [data-overflow-hint] {
   .pressable:active {
     transform: none;
   }
+  .bento-cursor-spec {
+    opacity: 0 !important;
+  }
+  .bento-art,
+  .sc-friend-parallax {
+    transform: none !important;
+  }
   html {
     scroll-behavior: auto;
   }
@@ -2651,4 +2524,11 @@ html.debug-outline [data-overflow-hint] {
 }
 [data-emulate-motion] .pressable:active {
   transform: none;
+}
+[data-emulate-motion] .bento-cursor-spec {
+  opacity: 0 !important;
+}
+[data-emulate-motion] .bento-art,
+[data-emulate-motion] .sc-friend-parallax {
+  transform: none !important;
 }
