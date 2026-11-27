@@ -69,7 +69,7 @@ fun LayoutCheckCard() {
                             GlassButton(label = "Save", onClick = {}, prominent = true)
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            GlassIconButton(contentDescription = "Close") {
+                            GlassIconButton(contentDescription = "Close", onClick = {}) {
                                 Canvas(Modifier.fillMaxWidth().height(16.dp)) {
                                     val w = size.width
                                     val h = size.height

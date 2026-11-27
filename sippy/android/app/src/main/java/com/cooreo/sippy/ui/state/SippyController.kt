@@ -13,6 +13,7 @@ import com.cooreo.sippy.domain.friends.PinRules
 import com.cooreo.sippy.domain.points.PointsRules
 import com.cooreo.sippy.domain.shop.ItemTable
 import com.cooreo.sippy.domain.shop.ShopRules
+import com.cooreo.sippy.domain.shop.Wardrobe
 import com.cooreo.sippy.domain.onboarding.Onboarding
 import com.cooreo.sippy.domain.streak.StreakCalculator
 import com.cooreo.sippy.domain.updates.UpdateDecision
@@ -397,19 +398,18 @@ class SippyController(
     }
 
     /** Wears one cosmetic on a friend; [itemId] null takes it off. */
-    fun equipItem(friendId: String, itemId: String?) {
+    fun equipItem(friendId: String, itemId: String) {
         scope.launch {
             repository.edit { state ->
                 val friend = state.friends.firstOrNull { it.id == friendId } ?: return@edit state
-                state.copy(
-                    equipped = ShopRules.equip(
-                        equipped = state.equipped,
-                        friendId = friend.id,
-                        kind = friend.kind,
-                        owned = state.ownedItems,
-                        itemId = itemId,
-                    ),
+                val next = ShopRules.toggle(
+                    wardrobe = Wardrobe(state.equipped, state.equippedOutfits),
+                    friendId = friend.id,
+                    kind = friend.kind,
+                    owned = state.ownedItems,
+                    itemId = itemId,
                 )
+                state.copy(equipped = next.hats, equippedOutfits = next.outfits)
             }
         }
     }

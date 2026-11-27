@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -43,6 +44,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -56,6 +59,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cooreo.sippy.BuildConfig
 import com.cooreo.sippy.R
 import com.cooreo.sippy.data.AppGraph
+import com.cooreo.sippy.domain.friends.MoodRules
 import com.cooreo.sippy.domain.drinks.DrinkTable
 import com.cooreo.sippy.domain.water.WaterMath
 import com.cooreo.sippy.model.Friend
@@ -83,6 +87,7 @@ import com.cooreo.sippy.ui.screens.moodFor
 import com.cooreo.sippy.ui.screens.moodLine
 import com.cooreo.sippy.ui.sheets.AddDrinkSheet
 import com.cooreo.sippy.ui.sheets.CustomVolumeSheet
+import com.cooreo.sippy.ui.sheets.DressUpSheet
 import com.cooreo.sippy.ui.sheets.EditEntrySheet
 import com.cooreo.sippy.ui.sheets.UpdateSheet
 import com.cooreo.sippy.ui.state.SippyController
@@ -237,6 +242,8 @@ private fun AppScaffold(
     var remindersPrompt by remember { mutableIntStateOf(0) }
     var showHistory by remember { mutableStateOf(false) }
     var showShop by remember { mutableStateOf(false) }
+    // A4: the friend whose dress-up sheet is open, if any.
+    var dressing by remember { mutableStateOf<Friend?>(null) }
 
     val today = Dates.todayEpochDay()
     val todayEntries = remember(state.log, today) {
@@ -363,6 +370,7 @@ private fun AppScaffold(
                         animate = animate,
                         onTogglePin = { id -> controller.togglePin(id) },
                         onOpenShop = { showShop = true },
+                        onDressUp = { friend -> dressing = friend },
                         bottomPadding = navSpace,
                     )
                 }
@@ -453,6 +461,27 @@ private fun AppScaffold(
             onInstall = { controller.downloadAndInstall(manifest) { message -> toast = ToastMessage(message) } },
             onDismiss = { controller.dismissUpdate() },
         )
+    }
+
+    dressing?.let { friend ->
+        // Keep the sheet alive across renames and equips: resolve the latest copy.
+        val live = state.friends.firstOrNull { it.id == friend.id }
+        if (live != null) {
+            DressUpSheet(
+                friend = live,
+                mood = controller.moodOverride ?: MoodRules.forDay(
+                    goalMetToday = goalMet,
+                    hasEntriesToday = todayEntries.isNotEmpty(),
+                    currentStreakDays = state.streak.currentDays,
+                    yesterdayMissedAfterStreak = false,
+                ),
+                owned = state.ownedItems,
+                hats = state.equipped,
+                outfits = state.equippedOutfits,
+                onToggle = { itemId -> controller.equipItem(live.id, itemId) },
+                onDismiss = { dressing = null },
+            )
+        }
     }
 
     if (showDeveloper) {

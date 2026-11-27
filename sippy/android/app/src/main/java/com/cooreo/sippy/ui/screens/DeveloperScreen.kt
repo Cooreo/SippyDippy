@@ -144,6 +144,9 @@ fun DeveloperScreen(
                 }
             }
             item {
+                AnchorTunerCard()
+            }
+            item {
                 LayoutCheckCard()
             }
             item {

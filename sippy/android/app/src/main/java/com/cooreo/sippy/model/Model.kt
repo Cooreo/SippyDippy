@@ -28,8 +28,14 @@ data class StoredState(
     val ledger: List<PointsEntry> = emptyList(),
     /** Item ids the player owns. Keyed by item, so a friend leaving keeps them. */
     val ownedItems: Set<String> = emptySet(),
-    /** friendId -> equipped item id. At most one cosmetic per friend. */
+    /**
+     * friendId -> item id on the **hat** slot (round 8, A4). Keyed by friend id,
+     * so renaming a friend keeps what it wears; owned items are keyed by item id,
+     * so removing a friend keeps what was bought.
+     */
     val equipped: Map<String, String> = emptyMap(),
+    /** friendId -> item id on the outfit slot. */
+    val equippedOutfits: Map<String, String> = emptyMap(),
 )
 
 @Serializable

@@ -29,13 +29,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cooreo.sippy.domain.friends.Mood
 import com.cooreo.sippy.domain.friends.MoodRules
+import com.cooreo.sippy.domain.shop.ItemSlot
 import com.cooreo.sippy.domain.shop.ShopItem
 import com.cooreo.sippy.domain.shop.ShopRules
 import com.cooreo.sippy.model.Friend
 import com.cooreo.sippy.model.FriendKind
 import com.cooreo.sippy.model.StoredState
-import com.cooreo.sippy.ui.components.FriendImage
-import com.cooreo.sippy.ui.components.ItemBadge
+import com.cooreo.sippy.ui.components.FriendAvatar
 import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.state.SippyController
@@ -50,6 +50,7 @@ fun FriendsScreen(
     animate: Boolean,
     onTogglePin: (String) -> Unit,
     onOpenShop: () -> Unit = {},
+    onDressUp: (Friend) -> Unit = {},
     bottomPadding: androidx.compose.ui.unit.Dp = 24.dp,
 ) {
     val c = LocalSippyColors.current
@@ -88,10 +89,18 @@ fun FriendsScreen(
                 yesterdayMissedAfterStreak = friend.grownAtStreak >= 3 &&
                     state.streak.currentDays < friend.grownAtStreak,
             )
+            val worn = ShopRules.worn(
+                state.equipped,
+                state.equippedOutfits,
+                state.ownedItems,
+                friend.id,
+            )
             FriendCard(
                 friend = friend,
                 onTogglePin = { onTogglePin(friend.id) },
-                worn = ShopRules.wornBy(state.equipped, state.ownedItems, friend.id),
+                hat = worn.firstOrNull { it.slot == ItemSlot.HAT },
+                outfit = worn.firstOrNull { it.slot == ItemSlot.OUTFIT },
+                onDressUp = { onDressUp(friend) },
                 mood = mood,
                 animate = animate,
                 isRenaming = renaming == friend.id,
@@ -147,7 +156,9 @@ fun FriendsScreen(
 private fun FriendCard(
     friend: Friend,
     onTogglePin: () -> Unit,
-    worn: ShopItem?,
+    hat: ShopItem?,
+    outfit: ShopItem?,
+    onDressUp: () -> Unit,
     mood: Mood,
     animate: Boolean,
     isRenaming: Boolean,
@@ -168,17 +179,14 @@ private fun FriendCard(
                         detectTapGestures(onLongPress = { onTogglePin() })
                     },
             ) {
-                FriendImage(
-                    kind = friend.kind,
+                FriendAvatar(
+                    friend = friend,
                     mood = mood,
-                    growthStreak = friend.grownAtStreak,
-                    size = 88,
+                    size = 88.dp,
                     animate = animate,
-                    modifier = Modifier.size(88.dp),
+                    hat = hat,
+                    outfit = outfit,
                 )
-                if (worn != null) {
-                    ItemBadge(item = worn, modifier = Modifier.align(Alignment.BottomEnd), size = 32.dp)
-                }
             }
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
                 if (isRenaming) {
@@ -200,6 +208,7 @@ private fun FriendCard(
                     )
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        GlassChip(label = "Dress up", onClick = onDressUp)
                         GlassChip(label = "Rename", onClick = onStartRename)
                         GlassChip(
                             label = if (friend.pinned) "Unpin" else "Pin",

@@ -52,13 +52,15 @@ import com.cooreo.sippy.domain.friends.Mood
 import com.cooreo.sippy.domain.friends.MoodRules
 import com.cooreo.sippy.domain.friends.PinRules
 import com.cooreo.sippy.domain.layout.OrbLayout
+import com.cooreo.sippy.domain.shop.ItemSlot
+import com.cooreo.sippy.domain.shop.ShopRules
 import com.cooreo.sippy.domain.water.VolumeRules
 import com.cooreo.sippy.domain.water.WaterMath
 import com.cooreo.sippy.model.Friend
 import com.cooreo.sippy.model.LogEntry
 import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.ui.components.DrinkIcon
-import com.cooreo.sippy.ui.components.FriendImage
+import com.cooreo.sippy.ui.components.FriendAvatar
 import com.cooreo.sippy.ui.components.WaterOrb
 import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassChip
@@ -441,15 +443,15 @@ private fun PinnedSlot(
             .padding(vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        FriendImage(
-            kind = friend.kind,
+        val worn = ShopRules.worn(state.equipped, state.equippedOutfits, state.ownedItems, friend.id)
+        FriendAvatar(
+            friend = friend,
             mood = mood,
-            growthStreak = friend.grownAtStreak,
-            size = 48,
+            size = 48.dp,
             animate = animate,
-            modifier = Modifier
-                .size(48.dp)
-                .graphicsLayer { translationY = phase * 4.dp.toPx() },
+            hat = worn.firstOrNull { it.slot == ItemSlot.HAT },
+            outfit = worn.firstOrNull { it.slot == ItemSlot.OUTFIT },
+            modifier = Modifier.graphicsLayer { translationY = phase * 4.dp.toPx() },
         )
         Text(
             text = friend.name,
@@ -471,13 +473,11 @@ private fun EmptyState() {
                 .padding(vertical = 22.dp, horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            FriendImage(
-                kind = com.cooreo.sippy.model.FriendKind.DIPPY,
+            FriendAvatar(
+                friend = Friend(id = "empty", kind = com.cooreo.sippy.model.FriendKind.DIPPY, name = "Dippy"),
                 mood = Mood.SLEEPY,
-                growthStreak = 0,
-                size = 116,
+                size = 116.dp,
                 animate = false,
-                modifier = Modifier.size(116.dp),
             )
             Spacer(Modifier.height(10.dp))
             Text("Log your first sip", style = SippyType.emphasis, color = c.text1)
@@ -595,13 +595,19 @@ private fun FriendStrip(
                             .padding(horizontal = 4.dp, vertical = 2.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        FriendImage(
-                            kind = friend.kind,
+                        val worn = ShopRules.worn(
+                            state.equipped,
+                            state.equippedOutfits,
+                            state.ownedItems,
+                            friend.id,
+                        )
+                        FriendAvatar(
+                            friend = friend,
                             mood = mood,
-                            growthStreak = friend.grownAtStreak,
-                            size = 52,
+                            size = 52.dp,
                             animate = true,
-                            modifier = Modifier.size(52.dp),
+                            hat = worn.firstOrNull { it.slot == ItemSlot.HAT },
+                            outfit = worn.firstOrNull { it.slot == ItemSlot.OUTFIT },
                         )
                         Text(friend.name, style = SippyType.caption, color = c.text2)
                     }
