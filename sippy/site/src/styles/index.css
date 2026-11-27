@@ -15,9 +15,25 @@
 /* 3 — Tailwind 4 */
 @import "tailwindcss";
 
+/* Glin UI components are implemented with Tailwind utility classes
+   (e.g. ShimmerButton's glass variant: bg-white/10, border-white/20,
+   backdrop-blur-md, rounded-xl). Tailwind 4's automatic content detection
+   does NOT scan node_modules, so unless we @source the Glin dist those
+   utilities are never generated and the components render as bare text
+   (root-cause B — the "Get the APK" bug).
+   Note: @source pointing at individual node_modules files still scanned the
+   whole dist dir (+207 kB of dead utilities), so we point it at a local
+   copy of the ONLY three Glin components we use (ShimmerButton, Chip,
+   GlassCard). The copies are content-scan hints only — runtime imports
+   still come from @glinui/ui. */
+@source "../vendor/glin";
+
 /* 4 — Sippy tokens (mirror of shared/tokens.md) */
 :root {
   /* colour — light theme */
+  /* the backdrop's own base = its darkest tone (blobs are screen-lighter).
+     Mirrored on html/body so the fallback under the fixed layer is seamless. */
+  --backdrop-base: #e3ebfa;
   --bg-0: #edf2fb;
   --bg-1: #ffffff;
   --bg-2: #e1e9f8;
@@ -32,6 +48,8 @@
   --warn: #c98a1b;
   --danger: #d94f4f;
   --glass-tint: rgba(255, 255, 255, 0.52);
+  /* neutral (hue-free) glass fill — FAQ rows, numbered chips */
+  --glass-neutral: rgba(255, 255, 255, 0.55);
   --glass-rim-start: rgba(255, 255, 255, 0.95);
   --glass-rim-mid: rgba(18, 42, 84, 0.1);
   --glass-rim-end: rgba(255, 255, 255, 0.55);
@@ -72,6 +90,7 @@
 }
 
 .dark {
+  --backdrop-base: #04060b;
   --bg-0: #05070d;
   --bg-1: #0a101c;
   --bg-2: #111a2e;
@@ -86,6 +105,7 @@
   --warn: #f5b84d;
   --danger: #f26d6d;
   --glass-tint: rgba(255, 255, 255, 0.08);
+  --glass-neutral: rgba(13, 19, 33, 0.55);
   --glass-rim-start: rgba(255, 255, 255, 0.4);
   --glass-rim-mid: rgba(255, 255, 255, 0.05);
   --glass-rim-end: rgba(255, 255, 255, 0.18);
@@ -177,13 +197,17 @@
   --glass-opacity-10: 0.1;
 }
 
-/* 7 — Base */
+/* 7 — Base.
+   html/body background = the darkest backdrop colour (root-cause fix A):
+   even if the fixed backdrop layer ever fails to cover, the colour behind
+   the glass is the backdrop base, never white or a mismatch. */
 html {
   scroll-behavior: smooth;
+  background: var(--backdrop-base);
 }
 body {
   margin: 0;
-  background: var(--bg-0);
+  background: var(--backdrop-base);
   color: var(--text-1);
   font-family: var(--ff-body);
   font-size: 16px;
@@ -208,6 +232,7 @@ kbd {
 }
 .app-shell {
   position: relative;
+  z-index: 1;
   min-height: 100dvh;
 }
 .aurora {
@@ -354,6 +379,42 @@ kbd {
   cursor: pointer;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
   white-space: nowrap;
+}
+
+/* GlassButton (Glin ShimmerButton) — visibility guarantee (root-cause B):
+   explicit pill styling on our own class, so the button is a visible glass
+   pill even if a Glin variant utility is ever missing. Scoped per context:
+   the hero is always dark; the download card follows the page theme. */
+.glass-btn {
+  min-height: 46px;
+  padding: 12px 26px;
+  border-radius: var(--r-pill);
+  font-family: var(--ff-body);
+  font-weight: 600;
+  font-size: 15px;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.78);
+  color: #0c1424;
+  border: 1px solid rgba(18, 42, 84, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 2px 14px rgba(16, 32, 64, 0.18);
+}
+.dark .glass-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f4f7ff;
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 2px 14px rgba(0, 0, 0, 0.3);
+}
+.hero .glass-btn {
+  background: rgba(255, 255, 255, 0.13);
+  color: #f4f7ff;
+  border-color: rgba(255, 255, 255, 0.32);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 2px 18px rgba(0, 0, 0, 0.35);
 }
 /* Capsule text field (reference 2) */
 .gfield {
@@ -662,11 +723,56 @@ kbd {
    (page frame, hero, bento, phone mockup, showcase, how, download, faq,
    footer, intro overlay, nav lens + scrolled state). */
 
+/* — The unified backdrop layer (root-cause fix A).
+   ONE fixed full-viewport layer behind everything, mounted outside
+   .app-shell; base colour + caustics art + aurora canvas + one soft hero
+   scrim. All content sections stay transparent on top of it. — */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: var(--backdrop-base);
+}
+.backdrop-caustics {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 170%;
+  max-height: 2200px;
+  background-size: cover;
+  background-position: 50% 0;
+  opacity: 0.55;
+  /* soft 400px ramp out — no hard edge (200px+ per brief) */
+  mask-image: linear-gradient(180deg, #000 0%, #000 45%, transparent 78%);
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 45%, transparent 78%);
+}
+.dark .backdrop-caustics {
+  opacity: 0.85;
+}
+.backdrop .aurora {
+  position: absolute;
+}
+.backdrop-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 70% at 85% 0%, rgba(46, 124, 246, 0.16), transparent 60%),
+    radial-gradient(80% 60% at 10% 40%, rgba(91, 155, 255, 0.1), transparent 55%),
+    linear-gradient(180deg, rgba(3, 6, 12, 0.88) 0%, rgba(3, 6, 12, 0.5) 280px, rgba(3, 6, 12, 0) 660px);
+}
+
+/* — Shared layout container: nav rail, hero, sections all align to it — */
+.wrap {
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
+  padding-inline: clamp(20px, 5vw, 48px);
+}
+
 /* — Page frame + fixed nav rail — */
 .page {
   position: relative;
   min-height: 100dvh;
-  padding-top: 104px;
   overflow-x: clip;
 }
 .page-nav {
@@ -675,7 +781,8 @@ kbd {
   left: 50%;
   translate: -50% 0;
   z-index: 60;
-  width: min(980px, calc(100% - 24px));
+  /* same width as .wrap so nav and hero content share one grid */
+  width: min(1280px, calc(100% - 2 * clamp(20px, 5vw, 48px)));
 }
 .page-nav .gnav {
   transition:
@@ -713,19 +820,22 @@ kbd {
   box-shadow: inset 0 0 0 1px var(--glass-rim-mid);
 }
 
-/* — Hero (always dark, regardless of page theme) — */
+/* — Hero (root-cause fixes A + B).
+   Always dark — but the darkness is the SOFT scrim on the unified backdrop
+   (.backdrop-scrim), NOT a section background. The section starts at y=0
+   (padding inside), so no strip/step can form at the content boundary. — */
 .hero {
   position: relative;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  padding: 120px 0 56px;
+}
+.hero-inner {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
   align-items: center;
   gap: clamp(24px, 4vw, 64px);
-  min-height: min(94dvh, 920px);
-  padding: 24px clamp(20px, 5vw, 72px) 72px;
-  background:
-    radial-gradient(110% 80% at 88% 8%, rgba(46, 124, 246, 0.2), transparent 55%),
-    radial-gradient(80% 70% at 8% 95%, rgba(91, 155, 255, 0.12), transparent 55%),
-    linear-gradient(180deg, rgba(4, 6, 11, 0.99) 0%, rgba(5, 8, 15, 0.96) 58%, rgba(5, 8, 15, 0) 100%);
 }
 .hero-copy {
   position: relative;
@@ -737,14 +847,13 @@ kbd {
   font-weight: 800;
   font-size: var(--fs-display);
   line-height: 0.99;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.02em;
   color: #f4f7ff;
   text-wrap: balance;
 }
 .hero-word {
   display: inline-block;
   margin-right: 0.22em;
-  will-change: transform, filter;
 }
 .lead {
   margin: 0 0 34px;
@@ -790,12 +899,18 @@ kbd {
   filter: blur(48px);
 }
 
-/* — Phone mockup (shared: hero + showcase). Always dark tokens (`.dark`). — */
+/* — Phone mockup (shared: hero + showcase). Always dark tokens (`.dark`).
+   Root-cause fix B: the frame is a true 9:19.5 box with
+   `container-type: size`; EVERY inner size is a container unit (cqw/cqh)
+   so nothing can overflow at any rendered width, and the tab bar is
+   flex-pinned to the bottom so the lower half is never empty. — */
 .phone {
   position: relative;
-  width: min(240px, 62vw);
-  border-radius: 44px;
-  padding: 10px;
+  width: min(250px, 62vw);
+  aspect-ratio: 9 / 19.5;
+  container-type: size;
+  border-radius: 7cqw;
+  padding: 1.7cqw;
   background: linear-gradient(
     160deg,
     rgba(255, 255, 255, 0.3),
@@ -803,47 +918,54 @@ kbd {
     rgba(255, 255, 255, 0.16)
   );
   box-shadow:
-    0 44px 90px rgba(0, 0, 0, 0.55),
-    inset 0 0 0 1.5px rgba(255, 255, 255, 0.32);
+    0 44px 90px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 0.55cqw rgba(255, 255, 255, 0.32);
 }
 .phone-notch {
   position: absolute;
-  top: 18px;
+  top: 3.6cqw;
   left: 50%;
   translate: -50% 0;
-  width: 84px;
-  height: 22px;
-  border-radius: 12px;
+  width: 17cqw;
+  height: 4.4cqw;
+  border-radius: 2.2cqw;
   background: #000;
   z-index: 6;
 }
 .pm-status {
   position: absolute;
-  top: 17px;
-  right: 28px;
+  top: 3.4cqw;
+  right: 5.8cqw;
   z-index: 5;
-  font-size: 11px;
+  font-size: 2.1cqw;
   font-weight: 600;
   color: var(--text-3);
 }
 .phone-screen {
-  border-radius: 34px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-radius: 5.4cqw;
   overflow: hidden;
-  background: var(--bg-0);
+  background:
+    radial-gradient(120% 50% at 80% 0%, rgba(46, 124, 246, 0.16), transparent 60%),
+    var(--bg-0);
 }
 .pm-screen-inner {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-height: 468px;
-  padding: 52px 14px 16px;
+  flex: 1;
+  min-height: 0;
+  gap: 2.6cqw;
+  padding: 10cqw 3.2cqw 3.2cqw;
 }
 .pm-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border-radius: var(--r-inner);
+  gap: 2.2cqw;
+  padding: 3cqw;
+  border-radius: 4cqw;
   background: rgba(255, 255, 255, 0.09);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
 }
@@ -851,97 +973,167 @@ kbd {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12.5px;
+  font-size: 2.7cqw;
   font-weight: 600;
   color: var(--text-2);
 }
 .pm-streak {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 1.2cqw;
+  font-size: 2.7cqw;
   color: var(--warn);
 }
-.pm-goal {
-  font-size: 12.5px;
-  color: var(--text-3);
+/* large water ring with ml (SVG, sized in cqw) */
+.pm-ring {
+  position: relative;
+  width: 34cqw;
+  aspect-ratio: 1;
+  margin: 1.5cqw auto;
 }
-.pm-goal b {
+.pm-ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.pm-ring-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 6;
+}
+.pm-ring-fill {
+  fill: none;
+  stroke: #5b9bff;
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+.pm-ring-center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+}
+.pm-ring-ml {
+  font-size: 5.2cqw;
+  font-weight: 700;
+  line-height: 1;
   color: var(--text-1);
 }
-.pm-card-dippy {
+.pm-ring-sub {
+  margin-top: 1.2cqw;
+  font-size: 2.3cqw;
+  color: var(--text-3);
+}
+/* Dippy + mood bubble */
+.pm-buddy {
   flex-direction: row;
   align-items: center;
-  gap: 10px;
-  font-size: 12px;
+  gap: 2.6cqw;
+}
+.pm-buddy svg {
+  flex: none;
+}
+.pm-bubble {
+  font-size: 2.4cqw;
+  line-height: 1.35;
   color: var(--text-2);
+  background: rgba(255, 255, 255, 0.09);
+  border-radius: 3.2cqw;
+  padding: 2cqw 2.8cqw;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+/* quick-add chips */
+.pm-chips {
+  display: flex;
+  gap: 2cqw;
+  min-width: 0;
+}
+.pm-chips > * {
+  flex: 1;
+  min-width: 0;
+  justify-content: center;
+}
+/* tab bar pinned at the bottom, with inset */
+.pm-tabbar {
+  margin-top: auto;
+  padding: 0 0 0.8cqw;
 }
 .pm-title {
-  margin: 2px 2px 0;
-  font-size: 16px;
+  margin: 1cqw 1cqw 0;
+  font-size: 3.4cqw;
   font-weight: 700;
   color: var(--text-1);
 }
 .pm-search {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
+  gap: 2cqw;
+  padding: 2.4cqw 3cqw;
   border-radius: var(--r-pill);
   background: rgba(255, 255, 255, 0.08);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
   color: var(--text-3);
-  font-size: 12.5px;
+  font-size: 2.5cqw;
 }
 .pm-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: 14px;
+  gap: 2cqw;
+  padding: 2.4cqw 2.8cqw;
+  border-radius: 3cqw;
   background: rgba(255, 255, 255, 0.07);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 .pm-row-name {
-  font-size: 13px;
+  font-size: 2.7cqw;
   font-weight: 600;
   color: var(--text-1);
 }
 .pm-row-ml {
   margin-left: auto;
-  font-size: 12px;
+  font-size: 2.4cqw;
   color: var(--text-3);
 }
 .pm-card-friend {
   flex-direction: row;
   align-items: center;
-  gap: 12px;
+  gap: 2.8cqw;
 }
 .pm-card-friend b {
   display: block;
-  font-size: 14px;
+  font-size: 2.9cqw;
   color: var(--text-1);
 }
 .pm-card-friend .pm-row-ml {
   margin-left: 0;
   display: block;
-  font-size: 11px;
+  font-size: 2.2cqw;
 }
 .pm-card-addfriend {
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 2.4cqw;
   color: var(--text-2);
-  font-size: 12.5px;
+  font-size: 2.5cqw;
 }
 
-/* — Section scaffolding — */
+/* — Section scaffolding —
+   All sections are TRANSPARENT (root-cause fix A): the only backdrop is
+   the unified .backdrop layer; section art (when present) is a feathered,
+   soft layer with 200px+ edge fades. Widths: features/how align to the
+   1280px wrap (same as nav + hero); download/faq share a 760px column. — */
 .features,
-.how,
-.faq {
-  max-width: 1100px;
+.how {
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 104px clamp(20px, 4vw, 64px) 24px;
+  padding: 96px clamp(20px, 5vw, 48px) 24px;
+}
+.narrow {
+  max-width: 760px;
+  margin: 0 auto;
+  padding-inline: clamp(20px, 5vw, 48px);
 }
 .features h2,
 .how h2,
@@ -1043,73 +1235,117 @@ kbd {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
-/* — Showcase (scroll-pinned three phones) — */
+/* — Showcase (Phase 3 fix C): pointer/touch driven, NO scroll pinning — */
 .showcase {
   position: relative;
-  padding: 96px 0 24px;
+  padding: 96px 0 40px;
 }
 .showcase h2 {
-  margin: 0 0 8px;
-  text-align: center;
+  margin: 0 0 40px;
   font-family: var(--ff-display);
   font-weight: 700;
   font-size: clamp(28px, 3.6vw, 40px);
   letter-spacing: -0.02em;
   color: var(--text-1);
 }
-.showcase-pin {
+.showcase-stage {
+  position: relative;
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  padding: 0 16px;
+}
+/* desktop: three phones in a row, fixed gaps, no overlap */
+.sc-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(24px, 5vw, 72px);
+  align-items: start;
+  transform-style: preserve-3d;
+}
+/* carousel (touch / narrow): slides of 88% so neighbours peek */
+.sc-track {
+  display: flex;
+  width: 264%;
+  cursor: grab;
+}
+.sc-track:active {
+  cursor: grabbing;
+}
+.sc-item {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 28px;
-  min-height: 100dvh;
-  justify-content: center;
+  gap: 18px;
+  outline: none;
+  /* carousel slide width: basis % is relative to the TRACK (264% of the
+     stage), so 33.3333% of the track == 88% of the stage (neighbours peek).
+     A literal 88% here would be 232% of the stage. */
+  flex: 0 0 33.3333%;
+  justify-self: center;
 }
-.showcase-stage {
-  position: relative;
-  width: min(1100px, 94vw);
-  height: 640px;
+.sc-row .sc-item {
+  flex: none;
+  width: 100%;
 }
-.showcase-phone {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  translate: -50% -50%;
-  will-change: transform, opacity;
+.sc-item:focus-visible {
+  border-radius: var(--r-card);
+  outline: 2px solid var(--accent);
+  outline-offset: 8px;
 }
-.showcase-caption {
-  position: absolute;
-  top: calc(100% + 16px);
-  left: 50%;
-  translate: -50% 0;
+.sc-phone {
+  transform-origin: 50% 60%;
+}
+.sc-row .sc-phone {
+  transform: scale(0.94);
+}
+/* captions: fixed height — can never collide or reflow */
+.sc-caption {
+  height: 58px;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  width: 230px;
+  width: min(260px, 80%);
   text-align: center;
+  flex: none;
 }
-.showcase-caption b {
+.sc-caption b {
   font-size: 15px;
   color: var(--text-1);
 }
-.showcase-caption span {
+.sc-caption span {
   font-size: 13px;
+  line-height: 1.4;
   color: var(--text-3);
 }
-/* reduced motion / narrow: static row instead of pinned scroll */
-.showcase-static .showcase-pin {
-  min-height: 0;
-  padding: 40px 0;
-}
-.showcase-row {
+.sc-dots {
   display: flex;
-  flex-wrap: wrap;
   justify-content: center;
-  gap: 44px;
+  gap: 10px;
+  margin-top: 34px;
 }
-.showcase-row .showcase-phone {
-  position: static;
-  translate: none;
+.sc-dot {
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text-1) 25%, transparent);
+  cursor: pointer;
+  transition:
+    background var(--t-quick) ease,
+    scale var(--t-quick) ease;
+}
+.sc-dot:hover {
+  background: color-mix(in srgb, var(--text-1) 45%, transparent);
+}
+.sc-dot-on {
+  background: var(--accent);
+  scale: 1.25;
+}
+.sc-dot:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 /* — How it works — */
@@ -1163,23 +1399,25 @@ kbd {
   color: var(--text-2);
 }
 
-/* — Download card — */
+/* — Download card (Phase 3 fix D): same 760px column as FAQ, one left
+   edge for head/button/note/steps — */
 .download {
-  display: flex;
-  justify-content: center;
-  padding: 104px clamp(20px, 4vw, 64px) 24px;
+  padding: 104px 0 24px;
 }
 .download-card {
-  width: min(780px, 100%);
   padding: 40px;
 }
 .download-head {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 22px;
   margin-bottom: 30px;
 }
-.download-head h2 {
+.download-head > svg,
+.download-head > img {
+  flex: none;
+}
+.download-head-text h2 {
   margin: 0 0 6px;
   font-family: var(--ff-display);
   font-weight: 700;
@@ -1207,7 +1445,7 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-width: 540px;
+  align-items: flex-start;
 }
 .download-disabled .pill-cta:disabled {
   opacity: 0.55;
@@ -1220,75 +1458,160 @@ kbd {
 }
 .install-steps {
   margin: 32px 0 0;
-  padding-left: 22px;
+  padding: 0;
+  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   font-size: 14.5px;
   color: var(--text-2);
+}
+.install-steps li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 .install-steps b {
   color: var(--text-1);
 }
+/* numbered glass chips 1–4 */
+.step-num {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-1);
+  background: color-mix(in srgb, var(--glass-neutral, #ffffff) 60%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: inset 0 0 0 1px var(--glass-rim-mid);
+}
 .download-note {
-  margin: 18px 0 0;
+  margin: 20px 0 0;
   font-size: 13px;
   color: var(--text-3);
 }
 
-/* — FAQ — */
+/* — FAQ (Phase 3 fix D): neutral glass tint, accent only on the open
+   border + chevron, visible icon, smooth height both ways — */
+.faq {
+  padding: 96px 0 24px;
+}
+.faq h2 {
+  margin-bottom: 32px;
+}
 .faq-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 760px;
 }
 .faq-item {
-  padding: 20px 24px;
   border-radius: var(--r-card);
+  background: var(--glass-neutral, rgba(255, 255, 255, 0.55));
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(24px) saturate(150%);
+  box-shadow:
+    var(--glass-shadow),
+    inset 0 0 0 1px var(--glass-rim-mid);
+  transition: box-shadow var(--t-base) ease;
 }
-.faq-item summary {
+.faq-item[data-open="true"] {
+  box-shadow:
+    var(--glass-shadow),
+    inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 65%, transparent);
+}
+.faq-q {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  width: 100%;
+  padding: 20px 24px;
+  border: none;
+  background: none;
   cursor: pointer;
-  list-style: none;
+  text-align: left;
+  font-family: var(--ff-body);
   font-size: 15.5px;
   font-weight: 600;
   color: var(--text-1);
 }
-.faq-item summary::-webkit-details-marker {
-  display: none;
+.faq-q:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -4px;
+  border-radius: var(--r-card);
 }
-.faq-item summary::after {
-  content: "+";
-  font-weight: 400;
-  color: var(--text-3);
+/* visible chevron: a 10px icon that rotates down → up */
+.faq-icon {
+  position: relative;
+  flex: none;
+  width: 10px;
+  height: 10px;
 }
-.faq-item[open] summary::after {
-  content: "–";
+.faq-icon::before {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-2);
+  border-bottom: 2px solid var(--text-2);
+  rotate: 45deg;
+  transition:
+    rotate var(--t-base) cubic-bezier(0.22, 1, 0.36, 1),
+    border-color var(--t-quick) ease;
 }
-.faq-item p {
-  margin: 12px 0 0;
+.faq-item[data-open="true"] .faq-icon::before {
+  rotate: 225deg;
+  border-color: var(--accent);
+}
+/* smooth height: grid rows 0fr ↔ 1fr (animates on close too) */
+.faq-a {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--t-base) cubic-bezier(0.22, 1, 0.36, 1);
+}
+.faq-item[data-open="true"] .faq-a {
+  grid-template-rows: 1fr;
+}
+.faq-a-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+.faq-a p {
+  margin: 0;
+  padding: 0 24px 20px;
   font-size: 14.5px;
   line-height: 1.6;
   color: var(--text-2);
 }
-.faq-item summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 4px;
-  border-radius: 8px;
-}
 
-/* — Footer — */
+/* — Footer (root-cause fix A: no hard border — a soft 120px fade instead) — */
 .footer {
+  position: relative;
   margin-top: 96px;
-  padding: 48px clamp(20px, 5vw, 72px) 56px;
+  padding: 56px clamp(20px, 5vw, 48px) 64px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  border-top: 1px solid color-mix(in srgb, var(--text-1) 12%, transparent);
+}
+.footer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 120px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    color-mix(in srgb, var(--text-1) 7%, transparent)
+  );
 }
 .footer-brand {
   display: inline-flex;
@@ -1318,7 +1641,12 @@ kbd {
   color: var(--text-1);
 }
 
-/* — Cinematic intro overlay — */
+/* — Cinematic intro overlay (root-cause fix E).
+   All positioned elements read the shared impact point published by
+   Intro.tsx as --impact-x / --impact-y (fallback: viewport centre).
+   Sequence: fall (250–800 ms) → squash + splash (800–1050) → ripples
+   (860–1800, 120 ms stagger, first reveals the logo) → draw (1210–2060)
+   → fill (1760–2100) → lift (1900–2500) → done (3600). — */
 .intro {
   position: fixed;
   inset: 0;
@@ -1327,6 +1655,8 @@ kbd {
   place-items: center;
   background: #04060b;
   cursor: pointer;
+  --impact-x: 50%;
+  --impact-y: 50%;
   animation: intro-out 0.6s ease 1.9s forwards;
 }
 .intro-leave {
@@ -1339,53 +1669,128 @@ kbd {
 }
 .intro-glow {
   position: absolute;
+  top: var(--impact-y);
+  left: var(--impact-x);
+  translate: -50% -50%;
   width: 62vmin;
   aspect-ratio: 1;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(46, 124, 246, 0.4), rgba(46, 124, 246, 0) 65%);
   animation: intro-glow 3.6s ease-in-out infinite;
 }
+/* the falling droplet — tip-first; its bottom-centre (the tip) sits on the
+   impact point at rest, so it starts above the viewport at the impact x */
+.intro-drop {
+  position: absolute;
+  top: var(--impact-y);
+  left: var(--impact-x);
+  width: 26px;
+  height: 36px;
+  translate: -50% -100%;
+  border-radius: 50% 50% 50% 50% / 64% 64% 36% 36%;
+  background: linear-gradient(180deg, #7db4ff 0%, #2e7cf6 70%, #1d5fe0 100%);
+  box-shadow: inset 0 0 6px rgba(255, 255, 255, 0.5);
+  transform-origin: 50% 100%;
+  opacity: 0;
+  animation:
+    intro-drop-fall 550ms 250ms cubic-bezier(0.55, 0, 1, 0.45) forwards,
+    intro-drop-splat 300ms 780ms cubic-bezier(0.34, 1.2, 0.64, 1) forwards;
+}
+@keyframes intro-drop-fall {
+  0% {
+    transform: translate(0, calc(-55vh - 40px)) scaleY(1);
+    opacity: 1;
+  }
+  60% {
+    transform: translate(0, -18vh) scaleY(1.1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(0, 0) scaleY(1.18);
+    opacity: 1;
+  }
+}
+@keyframes intro-drop-splat {
+  0% {
+    transform: translate(0, 0) scaleX(1) scaleY(1.18);
+    opacity: 1;
+  }
+  45% {
+    transform: translate(0, 3px) scaleX(1.35) scaleY(0.55);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(0, 5px) scaleX(1.7) scaleY(0.3);
+    opacity: 0;
+  }
+}
+/* the splash flash at the exact moment of impact */
+.intro-splash {
+  position: absolute;
+  top: var(--impact-y);
+  left: var(--impact-x);
+  translate: -50% -50%;
+  width: 46px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(170, 205, 255, 0.85), rgba(170, 205, 255, 0) 70%);
+  transform: scale(0);
+  opacity: 0;
+  animation: intro-splash 260ms 800ms ease-out forwards;
+}
+@keyframes intro-splash {
+  0% {
+    transform: scale(0.2);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+/* concentric ripples — all centred on the shared impact point */
+.intro-ripple {
+  position: absolute;
+  top: var(--impact-y);
+  left: var(--impact-x);
+  translate: -50% -50%;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(150, 190, 255, 0.7);
+  box-shadow: 0 0 18px rgba(80, 140, 255, 0.25);
+  transform: scale(0.08);
+  opacity: 0;
+  animation: intro-ripple 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes intro-ripple {
+  0% {
+    transform: scale(0.08);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(3.6);
+    opacity: 0;
+  }
+}
+/* the logo — revealed by the first ripple, then draws itself */
 .intro-logo {
   position: relative;
   z-index: 2;
   width: 88px;
   height: 88px;
   color: #7db4ff;
+  opacity: 0;
+  animation: intro-appear 450ms ease forwards; /* delay set inline: ripple 1 */
 }
 .intro-stroke {
   stroke-dasharray: 100;
   stroke-dashoffset: 100;
-  animation: intro-draw 0.9s 0.25s cubic-bezier(0.3, 0, 0.1, 1) forwards;
+  animation: intro-draw 0.85s cubic-bezier(0.3, 0, 0.1, 1) forwards; /* delay inline */
 }
 .intro-fill {
   opacity: 0;
-  animation: intro-appear 0.5s 1.05s ease forwards;
-}
-.intro-glint {
-  stroke: #eaf3ff;
-  stroke-dasharray: 100;
-  stroke-dashoffset: 100;
-  opacity: 0;
-  animation:
-    intro-draw 0.5s 1.2s ease forwards,
-    intro-appear 0.3s 1.2s ease forwards;
-}
-.intro-lens {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 3;
-  width: 66vmin;
-  aspect-ratio: 1;
-  translate: -50% -50%;
-  border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  background: rgba(46, 124, 246, 0.1);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  backdrop-filter: blur(18px) saturate(160%);
-  transform: scale(0);
-  opacity: 0;
-  animation: intro-lens 0.8s 1.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: intro-appear 0.5s ease forwards; /* delay inline */
 }
 .intro-skip-hint {
   position: absolute;
@@ -1418,19 +1823,6 @@ kbd {
     opacity: 1;
   }
 }
-@keyframes intro-lens {
-  0% {
-    transform: scale(0);
-    opacity: 0;
-  }
-  30% {
-    opacity: 1;
-  }
-  100% {
-    transform: scale(2.7);
-    opacity: 0;
-  }
-}
 @keyframes intro-out {
   to {
     opacity: 0;
@@ -1450,16 +1842,194 @@ kbd {
   }
 }
 
+/* — Richness pass: section art, mascots, ambient layer, contact sheet,
+   debug outline — */
+.features,
+.showcase,
+.download {
+  position: relative;
+  overflow: clip;
+}
+/* feathered section art: fades to fully transparent before the section
+   edge (closest-side radial, 30%→100% band = 200px+ at real widths) */
+.section-art {
+  position: absolute;
+  inset: -60px -80px;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0.5;
+  mask-image: radial-gradient(closest-side, #000 30%, transparent 100%);
+  -webkit-mask-image: radial-gradient(closest-side, #000 30%, transparent 100%);
+  pointer-events: none;
+}
+.dark .section-art {
+  opacity: 0.7;
+}
+.features > *:not(.section-art),
+.showcase > *:not(.section-art),
+.download > *:not(.section-art) {
+  position: relative;
+  z-index: 1;
+}
+/* Dippy floating by the hero phone — idle bob, never over text */
+.hero-buddy {
+  position: absolute;
+  right: 3%;
+  bottom: 9%;
+  z-index: 2;
+  width: 76px;
+  height: auto;
+  filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.35));
+  animation: buddy-bob 5.2s ease-in-out infinite;
+}
+@keyframes buddy-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-12px) rotate(2.5deg);
+  }
+}
+/* friends art flanking the showcase phones */
+.showcase-friend {
+  position: absolute;
+  bottom: 10%;
+  z-index: 0;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.showcase-friend-l {
+  left: 2.5%;
+}
+.showcase-friend-r {
+  right: 2.5%;
+}
+.dark .showcase-friend {
+  opacity: 0.7;
+}
+/* bento card illustrations */
+.bento-art {
+  align-self: flex-end;
+  margin-top: auto;
+  width: 84px;
+  height: auto;
+  pointer-events: none;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.25));
+}
+.bento-art-lg {
+  width: 104px;
+}
+/* ambient droplets (backdrop layer) */
+.ambient {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.ambient-drop {
+  position: absolute;
+  animation-name: drop-drift;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+@keyframes drop-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  25% {
+    transform: translate3d(
+      calc(var(--depth, 6) * 1px),
+      calc(var(--depth, 6) * -1.6px),
+      0
+    );
+  }
+  50% {
+    transform: translate3d(
+      calc(var(--depth, 6) * -0.8px),
+      calc(var(--depth, 6) * -3px),
+      0
+    );
+  }
+  75% {
+    transform: translate3d(
+      calc(var(--depth, 6) * -1.6px),
+      calc(var(--depth, 6) * -1px),
+      0
+    );
+  }
+}
+/* footer ambient ripple */
+.footer-ripple {
+  position: absolute;
+  bottom: 16%;
+  left: 50%;
+  translate: -50% 0;
+  opacity: 0.16;
+  pointer-events: none;
+}
+/* /#/assets contact sheet */
+.asset-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.asset-thumb {
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  padding: 18px;
+}
+.asset-thumb img {
+  max-width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+}
+.asset-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 18px 18px;
+  border-top: 1px solid color-mix(in srgb, var(--text-1) 10%, transparent);
+}
+.asset-meta b {
+  font-size: 14.5px;
+  color: var(--text-1);
+}
+.asset-meta span {
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.asset-usage {
+  color: var(--text-2) !important;
+}
+/* ?debug=outline — every element outlined; horizontal overflow in red */
+html.debug-outline *,
+html.debug-outline *::before,
+html.debug-outline *::after {
+  outline: 1px solid rgba(255, 60, 140, 0.3) !important;
+  outline-offset: 0 !important;
+}
+html.debug-outline [data-overflow-hint] {
+  outline: 2px solid #ff2d55 !important;
+  box-shadow: 0 0 0 3px rgba(255, 45, 85, 0.3) !important;
+}
+
 /* — Responsive — */
 @media (max-width: 1000px) {
   .hero {
-    grid-template-columns: 1fr;
     min-height: 0;
-    padding-top: 8px;
+    padding: 116px 0 56px;
+  }
+  .hero-inner {
+    grid-template-columns: 1fr;
+    gap: 44px;
   }
   .hero-visual {
     order: -1;
-    margin-bottom: 8px;
   }
   .bento-span-7,
   .bento-span-5 {
@@ -1473,8 +2043,19 @@ kbd {
     align-items: flex-start;
     gap: 16px;
   }
-  .showcase-stage {
-    height: auto;
+  .hero-buddy {
+    right: -6px;
+    bottom: 1%;
+    width: 64px;
+  }
+  .showcase-friend {
+    display: none;
+  }
+  .bento-art {
+    width: 64px;
+  }
+  .bento-art-lg {
+    width: 76px;
   }
 }
 @media (max-width: 640px) {
@@ -1493,8 +2074,8 @@ kbd {
   .gnav-brand {
     margin-right: auto;
   }
-  .page {
-    padding-top: 88px;
+  .download-card {
+    padding: 28px 22px;
   }
 }
 

@@ -1,26 +1,42 @@
 /**
- * The cinematic intro — 5 beats, ~3.6 s, skippable (click / tap / Esc),
- * once per session (sessionStorage, see lib/intro.ts).
+ * The cinematic intro — root-cause fix E (sequence per brief):
  *
- *   1. near-black, a soft glow breathes
- *   2. the logo mark draws itself (stroke), then fills
- *   3. a glass droplet-lens grows from the logo (metaball wipe) — it bends
- *      the page (backdrop blur + saturation + refraction) as it passes
- *   4. the veil lifts and the hero headline words rise blur-to-sharp
- *      (the hero runs its own stagger on a matching delay)
- *   5. the nav pill drops in with a spring (GlassNav enterDelay)
+ *   0.  near-black, a soft glow breathes
+ *   1.  the droplet starts ABOVE the viewport at the impact x and falls
+ *       with gravity-like acceleration (550 ms ease-in) with a slight stretch
+ *   2.  impact at the EXACT centre of the logo target: squash + splash
+ *   3.  three concentric ripples expand from that same point, staggered
+ *       120 ms; the FIRST ripple reveals the logo
+ *   4.  the logo draws itself (stroke), then fills
+ *   5.  the overlay lifts to the hero (words rise), nav pill drops in
  *
- * Zero CLS (fixed overlay, content always laid out underneath) and it never
- * blocks keyboard or screen readers (aria-hidden; content is in the tree).
- * Under prefers-reduced-motion the whole thing is replaced by a simple fade
- * (HomePage renders no Intro at all — mode "fade").
+ * The impact point is computed ONCE from the logo target's
+ * getBoundingClientRect (recomputed on resize + font load) and shared with
+ * the droplet, every ripple and the reveal as CSS custom properties
+ * (--impact-x/--impact-y) — one origin, no hard-coded offsets.
+ *
+ * Skippable (click / tap / Esc), once per session (see lib/intro.ts),
+ * forced with ?intro=1 / ?intro=0, reduced-motion → simple fade (HomePage
+ * renders no Intro at all). Zero CLS (fixed overlay; content laid out
+ * underneath) and never blocks keyboard or screen readers.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  IMPACT_MS,
+  INTRO_TOTAL_MS,
+  LOGO_DRAW_MS,
+  LOGO_FILL_MS,
+  LOGO_REVEAL_MS,
+  RIPPLE_COUNT,
+  impactPoint,
+  impactVars,
+} from "../lib/intro-impact";
 
-const INTRO_MS = 3600;
 const LEAVE_MS = 220;
 
 export function Intro({ onDone }: { onDone: () => void }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const logoRef = useRef<SVGSVGElement>(null);
   const [leaving, setLeaving] = useState(false);
 
   const finish = useCallback(() => {
@@ -31,8 +47,39 @@ export function Intro({ onDone }: { onDone: () => void }) {
     });
   }, [onDone]);
 
+  // Measure the impact point once (and on resize / font load) and publish it
+  // as CSS variables shared by droplet + ripples + reveal.
   useEffect(() => {
-    const t = window.setTimeout(finish, INTRO_MS);
+    const measure = () => {
+      const root = rootRef.current;
+      const logo = logoRef.current;
+      if (!root || !logo) return;
+      const r = logo.getBoundingClientRect();
+      const p = impactPoint(r, {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+      const vars = impactVars(p);
+      for (const [k, v] of Object.entries(vars)) {
+        root.style.setProperty(k, v as string);
+      }
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    let live = true;
+    document.fonts?.ready?.then(() => {
+      if (live) measure();
+    });
+    const raf = requestAnimationFrame(measure);
+    return () => {
+      live = false;
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
+  useEffect(() => {
+    const t = window.setTimeout(finish, INTRO_TOTAL_MS);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") finish();
     };
@@ -45,13 +92,29 @@ export function Intro({ onDone }: { onDone: () => void }) {
 
   return (
     <div
+      ref={rootRef}
       className={`intro${leaving ? " intro-leave" : ""}`}
       aria-hidden="true"
       onClick={finish}
     >
       <div className="intro-glow" />
+      {/* the falling droplet — tip lands exactly on the impact point */}
+      <div className="intro-drop" />
+      <div className="intro-splash" />
+      {/* concentric ripples from the same point, staggered 120 ms */}
+      {Array.from({ length: RIPPLE_COUNT }, (_, i) => (
+        <div
+          key={i}
+          className="intro-ripple"
+          style={{ animationDelay: `${IMPACT_MS + 60 + i * 120}ms` }}
+        />
+      ))}
       <svg
+        ref={logoRef}
         className="intro-logo"
+        style={{
+          animationDelay: `${LOGO_REVEAL_MS}ms`,
+        }}
         viewBox="0 0 64 64"
         fill="none"
         focusable="false"
@@ -71,11 +134,13 @@ export function Intro({ onDone }: { onDone: () => void }) {
         </defs>
         <path
           className="intro-fill"
+          style={{ animationDelay: `${LOGO_FILL_MS}ms` }}
           d="M32 7 C 26.5 15.5 16 27.5 16 39 A 16 16 0 0 0 48 39 C 48 27.5 37.5 15.5 32 7 Z"
           fill="url(#introFill)"
         />
         <path
           className="intro-stroke"
+          style={{ animationDelay: `${LOGO_DRAW_MS}ms` }}
           d="M32 7 C 26.5 15.5 16 27.5 16 39 A 16 16 0 0 0 48 39 C 48 27.5 37.5 15.5 32 7 Z"
           stroke="currentColor"
           strokeWidth="3.5"
@@ -83,17 +148,7 @@ export function Intro({ onDone }: { onDone: () => void }) {
           strokeLinejoin="round"
           pathLength="100"
         />
-        <path
-          className="intro-glint"
-          d="M23.5 33.5 Q 20.5 40 25 46.5"
-          stroke="currentColor"
-          strokeWidth="3"
-          strokeLinecap="round"
-          pathLength="100"
-        />
       </svg>
-      <div className="intro-veil" />
-      <div className="intro-lens" />
       <span className="intro-skip-hint">click or press Esc to skip</span>
     </div>
   );

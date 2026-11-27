@@ -5,9 +5,9 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 
 export default tseslint.config(
-  // Build outputs: dist (default base) and sippy-demo (GitHub Pages
-  // subpath test build — VITE_BASE=/sippy-demo/ npm run build).
-  { ignores: ["dist", "sippy-demo", "coverage"] },
+  // Build outputs: dist (default base), sippy (VITE_BASE=/sippy/ test
+  // build) and sippy-demo (VITE_BASE=/sippy-demo/ test build).
+  { ignores: ["dist", "sippy", "sippy-demo", "coverage"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -28,6 +28,10 @@ export default tseslint.config(
         { allowConstantExport: true },
       ],
       "@typescript-eslint/no-explicit-any": "error",
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_" },
+      ],
     },
   },
 );

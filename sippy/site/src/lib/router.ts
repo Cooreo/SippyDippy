@@ -5,12 +5,16 @@
  */
 import { useEffect, useState } from "react";
 
-export type Route = "/" | "/gallery";
+export type Route = "/" | "/gallery" | "/assets";
+
+const ROUTES: Route[] = ["/gallery", "/assets"];
 
 export function resolveRoute(pathname: string, hash: string): Route {
   const p = pathname.replace(/\/+$/, "") || "/";
-  if (p === "/gallery" || hash === "#/gallery") return "/gallery";
-  return "/";
+  // strict hash form: "#/gallery" (a bare "#gallery" is NOT a route)
+  const h = hash.startsWith("#/") ? hash.slice(2).replace(/\/+$/, "") : null;
+  const match = ROUTES.find((r) => p === r || (h !== null && h === r.slice(1)));
+  return match ?? "/";
 }
 
 export function useRoute(): Route {

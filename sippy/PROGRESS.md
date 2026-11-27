@@ -96,6 +96,29 @@ npx lighthouse https://4173-<your-sandbox>.e2b.app/ \
 ### Next
 - ⏸ **STOP — AWAITING APPROVAL.** Your turn: view the dev server (full page + `?intro=1`/`?intro=0` + `#/gallery`) and the production preview, run Lighthouse, then approve Phase 4a (debug-APK compile checkpoint: minimal Compose slice + `tooling/build-debug.{sh,ps1}` + exact install steps).
 
+## Phase 3 fix round — root causes (written BEFORE code changes, per instruction)
+
+### A. Hard seams / black line — root cause
+The "backdrop" is **three stacked systems, not one layer**:
+1. `body { background: var(--bg-0) }` (styles/index.css, base section) is the only actual base colour.
+2. `AuroraBackdrop` is a **transparent** `position:fixed` canvas that `clearRect`s and draws 4 blobs with `globalCompositeOperation: "screen"` — it never paints a base colour, so the colour behind the glass comes from `body`, and wherever the canvas doesn't cover (fixed-position breakage) the seam shows instantly.
+3. **Per-section solid/gradient backgrounds on top**: the hero has `linear-gradient(180deg, rgba(4,6,11,0.99) 0%, rgba(5,8,15,0.96) 58%, rgba(5,8,15,0) 100%)` — a near-opaque band that holds 96% black until **58% of the hero's height**, then fades. The visible "black region" bottom sits at ~58–75% of `min(94dvh, 920px)` — a viewport-height-dependent, effectively hard colour boundary between hero-band and raw aurora.
+4. **Full-width step at the content boundary**: `.page { padding-top: 104px }` pushes the hero section down 104px; the 0–104px strip shows raw backdrop while everything below sits under the hero's near-black scrim → the ~90–100px hard edge, at every scroll position, at every width.
+5. Latent fixed-position hazards (the brief's list, confirmed present in code): `.hero-visual { perspective: 1200px }` + `transform-style: preserve-3d`, `will-change: transform, filter` on `.hero-word` / `.showcase-phone`, `min-height: 100dvh` (ok) — plus the footer's hard 1px `border-top` = the second reported edge (FAQ→footer).
+**Structural fix:** ONE fixed full-viewport `.backdrop` layer (base colour + aurora canvas + hero caustics art + soft hero scrim) mounted as the FIRST child of `#root`, outside `.app-shell`; `html`/`body` background = darkest backdrop base; hero/sections fully transparent; the hero section starts at y=0 (padding moved inside it) so the 0–104px strip cannot exist; all section blends are single smooth ramps with ≥200px fade (no mid-plateau stops); footer border removed.
+
+### B. Hero / PhoneMock — root cause
+1. **"Get the APK" renders as bare text**: Glin `ShimmerButton`'s `glass` variant is implemented with **Tailwind utility classes** (`bg-white/10`, `border border-white/20`, `backdrop-blur-md`, `rounded-xl`, `px-6 py-2.5` — verified in `node_modules/@glinui/ui/dist/components/shimmer-button.js`). Tailwind 4's automatic content detection **does not scan `node_modules`**, so none of those utilities are generated → the button loses background/border/padding → text only. Latent for every @glinui/ui component. Fix: `@source` the Glin dist for Tailwind + explicit fallback styling on `.glass-btn`.
+2. **Progress bar runs past its card**: `LiquidProgress width={196}` — hard-coded px inside a card whose content width varies (`width: min(240px, 62vw)` frame); 196px exceeds the card's inner width at most sizes.
+3. **"Friends" clipped in the tab bar**: `LiquidTabs` (flow=stretch) lays out 3 content-sized tabs in ~210px; the longest label overflows the capsule and is cut by `.phone-screen { overflow: hidden }`.
+4. **Lower half of the screen empty**: `.pm-screen-inner { min-height: 468px }` (fixed px) + the tab bar is in normal flow after the cards — nothing pins it to the bottom, nothing fills below.
+5. **No fluid sizing**: frame is fixed 240×~468 (not 9:19.5-derived), inner sizes are px — any width change (62vw, showcase scale) breaks the fit. Fix: `aspect-ratio: 9/19.5` + `container-type: size` + all inner sizes in cqw + flex layout with `margin-top:auto` pinning + measured (ResizeObserver) width for the fixed-px LiquidProgress.
+
+### E. Intro — root cause
+1. **The droplet never falls because no falling droplet exists**: the current "droplet" is `.intro-lens` — a droplet-shaped div that animates `transform: scale(0) → scale(2.7)` **in place** at viewport centre (keyframe `intro-lens`). Zero translateY, no motion from above the viewport.
+2. **"Ripple misaligned"**: there is no ripple element at all; the lens is box-centred (`top:50%; left:50%`) but its droplet shape (`border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%`, point at top) has its optical centre **above** the box centre, while the logo (grid-centred symmetric teardrop) centres on the layout centre → the two apparent centres differ.
+3. **All positions are hard-coded percentages** — no `getBoundingClientRect`-based impact point, no shared origin between "droplet", "ripple" and "reveal". Fix: compute the impact point ONCE from the logo target's rect, expose it as CSS custom properties, and drive droplet + all ripples + reveal from the same variables; recompute on resize; pure-function unit test across 4 viewport sizes.
+
 ## Addition: publish to GitHub Pages — DONE, awaiting approval
 
 ### Done
@@ -122,3 +145,61 @@ npx lighthouse https://4173-<your-sandbox>.e2b.app/ \
 - **Rerun (`gh run rerun 45915456833 --failed`): SUCCESS** — build job ✓ (checkout, setup-node, configure-pages, npm ci, build, upload-pages-artifact), deploy job ✓ "Deploy to GitHub Pages in 11s". Only annotation: Node 20 deprecation notice on the pinned action versions (informational; actions forced onto Node 24 runners).
 - Deployment record created on `github-pages` environment (id 8098539720) — status still propagating at time of writing.
 - Live URL not curl-able from this sandbox (`cooreo.github.io` not on the outbound allowlist — curl exit 35): **final "open in browser" check is the user's**.
+
+## Phase 3 fix round — results (A–G)
+
+### Code (all on `arena/cdf76885-sippydippy`)
+- **A (seams):** one fixed full-viewport `.backdrop` (base colour → aurora canvas → hero-caustics art → 200px+ scrim ramp) mounted as FIRST child of `#root`, outside `.app-shell`; `html`/`body` bg = `--bg-0`; all sections transparent; hero starts at y=0; footer 1px border-top removed → footer blends with a 120px gradient fade.
+- **B (hero):** two-column grid inside the shared `.wrap` (max 1280px, padding `clamp(20px,5vw,48px)`, same width as the nav); PhoneFrame rebuilt on `aspect-ratio: 9/19.5` + `container-type: size`, all inner sizes cqw, tab bar pinned with `margin-top:auto`; `LiquidProgress` now measured (ResizeObserver) instead of 196px; Glin `@source` fixed (see below); "Get the APK" = Glin ShimmerButton glass variant (utilities verified present in built CSS).
+- **C (showcase):** scroll pinning/stacking deleted entirely. Desktop = 3 phones in a fixed grid, pointer scales/focuses (1.0 vs 0.88 @ ~70%), group 3D tilt via pointer; touch = one centered phone, neighbours peek (33.3333% of the 264% track = 88% of stage — the old `flex: 0 0 88%` was 232% of stage, fixed), spring snap + dots; keyboard roving tabindex + arrows; reduced motion = no tilt.
+- **D (download/FAQ):** `.narrow` 760px shared container; button/paragraph/steps share one left edge; steps = `<ol>` with numbered glass chips 1–4; FAQ neutral glass tint, accent only on open border/chevron, visible plus/minus, smooth `grid-template-rows: 0fr↔1fr` height animation.
+- **E (intro):** impact point computed ONCE from the logo target rect → shared CSS vars (`--impact-x/y`); droplet falls from above the viewport (ease-in ~550ms) → squash/splash at impact → 3 ripples staggered 120ms from the same centre → reveal/draw/fill; recompute on resize. **Unit test proves identity at all 4 viewports:**
+  ```
+  [360x640]  impact=(180, 320)  dropTip=(180, 320)   ripples=(180, 320) (180, 320) (180, 320)
+  [1280x720] impact=(640, 360)  dropTip=(640, 360)   ripples=(640, 360) (640, 360) (640, 360)
+  [1920x1080] impact=(960, 540) dropTip=(960, 540)   ripples=(960, 540) (960, 540) (960, 540)
+  [2560x1440] impact=(1280, 720) dropTip=(1280, 720) ripples=(1280, 720) (1280, 720) (1280, 720)
+  ```
+- **F (richness):** asset pipeline `tooling/build-assets.py` (black-bg luminance key LO=16/HI=72 → alpha, auto-crop, WebP byte budgets 250KB hero / 120KB rest, manifest `src/lib/assets.ts` + `hasAsset()`). **10 of 14 assets built (163.2 KB total, all under budget):** hero-caustics 1376×768 74.6KB; dippy-happy/dancing/sleepy/waving; friend-plant-sprout/bloom; friend-pet-cub; droplet-sprite; ripple-ring. **4 pending — the image-generation limit (10/turn) was reached: friend-pet-adult, bg-features, bg-showcase, bg-download.** Sections degrade gracefully: `SectionArt` skips itself when the asset is absent (manifest check) → no 404s, sections rest on the backdrop gradients (same palette). Contact sheet at `/#/assets`; ambient droplets (≤12, seeded, pointer parallax, IntersectionObserver pause, absent under reduced motion); Dippy buddy next to hero phone; bento art per card; friends in showcase; Dippy waving on download card; footer ripple ring. `CREDITS.md` carries the pack attribution.
+- **G (verification):** `?debug=outline` added (`src/lib/debug.ts` + App effect): outlines every element faint pink, re-scans every 1.5 s + on resize, marks any `scrollWidth > clientWidth` element with a red outline + `data-overflow-hint="<px>"`.
+
+### Gate (real output, this round)
+- `npx tsc --noEmit` → **exit 0** (no output).
+- `npm run lint` → **exit 0** — `✖ 3 problems (0 errors, 3 warnings)` (the 3 = pre-existing react-refresh/only-export-components in glass/GlassToast, effects, theme).
+- `npm test` → **7 files, 36/36 passed** (incl. 5 intro-impact identity tests + 13 router tests incl. new `#/assets` case).
+- `npm run build` → **✓ built in 4.35–4.80 s**; CSS 72.5 kB / gzip 14.5 kB.
+- **CSS size regression found + fixed:** `@source` pointed at node_modules files still generated 262.6 kB of utilities (the full Glin dist was scanned; 125 utility classes in the built CSS that no source references). Fix: local content-hint copies of only the 3 used Glin components (`src/vendor/glin/`, scan-only — runtime imports still from `@glinui/ui`) → 72.5 kB, glass utilities (`bg-white/10`, `backdrop-blur-md`, `border-white/20`) verified present.
+- **eslint config:** `sippy` build dir added to ignores (was exploding lint with 2152 errors on build output); `argsIgnorePattern: "^_"` added.
+- **router regression caught by tests + fixed:** loose hash matching made `#gallery` (no slash) resolve as a route; restored strict `#/`-form + test.
+- Dev server (:5173) transform check: all 14 changed modules → 200, zero Vite transform/resolve errors; all 10 asset files served 200.
+
+### Home-route image bytes (target < 1.2 MB)
+| asset | bytes | where |
+|---|---|---|
+| hero-caustics | 76.4 KB | backdrop |
+| dippy-happy | 8.5 KB | hero buddy + 1 bento card |
+| dippy-dancing | 11.2 KB | bento |
+| dippy-sleepy | 8.9 KB | bento |
+| friend-plant-bloom | 13.9 KB | bento + showcase |
+| friend-pet-cub | 10.7 KB | bento |
+| droplet-sprite | 1.9 KB | bento + ambient (≤12×, cached) |
+| friend-plant-sprout | 6.8 KB | showcase |
+| dippy-waving | 7.4 KB | download card |
+| ripple-ring | 19.2 KB | footer |
+| **total unique (bg-×3 + pet-adult pending)** | **≈ 165 KB** | **< 1.2 MB ✓** |
+
+### To check in a browser (exact URLs + viewports)
+Preview base: `https://{port}-<sandbox>.e2b.app/` (dev server :5173) or the production preview :4173.
+1. **Seams (A):** `/` — scroll slowly top→bottom at **360, 768, 1280, 1920, 2560** wide; look for any hard horizontal edge (old: ~90–100px below hero top; old: FAQ→footer).
+2. **Hero (B):** `/` at 360 & 1280 — "Get the APK" must be a glass pill (not bare text); phone: progress bar inside its card, "Friends" tab unclipped, tab bar at the bottom, Dippy buddy beside the phone.
+3. **Showcase (C):** 1280+ — move the pointer across the row (one phone scales up, others dim, subtle tilt); 360 — drag left/right (snap + dots); Tab + arrows on 1280 (visible focus ring).
+4. **Download/FAQ (D):** 768 — one left edge, numbered chips, FAQ open/close animation, neutral tint.
+5. **Intro (E):** `/?intro=1` (fresh) at 1280×720 & 360×640 — droplet falls from above, splash + 3 ripples centered on the logo; `?intro=0` skips; skip button works.
+6. **Debug:** `/?debug=outline` — pink outlines everywhere; any red-outlined element = horizontal overflow (`data-overflow-hint` shows px).
+7. **Assets:** `/#/assets` — contact sheet (10 assets; 4 shown as pending on the page footer note).
+8. **Reduced motion:** OS "reduce motion" on — no tilt, no ambient droplets, intro = fade.
+
+### Honest status
+- **Verified here:** gates above, module transform, asset serving, unit-test geometry.
+- **Unverified (needs a browser):** all visual/interaction items 1–8 — no browser in this sandbox.
+- **Known gap:** 4 of 14 asset images pending the generation limit (sections fall back to gradients gracefully; re-run `python3 tooling/build-assets.py` after the 4 PNGs land in `.assets-src/`).
