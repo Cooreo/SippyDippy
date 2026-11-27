@@ -1,5 +1,10 @@
 package com.cooreo.sippy.ui.screens
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,18 +22,29 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.cooreo.sippy.domain.friends.GrowthLevel
+import com.cooreo.sippy.domain.friends.IdleMotion
 import com.cooreo.sippy.domain.friends.Mood
+import com.cooreo.sippy.domain.friends.MoodLines
 import com.cooreo.sippy.domain.friends.MoodRules
+import com.cooreo.sippy.domain.friends.PinRules
 import com.cooreo.sippy.domain.shop.ItemSlot
 import com.cooreo.sippy.domain.shop.ShopItem
 import com.cooreo.sippy.domain.shop.ShopRules
@@ -98,6 +114,7 @@ fun FriendsScreen(
             )
             FriendCard(
                 friend = friend,
+                pinLabel = PinRules.pinLabel(state.friends, friend.id),
                 onTogglePin = { onTogglePin(friend.id) },
                 hat = worn.firstOrNull { it.slot == ItemSlot.HAT },
                 outfit = worn.firstOrNull { it.slot == ItemSlot.OUTFIT },
@@ -156,6 +173,7 @@ fun FriendsScreen(
 @Composable
 private fun FriendCard(
     friend: Friend,
+    pinLabel: String,
     onTogglePin: () -> Unit,
     hat: ShopItem?,
     outfit: ShopItem?,
@@ -169,15 +187,84 @@ private fun FriendCard(
     onSubmitRename: () -> Unit,
 ) {
     val c = LocalSippyColors.current
+    val glowAlpha = GrowthLevel.glow(friend.grownAtStreak)
+    val growthScale = GrowthLevel.scale(friend.grownAtStreak)
+
+    // B9: the idle cycle and the tap reaction are Animatables read inside the
+    // layer lambda below, so a bobbing friend costs a layer update, not a
+    // recomposition of the card.
+    val idle = remember { Animatable(0f) }
+    LaunchedEffect(animate) {
+        if (animate) {
+            idle.snapTo(0f)
+            idle.animateTo(1f, infiniteRepeatable(tween(IdleMotion.CYCLE_MS, easing = LinearEasing)))
+        } else {
+            idle.snapTo(0f)
+        }
+    }
+    val tap = remember { Animatable(0f) }
+    val tapToken = remember { mutableIntStateOf(0) }
+    LaunchedEffect(tapToken.intValue) {
+        if (tapToken.intValue > 0 && animate) {
+            tap.snapTo(0f)
+            tap.animateTo(1f, tween(520, easing = FastOutSlowInEasing))
+        }
+    }
+
     GlassCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Long-press the friend to pin or unpin it; the Pin chip below is
-            // the same action with a TalkBack label (B2).
+            // Tap reacts, long-press pins; the Pin chip is the same action with a
+            // TalkBack label.
             Box(
                 modifier = Modifier
                     .size(88.dp)
-                    .pointerInput(friend.id, friend.pinned) {
-                        detectTapGestures(onLongPress = { onTogglePin() })
+                    .pointerInput(friend.id) {
+                        detectTapGestures(
+                            onTap = { tapToken.intValue += 1 },
+                            onLongPress = { onTogglePin() },
+                        )
+                    }
+                    .graphicsLayer {
+                        val squeezeX = IdleMotion.tapScaleX(tap.value)
+                        val squeezeY = IdleMotion.tapScaleY(tap.value)
+                        scaleX = growthScale * squeezeX
+                        scaleY = growthScale * squeezeY
+                        val lift = IdleMotion.bob(idle.value) + IdleMotion.hop(idle.value)
+                        translationY = lift * density
+                    }
+                    .drawBehind {
+                        if (glowAlpha > 0f) {
+                            // Growth is a soft halo, not a blur: one radial wash.
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(
+                                        c.accentBright.copy(alpha = glowAlpha),
+                                        Color.Transparent,
+                                    ),
+                                    center = center,
+                                    radius = size.minDimension * 0.78f,
+                                ),
+                                radius = size.minDimension * 0.78f,
+                                center = center,
+                            )
+                        }
+                        // Sparkle burst on tap: eight dots flying out and fading.
+                        val t = tap.value
+                        if (t > 0f && t < 1f) {
+                            val alpha = (1f - t).coerceIn(0f, 1f)
+                            val reach = size.minDimension * (0.34f + 0.32f * t)
+                            repeat(8) { index ->
+                                val angle = index * (Math.PI / 4.0)
+                                drawCircle(
+                                    color = c.accentBright.copy(alpha = alpha * 0.85f),
+                                    radius = size.minDimension * 0.022f,
+                                    center = Offset(
+                                        x = center.x + (kotlin.math.cos(angle) * reach).toFloat(),
+                                        y = center.y + (kotlin.math.sin(angle) * reach).toFloat(),
+                                    ),
+                                )
+                            }
+                        }
                     },
             ) {
                 FriendAvatar(
@@ -203,16 +290,19 @@ private fun FriendCard(
                 } else {
                     Text(friend.name, color = c.text1, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                     Text(
-                        text = moodLine(mood, friend.grownAtStreak),
-                        color = c.text3,
+                        text = MoodLines.line(friend.kind, mood, friend.id),
+                        color = c.text2,
                         fontSize = 12.sp,
                     )
+                    GrowthLevel.label(friend.grownAtStreak)?.let { growth ->
+                        Text(growth, color = c.text3, fontSize = 11.sp)
+                    }
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         GlassChip(label = "Dress up", onClick = onDressUp)
                         GlassChip(label = "Rename", onClick = onStartRename)
                         GlassChip(
-                            label = if (friend.pinned) "Unpin" else "Pin",
+                            label = pinLabel,
                             selected = friend.pinned,
                             onClick = onTogglePin,
                         )
@@ -220,15 +310,5 @@ private fun FriendCard(
                 }
             }
         }
-    }
-}
-
-private fun moodLine(mood: Mood, grownAtStreak: Int): String {
-    val growth = if (grownAtStreak >= 3) " grown at $grownAtStreak days" else " still small"
-    return when (mood) {
-        Mood.DANCING -> "Dancing — you are on a roll.$growth"
-        Mood.HAPPY -> "Happy — goal met today.$growth"
-        Mood.SLEEPY -> "Sleepy — nothing logged yet.$growth"
-        Mood.SAD -> "Sad — the streak slipped.$growth"
     }
 }

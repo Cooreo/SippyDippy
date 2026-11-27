@@ -65,4 +65,23 @@ class PinRulesTest {
         val two = PinRules.toggle(PinRules.toggle(listOf(dippy, plant, cat), "dippy"), "cat")
         assertEquals(0, PinRules.pinnedCount(PinRules.unpinAll(two)))
     }
+
+    @Test
+    fun thePinLabelNamesTheSlot() {
+        val a = Friend(id = "a", kind = FriendKind.CAT, name = "A")
+        val b = Friend(id = "b", kind = FriendKind.KOI, name = "B")
+        val c = Friend(id = "c", kind = FriendKind.OTTER, name = "C")
+        val empty = listOf(a, b, c)
+
+        assertEquals("Pin left", PinRules.pinLabel(empty, "a"))
+        // Left taken: the next one is offered the right slot.
+        val leftTaken = empty.map { if (it.id == "a") it.copy(pinned = true) else it }
+        assertEquals("Pin right", PinRules.pinLabel(leftTaken, "b"))
+        // Pinned reads Unpin, and a stranger reads the neutral Pin.
+        assertEquals("Unpin", PinRules.pinLabel(leftTaken, "a"))
+        assertEquals("Pin", PinRules.pinLabel(leftTaken, "nobody"))
+        // Both full: neither slot is free, so nothing is promised.
+        val both = leftTaken.map { if (it.id == "b") it.copy(pinned = true) else it }
+        assertEquals("Pin", PinRules.pinLabel(both, "c"))
+    }
 }
