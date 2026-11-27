@@ -1295,32 +1295,52 @@ before every commit.
   tick, the log thud and goal pattern already wired, and a Developer-options frame
   card (fps, worst frame, frames counted) measured only while it is on screen.
 
-### Round 2, second pass
+### Round 2, complete
 
-| item | commit | CI on that commit |
+| item | commit(s) | CI |
 | --- | --- | --- |
-| B4 part 2 — seven painted drink icons | `60be618` | **green** |
-| B7 attempt — Log container transform, droplet flight | `bb8916a` → `255e3f3` → `7456913` | failed, failed, failed |
-| revert of B7 so the branch is not left broken | `a566116` | **green** |
+| B1 exaggerated glass + live-tier report | `f085eea` | red on its own run; green afterwards in `cd0e42e` |
+| B2 backdrop, shafts, bubbles, tab tints | `72cc0e2` | red; green in `cd0e42e` |
+| B3 three glass levels | `28f45e9` | red; green in `cd0e42e` |
+| B4 part 1 — type, rhythm, share bar | `b7c45b0` | red; green in `cd0e42e` |
+| B5 orb as the star | `1fd686f` | red; green in `cd0e42e` |
+| B10 haptics switch, frame counter, tab tick | `e73ce8b` | **green** |
+| B9 friends that talk, grow, breathe, flinch | `d013ad0` → `980cab2` | failed → **green** |
+| B6 one liquid lens | `fee2a1f` | **green** |
+| B4 part 2 — seven painted icons | `60be618` | **green** |
+| B7 Log container transform + droplet flight | `bb8916a` → `255e3f3` → `7456913`, reverted in `a566116`, restored and fixed in `6c89ed4` | red ×3 → **green** |
+| B4 part 3 — soda, alcohol, other | `69df762` | **green** |
+| B8 splash + four vignettes | `4dba93f` | **green** |
+| B11 tilt parallax | `dd09396` | **green** |
 
-**B4 part 2 is done for seven of ten categories**: water, sparkling, tea, coffee,
-juice, milk and smoothie are painted (`res/drawable-nodpi/drink_*.webp`, 192px,
-5.7–9.2 KB). Soda, alcohol and other still fall back to the drawn droplet.
-`ART_CREDITS.md` records the two things that actually matter for regenerating
-these: a flat magenta field keys cleanly where "transparent" does not, and a
-translucent glass needs de-spilling (`min(R-G, B-G)` subtracted from red and blue)
-or every rim comes back pink.
+**The one-line bug behind the B7 failure**, for the record:
 
-**B7 is written but not shipped.** The flow exists in full in `bb8916a` — the + button
-growing into the sheet as a container transform, bubbles rising with an 80ms
-stagger capped at six, the filling glass preview, the presets above the slider, the
-shrink-back, the droplet arcing into the orb through `OrbAnchor`, the floating
-"+330 ml"/"+1 pt" and the thud — but it did not compile three times in a row and
-the log is unreadable from here, so it was reverted rather than left broken. To
-resume: `git revert a566116` puts it back, then fix whatever the build says.
+    import com.cooreo.sippy.model.Drink     // there is no Drink there
 
-**Still open:** the three missing drink icons, B7 (reverted, see above), B8's splash
-screen and four vignettes (`androidx.core:core-splashscreen` is the one new
-dependency, reason: it is the only way to paint the first frame in the backdrop's
-own colour), and B11's sensor parallax if everything above lands.
-**Nothing visual in this round has been seen on a device.**
+The class lives in `com.cooreo.sippy.domain.drinks`. Three red runs, a revert and a
+bisect (composables in / sheet files out / flight alone) found it. Lesson: the
+bisect, not more staring.
+
+**Two local checks now run before every commit**, because every build break this
+round was invisible to me:
+
+1. forgotten extension imports (`.animateFloat`, `.setValue`, `.drawBehind`,
+   `.graphicsLayer`, …) — this caught the Backdrop parallax's missing import;
+2. **phantom project imports**: every `com.cooreo.sippy.*` import must name
+   something that package actually declares. This is what B7 would have failed on
+   in one second instead of three builds.
+
+**Round 2 delivered, in one line each:** exaggerated glass from Developer options;
+a generated underwater backdrop with two shaft layers, twelve bubbles and a
+crossfading per-tab tint; three glass levels with a hard cap of three live surfaces;
+a type scale and an 8dp rhythm; ten painted drink icons and a share bar per log row;
+an orb with waves, bubbles, specular, glow, reflection, gravity slosh, landing
+splash, goal burst, shimmer and a friends' dance; one liquid lens that travels,
+stretches and can be dragged; friends with 56 mood lines, growth scale and glow, a
+bob-and-hop idle, tap squash and sparkles; haptics behind a switch with a real
+frame counter; a + button that grows into the Log sheet and flies its droplet into
+the orb; a platform splash in the backdrop's own blue and four arrival vignettes
+with Full/Short/Off; and a tilt that leans the backdrop and the pinned friends.
+
+**Still true:** nothing visual has been seen on a device. Every claim above is code
+plus a green `testDebugUnitTest` and `assembleDebug`.
