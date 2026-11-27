@@ -1,0 +1,96 @@
+package com.cooreo.sippy.model
+
+import kotlinx.serialization.Serializable
+
+/**
+ * The whole v1 state is a handful of JSON documents in DataStore.
+ *
+ * Contract shared by every document:
+ *  - every property has a default, so a document written by an older build
+ *    still loads;
+ *  - unknown properties are ignored at decode time (StorageCodec);
+ *  - [schemaVersion] identifies the writer; a different value is never
+ *    "fixed" silently — the raw file is backed up and a clean state starts.
+ */
+@Serializable
+data class StoredState(
+    val schemaVersion: Int = 1,
+    val settings: Settings = Settings(),
+    val friends: List<Friend> = listOf(Friend.dippy()),
+    val log: List<LogEntry> = emptyList(),
+    val streak: StreakState = StreakState(),
+    val update: UpdateState = UpdateState(),
+)
+
+@Serializable
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
+@Serializable
+enum class AccentId { BLUE, TEAL, VIOLET, CORAL }
+
+@Serializable
+data class Settings(
+    val theme: ThemeMode = ThemeMode.SYSTEM,
+    val accent: AccentId = AccentId.BLUE,
+    val goalMl: Int = 2000,
+    val remindersEnabled: Boolean = false,
+    /** "HH:mm", 24h, at most [MAX_REMINDERS] entries. */
+    val reminderTimes: List<String> = listOf("09:00", "13:00", "17:00", "21:00"),
+    val reduceEffects: Boolean = false,
+    val developerUnlocked: Boolean = false,
+) {
+    companion object {
+        const val MAX_REMINDERS = 4
+        const val MIN_GOAL_ML = 750
+        const val MAX_GOAL_ML = 3000
+        const val DEFAULT_GOAL_ML = 2000
+    }
+}
+
+@Serializable
+enum class FriendKind { DIPPY, PLANT, CAT }
+
+@Serializable
+data class Friend(
+    val id: String,
+    val kind: FriendKind,
+    val name: String,
+    /** Streak milestone the friend has grown to (0, 3, 7, 14, 30, 100). */
+    val grownAtStreak: Int = 0,
+    val addedAtEpochDay: Long = 0L,
+) {
+    companion object {
+        const val MAX_FRIENDS = 5
+        fun dippy(epochDay: Long = 0L) =
+            Friend(id = "dippy", kind = FriendKind.DIPPY, name = "Dippy", addedAtEpochDay = epochDay)
+    }
+}
+
+@Serializable
+data class LogEntry(
+    val id: String,
+    /** Local date as epoch-day, so day grouping never depends on time zones at read time. */
+    val dayEpoch: Long,
+    /** Wall clock for ordering and for "last entry" undo. */
+    val atEpochMs: Long,
+    val drinkId: String,
+    val volumeMl: Int,
+    /** Volume x hydration factor, frozen at log time. */
+    val hydratedMl: Int,
+    val sugary: Boolean,
+)
+
+@Serializable
+data class StreakState(
+    val currentDays: Int = 0,
+    val bestDays: Int = 0,
+    val lastGoalEpochDay: Long = 0L,
+)
+
+@Serializable
+data class UpdateState(
+    val lastCheckEpochMs: Long = 0L,
+    val snoozedUntilEpochMs: Long = 0L,
+    /** Last 20 updater log lines, newest last (developer screen). */
+    val log: List<String> = emptyList(),
+)
