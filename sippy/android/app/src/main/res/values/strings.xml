@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Sippy</string>
+    <string name="reminder_channel_name">Water reminders</string>
+    <string name="reminder_channel_description">Up to four gentle sips a day. Turn them off any time in Settings.</string>
 </resources>

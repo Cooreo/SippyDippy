@@ -12,10 +12,8 @@ import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import com.cooreo.sippy.R
+import com.cooreo.sippy.domain.friends.Mood
 import com.cooreo.sippy.model.FriendKind
-
-/** Moods from the brief. Growth is shown by scale only (no new art). */
-enum class Mood { HAPPY, DANCING, SLEEPY, SAD }
 
 @Composable
 fun friendPainter(kind: FriendKind, mood: Mood) = painterResource(

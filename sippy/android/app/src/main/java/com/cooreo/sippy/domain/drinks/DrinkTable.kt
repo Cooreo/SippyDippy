@@ -14,7 +14,7 @@ data class Drink(
     val sugary: Boolean,
     val note: String,
 ) {
-    fun hydratedMl(volumeMl: Int): Int = (volumeMl * hydrationFactor).toInt().coerceAtLeast(0)
+    fun hydratedMl(volumeMl: Int): Int = com.cooreo.sippy.domain.water.WaterMath.hydrate(volumeMl, hydrationFactor)
 }
 
 /**
@@ -22,6 +22,9 @@ data class Drink(
  * 26 entries — supports the site's "24+ drinks" line.
  */
 object DrinkTable {
+    /** Lookup that never returns null: unknown ids fall back to water. */
+    fun byId(id: String): Drink = drinks.firstOrNull { it.id == id } ?: drinks.first()
+
     val drinks: List<Drink> = listOf(
         Drink("water", "Water", 250, 1.00f, false, "Reference drink; counts fully."),
         Drink("sparkling", "Sparkling water", 330, 1.00f, false, "Water with CO2; counts fully."),

@@ -15,19 +15,35 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-private val Context.sippyStore by preferencesDataStore(name = "sippy")
+internal val Context.sippyStore by preferencesDataStore(name = "sippy")
+
+internal val STATE_KEY = stringPreferencesKey("state_json")
+
+/**
+ * One-shot read used by the reminder worker (no long-lived repository in a
+ * worker process). Total: any failure yields a clean state.
+ */
+suspend fun readStoredState(context: Context): StoredState = try {
+    val raw = context.sippyStore.data.first()[STATE_KEY]
+    when (val decoded = StorageCodec.decode(raw)) {
+        is StorageCodec.Decoded.Ok -> decoded.state
+        else -> StoredState()
+    }
+} catch (t: Throwable) {
+    StoredState()
+}
 
 class DataStoreSippyRepository(
     private val context: Context,
     scope: CoroutineScope,
 ) : SippyRepository {
 
-    private val key = stringPreferencesKey("state_json")
     private val mutex = Mutex()
 
     private val _state = MutableStateFlow(StoredState())
@@ -44,7 +60,7 @@ class DataStoreSippyRepository(
     private suspend fun load() = withContext(Dispatchers.IO) {
         val raw = try {
             var value: String? = null
-            context.sippyStore.edit { prefs -> value = prefs[key] }
+            context.sippyStore.edit { prefs -> value = prefs[STATE_KEY] }
             value
         } catch (t: Throwable) {
             null
@@ -69,7 +85,7 @@ class DataStoreSippyRepository(
             // A failed backup must not stop the app from starting clean.
         }
         _state.value = StoredState()
-        runCatching { context.sippyStore.edit { it.remove(key) } }
+        runCatching { context.sippyStore.edit { it.remove(STATE_KEY) } }
     }
 
     override suspend fun edit(transform: (StoredState) -> StoredState) {
@@ -78,7 +94,7 @@ class DataStoreSippyRepository(
             withContext(Dispatchers.IO) {
                 runCatching {
                     context.sippyStore.edit { prefs ->
-                        prefs[key] = StorageCodec.encode(next)
+                        prefs[STATE_KEY] = StorageCodec.encode(next)
                     }
                 }
             }
@@ -92,7 +108,7 @@ class DataStoreSippyRepository(
             withContext(Dispatchers.IO) {
                 runCatching {
                     context.sippyStore.edit { prefs ->
-                        prefs[key] = StorageCodec.encode(fresh)
+                        prefs[STATE_KEY] = StorageCodec.encode(fresh)
                     }
                 }
             }

@@ -18,6 +18,21 @@ enum class Accent(val label: String, val seed: Color, val bright: Color) {
     CORAL("Coral", Color(0xFFF26D6D), Color(0xFFFF9A8F)),
 }
 
+/** Persisted accent id -> theme accent. */
+fun accentFor(id: com.cooreo.sippy.model.AccentId): Accent = when (id) {
+    com.cooreo.sippy.model.AccentId.BLUE -> Accent.BLUE
+    com.cooreo.sippy.model.AccentId.TEAL -> Accent.TEAL
+    com.cooreo.sippy.model.AccentId.VIOLET -> Accent.VIOLET
+    com.cooreo.sippy.model.AccentId.CORAL -> Accent.CORAL
+}
+
+fun Accent.toId(): com.cooreo.sippy.model.AccentId = when (this) {
+    Accent.BLUE -> com.cooreo.sippy.model.AccentId.BLUE
+    Accent.TEAL -> com.cooreo.sippy.model.AccentId.TEAL
+    Accent.VIOLET -> com.cooreo.sippy.model.AccentId.VIOLET
+    Accent.CORAL -> com.cooreo.sippy.model.AccentId.CORAL
+}
+
 /** Sippy colour tokens (mirror of shared/tokens.md). */
 data class SippyColors(
     val isDark: Boolean,
