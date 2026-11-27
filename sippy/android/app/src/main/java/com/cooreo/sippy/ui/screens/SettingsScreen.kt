@@ -31,9 +31,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.cooreo.sippy.BuildConfig
 import com.cooreo.sippy.domain.drinks.DrinkTable
@@ -48,6 +50,7 @@ import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.state.SippyController
 import com.cooreo.sippy.ui.theme.Accent
 import com.cooreo.sippy.ui.theme.LocalSippyColors
+import com.cooreo.sippy.ui.theme.SippyType
 import com.cooreo.sippy.ui.theme.toId
 
 @Composable
@@ -98,12 +101,13 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
-            Text("Settings", color = c.text1, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Text("Settings", style = SippyType.title, color = c.text1)
         }
 
         item {
-            GlassCard {
+            SettingsCard {
                 SectionTitle("Theme")
+                Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ThemeMode.entries.forEach { mode ->
                         Box(Modifier.weight(1f)) {
@@ -116,25 +120,38 @@ fun SettingsScreen(
                         }
                     }
                 }
-                Spacer(Modifier.height(14.dp))
+            }
+        }
+
+        item {
+            SettingsCard {
                 SectionTitle("Accent")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Accent.entries.forEach { accent ->
-                        Box(Modifier.weight(1f)) {
-                            GlassChip(
-                                label = accent.label,
-                                selected = state.settings.accent == accent.toId(),
-                                onClick = { controller.setAccent(accent.toId()) },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
+                Spacer(Modifier.height(10.dp))
+                // Fixed 2-column grid: every cell is the same width, and the
+                // short labels fit one line at 360dp (A4).
+                Accent.entries.chunked(2).forEachIndexed { index, row ->
+                    if (index > 0) Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { accent ->
+                            Box(Modifier.weight(1f)) {
+                                GlassChip(
+                                    label = accent.short,
+                                    selected = state.settings.accent == accent.toId(),
+                                    onClick = { controller.setAccent(accent.toId()) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .semantics { contentDescription = accent.label },
+                                )
+                            }
                         }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
                 }
             }
         }
 
         item {
-            GlassCard {
+            SettingsCard {
                 SectionTitle("Daily goal")
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     GlassChip(
@@ -165,7 +182,7 @@ fun SettingsScreen(
         }
 
         item {
-            GlassCard {
+            SettingsCard {
                 SectionTitle("Your name")
                 Text(
                     text = "Only used for the Home greeting. Leave it empty to hide it.",
@@ -191,7 +208,7 @@ fun SettingsScreen(
         }
 
         item {
-            GlassCard(modifier = Modifier.bringIntoViewRequester(remindersRequester)) {
+            SettingsCard(modifier = Modifier.bringIntoViewRequester(remindersRequester)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         SectionTitle("Reminders")
@@ -224,7 +241,7 @@ fun SettingsScreen(
         }
 
         item {
-            GlassCard {
+            SettingsCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         SectionTitle("Reduce effects")
@@ -243,7 +260,7 @@ fun SettingsScreen(
         }
 
         item {
-            GlassCard {
+            SettingsCard {
                 SectionTitle("Updates")
                 Text(
                     text = "Sippy installs updates itself from GitHub Releases and checks the " +
@@ -265,7 +282,7 @@ fun SettingsScreen(
         }
 
         item {
-            GlassCard {
+            SettingsCard {
                 SectionTitle("About")
                 Text("Sippy ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                     color = c.text2,
@@ -320,14 +337,23 @@ fun SettingsScreen(
     }
 }
 
+/** One title style for every section, on the app's Inter scale. */
 @Composable
 private fun SectionTitle(text: String) {
     val c = LocalSippyColors.current
-    Text(
-        text = text,
-        color = c.text1,
-        fontSize = 15.sp,
-        fontWeight = FontWeight.SemiBold,
+    Text(text = text, style = SippyType.emphasis, color = c.text1)
+}
+
+/** Site glass, 16dp inside: the single card shape every Settings section uses. */
+@Composable
+private fun SettingsCard(
+    modifier: Modifier = Modifier,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
+    GlassCard(
+        modifier = modifier,
+        contentPadding = PaddingValues(16.dp),
+        content = content,
     )
 }
 

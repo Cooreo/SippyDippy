@@ -28,6 +28,12 @@ fun friendPainter(kind: FriendKind, mood: Mood): Painter {
         }
         FriendKind.PLANT -> if (cheerful) R.drawable.friend_plant_bloom else R.drawable.friend_plant_sprout
         FriendKind.CAT -> if (cheerful) R.drawable.friend_pet_adult else R.drawable.friend_pet_cub
+        // Round 7 friends: one pose each, so mood is carried by the scale and
+        // saturation already applied around them.
+        FriendKind.KOI -> R.drawable.friend_koi
+        FriendKind.OTTER -> R.drawable.friend_otter
+        FriendKind.TURTLE -> R.drawable.friend_turtle
+        FriendKind.AXOLOTL -> R.drawable.friend_axolotl
     }
     return painterResource(resource)
 }

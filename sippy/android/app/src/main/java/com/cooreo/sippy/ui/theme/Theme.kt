@@ -11,11 +11,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 /** Accent choices (Sippy Blue is the default; three more in Settings). */
-enum class Accent(val label: String, val seed: Color, val bright: Color) {
-    BLUE("Sippy Blue", Color(0xFF2E7CF6), Color(0xFF5B9BFF)),
-    TEAL("Lagoon", Color(0xFF12A594), Color(0xFF3FD6C1)),
-    VIOLET("Violet", Color(0xFF7C5CFF), Color(0xFFA78BFA)),
-    CORAL("Coral", Color(0xFFF26D6D), Color(0xFFFF9A8F)),
+enum class Accent(
+    val label: String,
+    /** Fits one chip in a fixed 2-column grid at 360dp without wrapping. */
+    val short: String,
+    val seed: Color,
+    val bright: Color,
+) {
+    BLUE("Sippy Blue", "Blue", Color(0xFF2E7CF6), Color(0xFF5B9BFF)),
+    TEAL("Lagoon", "Lagoon", Color(0xFF12A594), Color(0xFF3FD6C1)),
+    VIOLET("Violet", "Violet", Color(0xFF7C5CFF), Color(0xFFA78BFA)),
+    CORAL("Coral", "Coral", Color(0xFFF26D6D), Color(0xFFFF9A8F)),
 }
 
 /** Persisted accent id -> theme accent. */

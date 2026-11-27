@@ -12,6 +12,11 @@
 # commit and push to main. The pipeline creates the v<versionName> tag and the GitHub
 # Release itself; nobody tags by hand.
 #
+# A dry run is only for changing this pipeline itself. Every shipped change is a
+# real release: bump, merge, publish, and the site + the in-app updater follow.
+# Every manifest is archived under releases/history/, so .github/workflows/rollback.yml
+# can withdraw a bad release and point latest.json at the previous one in one click.
+#
 # Actions pinned to full commit SHAs (verified against the tags 2026-11-27):
 #   actions/checkout@v4                11d5960a326750d5838078e36cf38b85af677262
 #   actions/setup-java@v4              cf277c60eb25467037889841efdb72551f06f6c3
@@ -564,6 +569,16 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git clone --depth 1 --branch main "https://x-access-token:$GH_TOKEN@github.com/${{ github.repository }}.git" repo
           cd repo
+          # Keep every manifest ever published, so a rollback can restore an
+          # exact previous state instead of guessing (rollback.yml).
+          mkdir -p releases/history
+          if [ -f releases/latest.json ]; then
+            previous_name="$(python3 -c "import json;print(json.load(open('releases/latest.json')).get('versionName',''))")"
+            if [ -n "$previous_name" ] && [ ! -f "releases/history/$previous_name.json" ]; then
+              cp releases/latest.json "releases/history/$previous_name.json"
+              echo "archived the manifest being replaced: releases/history/$previous_name.json"
+            fi
+          fi
           python3 sippy/android/scripts/write_release_manifest.py \
             --dir . \
             --tag "$TAG" \
@@ -573,6 +588,7 @@ jobs:
             --size "${{ needs.build.outputs.size }}" \
             --apk "${{ needs.build.outputs.apk_name }}" \
             --cert-sha256 "${{ needs.build.outputs.cert_sha256 }}"
+          cp releases/latest.json "releases/history/${{ needs.check.outputs.version_name }}.json"
           git add releases
           git commit -m "release: $TAG [skip ci]"
           git pull --rebase origin main

@@ -6,6 +6,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -26,7 +27,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -42,6 +50,8 @@ import androidx.compose.ui.unit.dp
 import com.cooreo.sippy.domain.drinks.DrinkTable
 import com.cooreo.sippy.domain.friends.Mood
 import com.cooreo.sippy.domain.friends.MoodRules
+import com.cooreo.sippy.domain.friends.PinRules
+import com.cooreo.sippy.domain.layout.OrbLayout
 import com.cooreo.sippy.domain.water.VolumeRules
 import com.cooreo.sippy.domain.water.WaterMath
 import com.cooreo.sippy.model.Friend
@@ -89,6 +99,7 @@ fun HomeScreen(
     onOpenReminders: () -> Unit,
     onEditEntry: (LogEntry) -> Unit,
     onFriendTap: (Friend) -> Unit,
+    onSeeAll: () -> Unit,
 ) {
     val c = LocalSippyColors.current
     val fraction = ringOverride ?: WaterMath.goalFraction(hydratedMl, goalMl)
@@ -134,15 +145,47 @@ fun HomeScreen(
         }
 
         item(key = "orb") {
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                WaterOrb(
-                    hydratedMl = hydratedMl,
-                    goalMl = goalMl,
-                    fraction = fraction,
-                    animate = animate,
-                    diameter = 248.dp,
-                    modifier = Modifier.padding(vertical = 4.dp),
-                )
+            // Two pinned friends sit one on each side; with none pinned the orb
+            // stays centred and full size (B2).
+            val slots = PinRules.slots(state.friends)
+            val pinnedCount = slots.count { it != null }
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val diameter = OrbLayout.orbDiameter(maxWidth.value, pinnedCount).dp
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (pinnedCount > 0) {
+                        PinnedSlot(
+                            friend = slots[0],
+                            state = state,
+                            goalMetToday = goalMet,
+                            hasEntriesToday = todayEntries.isNotEmpty(),
+                            animate = animate,
+                            onTap = onFriendTap,
+                        )
+                    }
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        WaterOrb(
+                            hydratedMl = hydratedMl,
+                            goalMl = goalMl,
+                            fraction = fraction,
+                            animate = animate,
+                            diameter = diameter,
+                            modifier = Modifier.padding(vertical = 4.dp),
+                        )
+                    }
+                    if (pinnedCount > 0) {
+                        PinnedSlot(
+                            friend = slots[1],
+                            state = state,
+                            goalMetToday = goalMet,
+                            hasEntriesToday = todayEntries.isNotEmpty(),
+                            animate = animate,
+                            onTap = onFriendTap,
+                        )
+                    }
+                }
             }
         }
 
@@ -162,16 +205,17 @@ fun HomeScreen(
                 ) {
                     Text("Today", style = SippyType.emphasis, color = c.text1)
                     Spacer(Modifier.weight(1f))
-                    Text(
-                        text = "${todayEntries.size} " +
-                            if (todayEntries.size == 1) "drink" else "drinks",
-                        style = SippyType.caption,
-                        color = c.text3,
-                    )
+                    // Home keeps the three most recent; the dated log lives behind
+                    // "See all" (B1).
+                    GlassChip(label = "See all", onClick = onSeeAll)
                 }
             }
-            items(todayEntries, key = { it.id }) { entry ->
-                EntryCard(entry = entry, goalMl = goalMl, onClick = { onEditEntry(entry) })
+            items(todayEntries.take(3), key = { it.id }) { entry ->
+                // A freshly logged entry springs into place and pushes the rest
+                // down instead of appearing at once (Part C).
+                Box(Modifier.animateItem()) {
+                    EntryCard(entry = entry, goalMl = goalMl, onClick = { onEditEntry(entry) })
+                }
             }
         }
 
@@ -347,6 +391,72 @@ private fun QuickAddBar(onQuickAdd: (Int) -> Unit, onCustomAdd: () -> Unit) {
             text = "Quick adds log water.",
             style = SippyType.caption,
             color = c.text3,
+        )
+    }
+}
+
+/**
+ * One slot beside the orb: the friend bobs by translation only (never layout),
+ * and a tap reports its current mood line.
+ */
+@Composable
+private fun PinnedSlot(
+    friend: Friend?,
+    state: StoredState,
+    goalMetToday: Boolean,
+    hasEntriesToday: Boolean,
+    animate: Boolean,
+    onTap: (Friend) -> Unit,
+) {
+    val c = LocalSippyColors.current
+    val width = OrbLayout.SLOT_DP.dp
+    if (friend == null) {
+        Spacer(Modifier.width(width))
+        return
+    }
+    val phase = if (animate) {
+        rememberInfiniteTransition(label = "friendBob").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "friendBobPhase",
+        ).value
+    } else {
+        0f
+    }
+    val mood = moodFor(friend, state, goalMetToday, hasEntriesToday)
+
+    Column(
+        modifier = Modifier
+            .width(width)
+            .defaultMinSize(minHeight = Dimens.touch)
+            .clip(RoundedCornerShape(Dimens.inner))
+            .clickable(role = Role.Button) { onTap(friend) }
+            .semantics {
+                contentDescription = "${friend.name} is pinned; ${mood.name.lowercase()}"
+            }
+            .padding(vertical = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        FriendImage(
+            kind = friend.kind,
+            mood = mood,
+            growthStreak = friend.grownAtStreak,
+            size = 48,
+            animate = animate,
+            modifier = Modifier
+                .size(48.dp)
+                .graphicsLayer { translationY = phase * 4.dp.toPx() },
+        )
+        Text(
+            text = friend.name,
+            style = SippyType.caption,
+            color = c.text2,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

@@ -853,3 +853,293 @@ said 1.0.0. So the fix is the normal ship ritual, not a site edit.
   still describe the code being released.
 - **Not yet published:** the release exists only after the PR is merged. Until
   then both the site and the APK honestly say 1.0.0.
+
+## v1.1.0 PUBLISHED — onboarding + rebuilt Home (2026-11-27)
+
+Merging PR #20 (`aea28ed`) made the pipeline publish by itself. No tag, no release
+and no manifest were written by hand.
+
+- Run `46051538310` (**Android release**, push to `main`): *Check for a new
+  version* · *Build signed APK* · *Publish release* = success; *Emulator smoke
+  test (advisory)* = failure, which is expected — it has never passed on a hosted
+  runner.
+- GitHub Release **`v1.1.0`** — `sippy-1.1.0.apk`, 10,096,505 B, SHA-256
+  `b9c17bcac2cda51e5f46474e6568f6bb54f47a978f8bfb70d9abbe93bba400b7`. GitHub's
+  own digest for that asset reports the same SHA-256, the manifest carries the
+  same numbers, and the certificate pin is unchanged (`da0673…1900`), so an
+  installed 1.0.0 verifies and installs the update through the in-app updater.
+- `releases/latest.json` on `main` (commit `465fee6`, `[skip ci]`) is
+  `versionCode 2 / versionName "1.1.0"`, minSdk 26.
+- **Why the site still said 1.0.0 for a few minutes after the merge:** the merge
+  itself triggers a site deploy, and that deploy (`46051538110`) ran with the old
+  1.0.0 manifest because the APK had not been built yet. The release job then
+  dispatched a second deploy (`46052489505`, finished 18:51:57), and
+  `https://cooreo.github.io/SippyDippy/releases/latest.json` now serves 1.1.0.
+  The download card renders straight from that file, so it reads
+  "v1.1.0 · 9.6 MB" with `sippy-1.1.0.apk`. Nothing needs to be re-deployed by
+  hand; a browser that cached the old JSON needs one hard refresh.
+- Same-day follow-up for the next release: the merge-time deploy always shows the
+  previous version until the release finishes (~8 min) and re-deploys. That is the
+  designed behaviour, not a failure.
+
+---
+
+# ROUND 7 — bugs, features, feel
+
+## A1 — status bar, insets and the bar behind Settings: root cause (written before code)
+
+**Symptom.** The clock sits on top of "Drinks"/"Friends"/"Settings" and the Home
+date and streak chips, and the last Settings rows disappear behind the floating
+pill.
+
+**Root cause.** Two halves, both structural:
+
+1. `MainActivity` calls `enableEdgeToEdge()`, which *draws* behind the system bars
+   but does not *hide* them. Nothing in the Compose tree consumed
+   `WindowInsets`: every screen padded itself with a fixed `top = 16.dp`
+   (Home) or `28.dp` (Drinks, Friends, Settings), so the first row of every
+   screen starts inside the status bar's box. The bars were also never hidden,
+   so the overlap was permanent rather than transient.
+2. The bottom was half-done: `FloatingNav` applied `navigationBarsPadding()` for
+   the *system* bar, and screens reserved `104.dp + inset` for the pill — but the
+   Settings list is the one screen whose content ends exactly at that boundary
+   (its last row is a full-height card), and sheets sat at the raw bottom edge
+   with no inset at all. A 12 dp clearance is not a clearance when the last row
+   is a card with a shadow.
+
+**Fix.** Hide both bars in an immersive-sticky configuration (swipe from an edge
+brings them back transiently), pad the content frame by
+`WindowInsets.statusBarsIgnoringVisibility` so the first row clears the clock
+whether the bars are shown **or** hidden, pad bottom sheets by the navigation
+inset, and give Settings `pill height + navigation inset + 24.dp` of bottom
+padding so its last card scrolls clear.
+
+## A2 — glass and motion are missing on Android 15: diagnosis (written before code)
+
+**Symptom.** Flat dark cards: no refraction, no lens, no motion. Device is
+Android 15 (API 35).
+
+**What the code actually did.** `SippyRoot` computed
+
+```kotlin
+val reduce = state.settings.reduceEffects || animationsDisabled(context)
+val tier = remember(reduce) { GlassTier.forSdk(reduceEffects = reduce) }
+```
+
+`animationsDisabled()` reads the system **animator duration scale**. So one
+value — "Remove animations" (accessibility toggle, or the developer animator
+scale set to 0, both common on real phones) — did three things at once:
+
+1. forced the glass tier to **FROST** (`forSdk(reduceEffects = true)`), which is
+   tint + rim only, no blur, no lens → "flat dark cards";
+2. set `animate = false` everywhere → no orb waves, no springs, no transitions
+   → "no motion";
+3. did it silently: nothing in the UI said why, so it looked like the lens
+   simply did not work on Android 15.
+
+That is a design bug, not a device limitation: API 35 supports both RenderEffect
+(31+) and AGSL runtime shaders (33+), so a 15 device must get **LENS** whenever
+the app's own *Reduce effects* switch is off. The system "remove animations"
+setting is a motion preference; it must not downgrade the glass.
+
+**Second, independent cause of "flat".** Even at LENS the backdrop had almost
+nothing to refract: `AmbientBackground` was a smooth vertical gradient plus three
+soft radial pools. A blur or a lens over a low-frequency image is
+indistinguishable from a flat fill, so the surfaces read flat even when the
+effects ran. The site's backdrop carries caustics, droplets and light shafts for
+exactly this reason.
+
+**Fix.** (a) Split the two decisions: tier from the app's Reduce effects switch
+(and real capability), motion from either setting; (b) add a diagnostics row to
+Developer options that states the active tier, API level, both settings, low-RAM,
+RenderEffect support, runtime-shader support and whether the backdrop layer
+initialised; (c) give the backdrop the site's detail (caustics, droplets, a light
+shaft) so refraction is visible, and draw a real rim on every glass surface.
+
+### A1 — correction after the first CI run
+
+The first A1 push (`a52d108`) failed to compile (runs `46054103475`, `46054329635`,
+`46054581376`) and the sandbox cannot read Actions logs (they redirect to Azure
+blob storage, which is outside its allowlist). Bisected by swapping one API at a
+time: the failing construct was the content frame using
+`WindowInsets.statusBarsIgnoringVisibility` + `Modifier.windowInsetsPadding(...)`.
+CI went green (`46054834205`) with `Modifier.statusBarsPadding()` (`8ce9277`).
+
+Consequence, stated plainly: with the bars hidden, `statusBarsPadding()` is 0 —
+which is correct for an immersive screen (there is no clock to collide with).
+When a swipe brings the transient bars up, they are overlays by design and do not
+re-dispatch insets, so the top row keeps its position under a translucent bar for
+the duration of the swipe. Everything else in A1 (immersive hide, navigation
+insets on the sheets, Settings clearance, the floating pill) is unaffected.
+
+## B3 — four new friends, and cosmetic art (round 7)
+
+**Design decision: cosmetics are worn as a badge, not warped onto the mascot.**
+The friend art and the item art were generated separately, so an item cannot be
+mapped onto a mascot's silhouette without hand-tuned anchors per pose — and a
+3072 px AI cut-out is not a skeleton. Every friend therefore shows at most one
+equipped cosmetic as a small glass badge in its corner, drawn from the same
+256 px art the shop uses. It reads at 48 dp (the pinned slot) and at 88 dp (the
+Friends list), it never clips, and it keeps working when a friend's mood art
+changes. Warping onto the body is possible later, but only with hand-drawn
+anchors, which is an art task, not a code task.
+
+**Scale rules:** Dippy is the default and is always present; the player may hold
+five friends at once (`Friend.MAX_FRIENDS`), so Dippy plus any four of the six
+optional kinds. `FriendKind` grew from three to seven values (`KOI`, `OTTER`,
+`TURTLE`, `AXOLOTL`), each with a `short` label for the Add-a-friend chips, a
+default name (`Koi`, `Pebble`, `Shelly`, `Axy`) that passes `FriendNameRules`,
+and art in `res/drawable`. `FriendKindTest` pins the counts, the distinct
+labels, the distinct-and-valid default names and the five-friend cap.
+
+Adding friends is now a grid of every kind the player does not own, two per row,
+instead of two hard-coded chips — with seven kinds the old row could not hold
+them. Same copy, same glass chips.
+
+**Art list, sizes and rejections:** `sippy/android/ART_CREDITS.md` — nine shipped
+files (four friends, four hats, one scarf), three rejected attempts and the
+pipeline (magenta field → border-seeded chroma key → de-fringe → WebP 88).
+Largest file 35 KB; friends 512 px, items 256 px.
+
+## B4 — points, ledger and the shop (round 7)
+
+**Design decision: points are earned per entry, with the remainder carried, and
+every change is a ledger line.** `PointsRules.credit(balance, carry, countedMl)`
+is pure: 250 counted ml is one point, the remainder stays in `pointsCarryMl`, so
+200 + 100 ml earns a point and leaves 50 ml toward the next. `debit()` clamps at
+zero, and `append()` keeps the newest 500 lines. `LogEntry.pointsEarned` records
+what each entry earned, so deleting or undoing it takes back exactly that much —
+clamped, so the balance still never goes negative, and the ledger records the
+real delta (`+2`, `−2`) with the balance after it, so history and balance cannot
+disagree. Correcting a volume with the edit sheet does **not** claw points back:
+a downward edit is a small gift, an upward edit earns nothing, and neither can
+be farmed (delete reverses the credit). There is no real money and no ads in the
+app; points come from hydration only.
+
+**Proposed price table** (product decision, marked proposed — 1 point per 250 ml
+means a 2 L day is 8 points, so a hat is roughly four good days):
+
+| Item | Friend | Slot | Proposed price |
+| --- | --- | --- | --- |
+| Sailor hat | Koi | hat | 30 points |
+| Kelp scarf | Koi | outfit | 45 points |
+| Diving helmet | Otter | hat | 30 points |
+| Shell sun hat | Turtle | hat | 35 points |
+| Party crown | Axolotl | hat | 30 points |
+
+Only items whose art exists are listed, so the shop can never point at a missing
+drawable. Three planned outfits (otter, turtle, axolotl) were cut off by the
+image tool's per-turn cap; they will be added to the table when their art lands.
+
+**Ownership rules:** `ownedItems` is a set of item ids and `equipped` maps
+friendId → item id, so a friend leaving the list cannot delete what was bought,
+and each friend wears at most one cosmetic. `ShopRules.canEquip` also refuses a
+hat worn by the wrong kind. Tests: `PointsRulesTest` (earning per 250 ml, carry,
+never negative, ledger cap, distance to the next point) and `ShopRulesTest`
+(purchase deducts, short balance refused, double buy refused, unknown item,
+equip only owned and only of the right kind, one per friend, owned survives
+friend removal, table integrity).
+
+**Shop UI:** a full-screen state inside the Friends tab (the "Shop" chip in the
+Friends header), so the four-tab navigation is unchanged. It shows the balance
+and the carry, groups the items by friend with a 44 dp preview and a proposed
+price, and lists the last six ledger lines. A friend wears its cosmetic as a
+32 dp badge on its corner in the Friends list — see the B3 note for why items
+are badged rather than fitted onto the body.
+
+## Part C — motion (round 7)
+
+**Design decision: one switch, transform only.** The shell already computes
+`animate = !(reduceEffects || systemAnimatorScale == 0)`; a `LocalMotionAllowed`
+CompositionLocal now carries that answer to the glass controls, and every new
+animation asks `motionAllowed()` (or takes `animate`) instead of guessing. When
+it is off, each one is not merely fast — it is absent: `EnterTransition.None` for
+the tab change, `snap()` for the lens and the counter, and a constant 1f scale for
+a press. Nothing animates a size or a position that would trigger layout; every
+effect is `graphicsLayer` scale/translation or alpha, so the FROST tier costs the
+same as LENS.
+
+- **Tab change:** `AnimatedContent` with a shared-axis slide (incoming screen
+  from 1/6 of the width on the side it came from, outgoing 1/5 the other way,
+  both on one spring at damping 0.86 / stiffness 320) plus a short cross-fade.
+  The offset is scaled by `full`, so a narrow phone moves less in pixels.
+- **Liquid lens on the active tab:** inside each nav item, a radial-gradient
+  droplet with a white rim. It springs in at damping 0.5 (overshoot), squashing
+  narrower and flatter on the way in (`scaleX` 0.84→1, `scaleY` 0.68→1), and
+  shrinks away when the tab is left. The old flat 16% tint is gone, so the bar
+  reads as one glass sheet with a lens under the active glyph.
+- **New log entry:** the Home list and the History rows use
+  `Modifier.animateItem()`, so a freshly logged sip springs into place and pushes
+  the rest down instead of appearing at once.
+- **Ring:** already spring-driven (`spring(dampingRatio = 0.76f, StiffnessLow)`
+  in `WaterOrb`), so no change was needed; the level, the meniscus and the goal
+  flare all follow the same value.
+- **Glass controls:** 0.97 press scale on `GlassButton` and `GlassChip` through
+  the click's `MutableInteractionSource`, spring at stiffness 700, so it is a
+  tick rather than a bounce.
+- **Points count up:** the shop balance runs through `animateIntAsState` with a
+  spring, so the number rolls to the new total instead of jumping.
+
+## What CI caught this round, and what it means
+
+The hosted runners never hand us the Gradle log (the log URL redirects to a blob
+host the agent cannot reach), so every red run was diagnosed from the job and
+step names plus the code. That was enough because the pattern was consistent:
+`Assemble debug APK` green while `JVM unit tests` red means "the app compiles,
+a test does not agree with it", and the release dry run failed at its own
+`Unit tests` step before it ever reached `assembleRelease`.
+
+Three real bugs, all in the *tests*, none in the app:
+
+1. **B1** `homeSeesOnlyTheNewestThreeOfToday` built its fixture with two extra
+   day-101 entries (07:00 and 13:00) that legitimately outranked t1–t5
+   (01:00–05:00), so `newestOfDay` returned `d, c, t5`. The test now feeds only
+   other-day entries alongside today's five, plus a case that yesterday never
+   appears in today's window.
+2. **B4** `theBalanceNeverGoesNegative` expected `debit(3, -100)` to be 0; a
+   negative amount debits nothing, so it is 3. `millilitresToNextPoint(250)`
+   clamps a stale carry to 249 first, so the answer is 1, not 250.
+3. **B4** `aFriendLeavingKeepsTheItemOwnedAndItsSiblingsEquipped` asserted the
+   otter's hat was reported while leaving `otter_hat` out of `ownedItems`, so
+   `wornBy` correctly said "nothing". The shop was right; the set now includes
+   it, and a new `aWornItemThatIsNoLongerOwnedIsNotShown` pins that rule.
+
+Because two of those were in the same commit as the feature, one commit
+(`662e22b`) temporarily removed `ShopRulesTest` to prove which file was at
+fault, and the next commit restored it fixed. The final tree is green at
+`b3a8b59` (both the push run and the pull-request run).
+
+## Rule change: publish every part automatically, revert with one click (owner decision)
+
+Round 7 ran under "dry run only, release files untouched", and that produced the
+one outcome that actually hurt: six parts of green work sat on a branch that
+nothing could install. The app's updater, the site and the GitHub releases page
+all still said 1.1.0 — correctly, because a branch cannot publish (the release
+job's guard skips publish off `main`) and nobody bumped the version.
+
+**The new rule, from now on:**
+
+- **Every part ships when it lands.** Bump `sippy/android/version.properties`,
+  merge to `main`, and `release.yml` builds, signs, publishes, rewrites
+  `releases/latest.json` and redeploys the site on its own. A dry run is now only
+  for validating a change *to the pipeline itself*, never for code.
+- **Any release can be undone in one click.** Actions → *"Roll back a release"*
+  (`.github/workflows/rollback.yml`). It copies the newest published manifest that
+  is strictly older than the withdrawn tag over `releases/latest.json` on `main`,
+  deletes the GitHub Release and its tag, and asks for a site deploy. It refuses
+  to guess: an unknown tag, or a tag with nothing older behind it, aborts before
+  anything is touched (verified against the real manifests: withdraw 1.2.0 →
+  restore 1.1.0; withdraw 1.1.0 → restore 1.0.0; oldest and unknown both refuse).
+- **What a rollback cannot do** is downgrade a phone that already installed the
+  bad build — Android has no downgrade path. A rollback stops the spread (site,
+  in-app update offer, download links); the next release fixes it forward. That
+  limit is written on the workflow itself, not just here.
+
+To make the restore exact rather than a best guess, the publish job now archives
+every manifest it ships as `releases/history/<versionName>.json` (1.1.0 was seeded
+by hand). The repo already kept `releases/v1.0.0.json` and `releases/v1.1.0.json`,
+so the rollback can also reach back before this change.
+
+**What this means for round 7:** the work is no longer "done but unreleased". It
+is 1.2.0, published by the pipeline, with the new rollback available before the
+first automatic ship — so there is something to revert to if 1.2.0 misbehaves.

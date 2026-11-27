@@ -22,6 +22,9 @@ import com.cooreo.sippy.domain.friends.Mood
 import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.ui.glass.GlassButton
 import com.cooreo.sippy.ui.glass.GlassCard
+import com.cooreo.sippy.ui.glass.GlassDiagnostics
+import com.cooreo.sippy.ui.glass.LocalBackdrop
+import com.cooreo.sippy.ui.glass.LocalGlassTier
 import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.state.SippyController
 import com.cooreo.sippy.ui.theme.LocalSippyColors
@@ -35,8 +38,13 @@ fun DeveloperScreen(
     state: StoredState,
     controller: SippyController,
     onClose: () -> Unit,
+    diagnostics: GlassDiagnostics,
 ) {
     val c = LocalSippyColors.current
+    // The tier supplied at the root plus the live presence of the backdrop
+    // layer: together they answer "why does it look flat?" (A2).
+    val activeTier = LocalGlassTier.current
+    val backdropReady = LocalBackdrop.current != null
     Box(
         Modifier
             .fillMaxSize()
@@ -54,6 +62,22 @@ fun DeveloperScreen(
                     GlassChip(label = "Close", onClick = onClose)
                 }
             }
+            item {
+                GlassCard {
+                    Text("Glass", color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(6.dp))
+                    DevRow("Active tier", activeTier.name + " \u2014 " + diagnostics.tierReason)
+                    DevRow("Motion", if (diagnostics.motionInstant) "instant \u2014 " + diagnostics.motionReason else "animated")
+                    DevRow("API level", diagnostics.apiLevel.toString())
+                    DevRow("Reduce effects (app)", if (diagnostics.reduceEffects) "on" else "off")
+                    DevRow("System animations", if (diagnostics.systemAnimationsOff) "off" else "on")
+                    DevRow("Low-RAM device", if (diagnostics.lowRamDevice) "yes" else "no")
+                    DevRow("RenderEffect (31+)", if (diagnostics.renderEffectSupported) "supported" else "missing")
+                    DevRow("Runtime shaders (33+)", if (diagnostics.runtimeShaderSupported) "supported" else "missing")
+                    DevRow("Backdrop layer", if (backdropReady) "initialised" else "NOT initialised")
+                }
+            }
+
             item {
                 GlassCard {
                     Text("Friend moods", color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
@@ -137,5 +161,15 @@ fun DeveloperScreen(
                 }
             }
         }
+    }
+}
+
+/** One label/value line in the developer cards. */
+@Composable
+private fun DevRow(label: String, value: String) {
+    val c = LocalSippyColors.current
+    Row(Modifier.fillMaxWidth()) {
+        Text(label, color = c.text2, fontSize = 12.sp, modifier = Modifier.weight(1f))
+        Text(value, color = c.text1, fontSize = 12.sp)
     }
 }

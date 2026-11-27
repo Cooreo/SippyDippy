@@ -1,8 +1,17 @@
 package com.cooreo.sippy.ui
 
 import android.content.Context
+import android.os.Build
 import android.provider.Settings as AndroidSettings
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -18,6 +27,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
@@ -37,6 +48,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -51,16 +63,21 @@ import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.model.ThemeMode
 import com.cooreo.sippy.ui.components.Celebration
 import com.cooreo.sippy.ui.components.FloatingNav
+import com.cooreo.sippy.ui.system.LocalMotionAllowed
+import com.cooreo.sippy.ui.components.NavBarHeight
 import com.cooreo.sippy.ui.components.NavTarget
-import com.cooreo.sippy.ui.glass.GlassTier
+import com.cooreo.sippy.ui.glass.GlassCapabilities
+import com.cooreo.sippy.ui.glass.GlassDiagnostics
 import com.cooreo.sippy.ui.glass.LocalGlassTier
 import com.cooreo.sippy.ui.glass.SippyBackdropHost
 import com.cooreo.sippy.ui.screens.DeveloperScreen
 import com.cooreo.sippy.ui.screens.DrinksScreen
 import com.cooreo.sippy.ui.screens.FriendsScreen
+import com.cooreo.sippy.ui.screens.HistoryScreen
 import com.cooreo.sippy.ui.screens.HomeScreen
 import com.cooreo.sippy.ui.screens.OnboardingScreen
 import com.cooreo.sippy.ui.screens.SettingsScreen
+import com.cooreo.sippy.ui.screens.ShopScreen
 import com.cooreo.sippy.ui.screens.moodFor
 import com.cooreo.sippy.ui.screens.moodLine
 import com.cooreo.sippy.ui.sheets.AddDrinkSheet
@@ -122,19 +139,57 @@ fun SippyRoot(graph: AppGraph) {
     val accent = accentFor(state.settings.accent)
 
     SippyTheme(dark = dark, accent = accent) {
-        val reduce = state.settings.reduceEffects || animationsDisabled(context)
-        val tier = remember(reduce) { GlassTier.forSdk(reduceEffects = reduce) }
-        CompositionLocalProvider(LocalGlassTier provides tier) {
+        // A2: glass and motion are separate decisions. Only the app's own
+        // "Reduce effects" switch may turn the glass off; the system
+        // "remove animations" setting only makes animations instant.
+        val reduceEffects = state.settings.reduceEffects
+        val systemMotionOff = animationsDisabled(context)
+        val animate = !(reduceEffects || systemMotionOff)
+        val apiLevel = Build.VERSION.SDK_INT
+        val lowRam = remember(context) {
+            val manager = context.getSystemService(android.app.ActivityManager::class.java)
+            manager?.isLowRamDevice ?: false
+        }
+        val diagnostics = remember(apiLevel, reduceEffects, systemMotionOff, lowRam) {
+            GlassDiagnostics(
+                apiLevel = apiLevel,
+                reduceEffects = reduceEffects,
+                systemAnimationsOff = systemMotionOff,
+                lowRamDevice = lowRam,
+                renderEffectSupported = GlassCapabilities.renderEffectSupported(apiLevel),
+                runtimeShaderSupported = GlassCapabilities.runtimeShaderSupported(apiLevel),
+                backdropInitialised = true,
+            )
+        }
+        CompositionLocalProvider(LocalGlassTier provides diagnostics.tier) {
             SippyBackdropHost {
-                when {
-                    !ready -> Splash()
-                    // First run (or a kill mid-flow): onboarding owns the screen.
-                    !state.settings.onboardingComplete -> OnboardingScreen(
-                        state = state,
-                        controller = controller,
-                        animate = !reduce,
-                    )
-                    else -> AppScaffold(state, controller, animate = !reduce)
+                // The backdrop stays full-bleed; the content is padded by the
+                // stable status-bar inset so the first row clears the clock even
+                // while the bars are hidden (A1).
+                Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                    when {
+                        !ready -> Splash()
+                        // First run (or a kill mid-flow): onboarding owns the screen.
+                        !state.settings.onboardingComplete -> Box(
+                            Modifier
+                                .fillMaxSize()
+                                .navigationBarsPadding(),
+                        ) {
+                            OnboardingScreen(
+                                state = state,
+                                controller = controller,
+                                animate = animate,
+                            )
+                        }
+                        else -> CompositionLocalProvider(LocalMotionAllowed provides animate) {
+                            AppScaffold(
+                                state = state,
+                                controller = controller,
+                                animate = animate,
+                                diagnostics = diagnostics,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -146,6 +201,7 @@ private fun AppScaffold(
     state: StoredState,
     controller: SippyController,
     animate: Boolean,
+    diagnostics: GlassDiagnostics,
 ) {
     var tab by remember { mutableStateOf(Tab.HOME) }
     var showDeveloper by remember { mutableStateOf(false) }
@@ -155,6 +211,8 @@ private fun AppScaffold(
     var celebrationAt by remember { mutableStateOf(0L) }
     var toast by remember { mutableStateOf<ToastMessage?>(null) }
     var remindersPrompt by remember { mutableIntStateOf(0) }
+    var showHistory by remember { mutableStateOf(false) }
+    var showShop by remember { mutableStateOf(false) }
 
     val today = Dates.todayEpochDay()
     val todayEntries = remember(state.log, today) {
@@ -166,9 +224,12 @@ private fun AppScaffold(
     // Quick adds are water; the Log sheet is there for everything else.
     val water = remember { DrinkTable.byId("water") }
 
-    // The floating bar plus the gesture inset, so nothing hides behind it.
+    // The floating pill plus the gesture inset, so nothing hides behind it.
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val navSpace = 104.dp + navInset
+    val navSpace = NavBarHeight + navInset + 12.dp
+    // Settings ends on a full-height card, so it gets the pill + inset + a
+    // margin of its own (A1) instead of the shared clearance.
+    val settingsBottom = navSpace + 24.dp
 
     LaunchedEffect(Unit) {
         controller.events.collect { event ->
@@ -199,13 +260,36 @@ private fun AppScaffold(
     LaunchedEffect(Unit) { controller.checkForUpdate(manual = false) }
 
     Box(Modifier.fillMaxSize()) {
-        Crossfade(
+        // Shared-axis tab change: both screens move along one horizontal axis,
+        // the incoming one springing in from the side it came from. Instant
+        // (no transition at all) when motion is off.
+        AnimatedContent(
             targetState = tab,
-            animationSpec = tween(if (animate) 220 else 0),
-            label = "tab",
+            transitionSpec = {
+                if (!animate) {
+                    EnterTransition.None togetherWith ExitTransition.None
+                } else {
+                    val forward = targetState.ordinal >= initialState.ordinal
+                    val springSpec = spring<IntOffset>(dampingRatio = 0.86f, stiffness = 320f)
+                    val enter = slideInHorizontally(animationSpec = springSpec) { full ->
+                        if (forward) full / 6 else -full / 6
+                    } + fadeIn(tween(180))
+                    val exit = slideOutHorizontally(animationSpec = springSpec) { full ->
+                        if (forward) -full / 5 else full / 5
+                    } + fadeOut(tween(140))
+                    enter togetherWith exit
+                }
+            },
+            label = "tabs",
         ) { current ->
             when (current) {
-                Tab.HOME -> HomeScreen(
+                Tab.HOME -> if (showHistory) {
+                    HistoryScreen(
+                        state = state,
+                        bottomPadding = navSpace,
+                        onBack = { showHistory = false },
+                    )
+                } else HomeScreen(
                     state = state,
                     todayEntries = todayEntries,
                     hydratedMl = hydrated,
@@ -222,24 +306,38 @@ private fun AppScaffold(
                     },
                     onEditEntry = { editing = it },
                     onFriendTap = { friend -> toast = moodToast(friend, state, goalMet, todayEntries) },
+                    onSeeAll = { showHistory = true },
                 )
                 Tab.DRINKS -> DrinksScreen(
                     bottomPadding = navSpace,
                     onLog = { drink -> controller.addDrink(drink, drink.defaultVolumeMl) },
                 )
-                Tab.FRIENDS -> FriendsScreen(
-                    state = state,
-                    controller = controller,
-                    hydratedMl = hydrated,
-                    goalMl = goal,
-                    animate = animate,
-                    bottomPadding = navSpace,
-                )
+                Tab.FRIENDS -> if (showShop) {
+                    ShopScreen(
+                        state = state,
+                        onBuy = { id -> controller.buyItem(id) },
+                        onEquip = { friendId, itemId -> controller.equipItem(friendId, itemId) },
+                        onBack = { showShop = false },
+                        bottomPadding = navSpace,
+                        animate = animate,
+                    )
+                } else {
+                    FriendsScreen(
+                        state = state,
+                        controller = controller,
+                        hydratedMl = hydrated,
+                        goalMl = goal,
+                        animate = animate,
+                        onTogglePin = { id -> controller.togglePin(id) },
+                        onOpenShop = { showShop = true },
+                        bottomPadding = navSpace,
+                    )
+                }
                 Tab.SETTINGS -> SettingsScreen(
                     state = state,
                     controller = controller,
                     onOpenDeveloper = { showDeveloper = true },
-                    bottomPadding = navSpace,
+                    bottomPadding = settingsBottom,
                     remindersPrompt = remindersPrompt,
                 )
             }
@@ -253,9 +351,14 @@ private fun AppScaffold(
 
         FloatingNav(
             current = tab.navTarget,
-            onSelect = { tab = it.toTab() },
+            onSelect = {
+                tab = it.toTab()
+                showHistory = false
+                showShop = false
+            },
             onLog = { showAddDrink = true },
             modifier = Modifier.align(Alignment.BottomCenter),
+            animate = animate,
         )
 
         toast?.let { message ->
@@ -324,6 +427,7 @@ private fun AppScaffold(
             state = state,
             controller = controller,
             onClose = { showDeveloper = false },
+            diagnostics = diagnostics,
         )
     }
 }

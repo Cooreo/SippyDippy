@@ -1,5 +1,6 @@
 package com.cooreo.sippy.ui.screens
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,15 +23,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cooreo.sippy.domain.friends.Mood
 import com.cooreo.sippy.domain.friends.MoodRules
+import com.cooreo.sippy.domain.shop.ShopItem
+import com.cooreo.sippy.domain.shop.ShopRules
 import com.cooreo.sippy.model.Friend
 import com.cooreo.sippy.model.FriendKind
 import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.ui.components.FriendImage
+import com.cooreo.sippy.ui.components.ItemBadge
 import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.state.SippyController
@@ -43,6 +48,8 @@ fun FriendsScreen(
     hydratedMl: Int,
     goalMl: Int,
     animate: Boolean,
+    onTogglePin: (String) -> Unit,
+    onOpenShop: () -> Unit = {},
     bottomPadding: androidx.compose.ui.unit.Dp = 24.dp,
 ) {
     val c = LocalSippyColors.current
@@ -56,13 +63,16 @@ fun FriendsScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
-            Column {
-                Text("Friends", color = c.text1, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    text = "Dippy and up to four friends. They grow with your streak.",
-                    color = c.text2,
-                    fontSize = 13.sp,
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Friends", color = c.text1, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = "Dippy and up to four friends. They grow with your streak.",
+                        color = c.text2,
+                        fontSize = 13.sp,
+                    )
+                }
+                GlassChip(label = "Shop", onClick = onOpenShop)
             }
         }
         items(state.friends, key = { it.id }) { friend ->
@@ -75,6 +85,8 @@ fun FriendsScreen(
             )
             FriendCard(
                 friend = friend,
+                onTogglePin = { onTogglePin(friend.id) },
+                worn = ShopRules.wornBy(state.equipped, state.ownedItems, friend.id),
                 mood = mood,
                 animate = animate,
                 isRenaming = renaming == friend.id,
@@ -104,23 +116,24 @@ fun FriendsScreen(
                     fontSize = 12.sp,
                 )
                 Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val hasPlant = state.friends.any { it.kind == FriendKind.PLANT }
-                    val hasCat = state.friends.any { it.kind == FriendKind.CAT }
-                    Box(Modifier.weight(1f)) {
-                        GlassChip(
-                            label = if (hasPlant) "Plant ✓" else "Plant",
-                            onClick = { controller.addFriend(FriendKind.PLANT) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                // Every kind the player does not own yet, two per row.
+                val missing = FriendKind.entries.filter { kind ->
+                    kind != FriendKind.DIPPY && state.friends.none { it.kind == kind }
+                }
+                missing.chunked(2).forEach { pair ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pair.forEach { kind ->
+                            Box(Modifier.weight(1f)) {
+                                GlassChip(
+                                    label = kind.short,
+                                    onClick = { controller.addFriend(kind) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                        if (pair.size == 1) Box(Modifier.weight(1f)) {}
                     }
-                    Box(Modifier.weight(1f)) {
-                        GlassChip(
-                            label = if (hasCat) "Cat ✓" else "Cat",
-                            onClick = { controller.addFriend(FriendKind.CAT) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
+                    Spacer(Modifier.height(8.dp))
                 }
             }
         }
@@ -130,6 +143,8 @@ fun FriendsScreen(
 @Composable
 private fun FriendCard(
     friend: Friend,
+    onTogglePin: () -> Unit,
+    worn: ShopItem?,
     mood: Mood,
     animate: Boolean,
     isRenaming: Boolean,
@@ -141,14 +156,27 @@ private fun FriendCard(
     val c = LocalSippyColors.current
     GlassCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            FriendImage(
-                kind = friend.kind,
-                mood = mood,
-                growthStreak = friend.grownAtStreak,
-                size = 88,
-                animate = animate,
-                modifier = Modifier.size(88.dp),
-            )
+            // Long-press the friend to pin or unpin it; the Pin chip below is
+            // the same action with a TalkBack label (B2).
+            Box(
+                modifier = Modifier
+                    .size(88.dp)
+                    .pointerInput(friend.id, friend.pinned) {
+                        detectTapGestures(onLongPress = { onTogglePin() })
+                    },
+            ) {
+                FriendImage(
+                    kind = friend.kind,
+                    mood = mood,
+                    growthStreak = friend.grownAtStreak,
+                    size = 88,
+                    animate = animate,
+                    modifier = Modifier.size(88.dp),
+                )
+                if (worn != null) {
+                    ItemBadge(item = worn, modifier = Modifier.align(Alignment.BottomEnd), size = 32.dp)
+                }
+            }
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
                 if (isRenaming) {
                     OutlinedTextField(
@@ -168,7 +196,23 @@ private fun FriendCard(
                         fontSize = 12.sp,
                     )
                     Spacer(Modifier.height(6.dp))
-                    GlassChip(label = "Rename", onClick = onStartRename, modifier = Modifier.fillMaxWidth())
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(Modifier.weight(1f)) {
+                            GlassChip(
+                                label = "Rename",
+                                onClick = onStartRename,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        Box(Modifier.weight(1f)) {
+                            GlassChip(
+                                label = if (friend.pinned) "Unpin" else "Pin",
+                                selected = friend.pinned,
+                                onClick = onTogglePin,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
                 }
             }
         }

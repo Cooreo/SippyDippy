@@ -9,6 +9,10 @@ import com.cooreo.sippy.domain.drinks.Drink
 import com.cooreo.sippy.domain.drinks.DrinkTable
 import com.cooreo.sippy.domain.friends.FriendNameRules
 import com.cooreo.sippy.domain.friends.Mood
+import com.cooreo.sippy.domain.friends.PinRules
+import com.cooreo.sippy.domain.points.PointsRules
+import com.cooreo.sippy.domain.shop.ItemTable
+import com.cooreo.sippy.domain.shop.ShopRules
 import com.cooreo.sippy.domain.onboarding.Onboarding
 import com.cooreo.sippy.domain.streak.StreakCalculator
 import com.cooreo.sippy.domain.updates.UpdateDecision
@@ -20,6 +24,7 @@ import com.cooreo.sippy.model.AccentId
 import com.cooreo.sippy.model.Friend
 import com.cooreo.sippy.model.FriendKind
 import com.cooreo.sippy.model.LogEntry
+import com.cooreo.sippy.model.PointsEntry
 import com.cooreo.sippy.model.Settings
 import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.model.StreakState
@@ -88,8 +93,29 @@ class SippyController(
                 sugary = drink.sugary,
             )
             repository.edit { state ->
-                val log = (state.log + entry).takeLast(MAX_LOG_ENTRIES)
-                withStreak(state, log, today)
+                val credit = PointsRules.credit(state.points, state.pointsCarryMl, entry.hydratedMl)
+                val logged = entry.copy(pointsEarned = credit.gained)
+                val ledger = if (credit.gained > 0) {
+                    PointsRules.append(
+                        state.ledger,
+                        PointsEntry(
+                            id = "${logged.id}-points",
+                            atEpochMs = logged.atEpochMs,
+                            delta = credit.gained,
+                            reason = "Logged ${logged.volumeMl} ml",
+                            balanceAfter = credit.points,
+                        ),
+                    )
+                } else {
+                    state.ledger
+                }
+                val credited = state.copy(
+                    points = credit.points,
+                    pointsCarryMl = credit.carryMl,
+                    ledger = ledger,
+                )
+                val log = (state.log + logged).takeLast(MAX_LOG_ENTRIES)
+                withStreak(credited, log, today)
             }
             val after = repository.state.value
             val hydratedAfter = WaterMath.hydratedMl(after.log.filter { it.dayEpoch == today })
@@ -110,9 +136,33 @@ class SippyController(
             val today = Dates.todayEpochDay()
             repository.edit { state ->
                 val last = state.log.maxByOrNull { it.atEpochMs } ?: return@edit state
-                withStreak(state, state.log - last, today)
+                withStreak(releasePoints(state, listOf(last), "Undid a log"), state.log - last, today)
             }
         }
+    }
+
+    /**
+     * Takes back the points an entry earned. Clamped at zero, and the ledger
+     * records the real delta, so the balance and the history never disagree.
+     */
+    private fun releasePoints(state: StoredState, removed: List<LogEntry>, reason: String): StoredState {
+        val earned = removed.sumOf { it.pointsEarned }
+        if (earned <= 0) return state
+        val after = PointsRules.debit(state.points, earned)
+        if (after == state.points) return state
+        return state.copy(
+            points = after,
+            ledger = PointsRules.append(
+                state.ledger,
+                PointsEntry(
+                    id = UUID.randomUUID().toString(),
+                    atEpochMs = System.currentTimeMillis(),
+                    delta = after - state.points,
+                    reason = reason,
+                    balanceAfter = after,
+                ),
+            ),
+        )
     }
 
     /** Re-quantifies one entry; hydration is recomputed from the drink table. */
@@ -136,7 +186,12 @@ class SippyController(
         scope.launch {
             val today = Dates.todayEpochDay()
             repository.edit { state ->
-                withStreak(state, state.log.filterNot { it.id == id }, today)
+                val target = state.log.firstOrNull { it.id == id } ?: return@edit state
+                withStreak(
+                    releasePoints(state, listOf(target), "Deleted an entry"),
+                    state.log.filterNot { it.id == id },
+                    today,
+                )
             }
         }
     }
@@ -242,16 +297,88 @@ class SippyController(
 
     // -------------------------------------------------------------- friends
 
+    /**
+     * Pin or unpin a friend for one of the two slots beside the orb (B2).
+     * A third pin is refused with a message instead of silently doing nothing.
+     */
+    fun togglePin(friendId: String) {
+        val current = repository.state.value
+        val target = current.friends.firstOrNull { it.id == friendId } ?: return
+        if (!target.pinned && !PinRules.canPin(current.friends, friendId)) {
+            _events.tryEmit(Event.Info("Two friends can sit by the orb — unpin one first."))
+            return
+        }
+        scope.launch {
+            repository.edit { state -> state.copy(friends = PinRules.toggle(state.friends, friendId)) }
+        }
+    }
+
+    /**
+     * Buys a cosmetic if the balance covers it. Refusals are reported instead of
+     * silently doing nothing.
+     */
+    fun buyItem(itemId: String) {
+        val current = repository.state.value
+        when (val outcome = ShopRules.purchase(current.points, current.ownedItems, itemId)) {
+            is ShopRules.Purchase.Bought -> Unit
+            ShopRules.Purchase.TooExpensive -> {
+                val price = ItemTable.byId(itemId)?.price ?: 0
+                _events.tryEmit(Event.Info("That costs $price points — you have ${current.points}."))
+                return
+            }
+            ShopRules.Purchase.AlreadyOwned -> {
+                _events.tryEmit(Event.Info("You already own that."))
+                return
+            }
+            ShopRules.Purchase.UnknownItem -> return
+        }
+        scope.launch {
+            repository.edit { state ->
+                when (val r = ShopRules.purchase(state.points, state.ownedItems, itemId)) {
+                    is ShopRules.Purchase.Bought -> state.copy(
+                        points = r.balance,
+                        ownedItems = r.owned,
+                        ledger = PointsRules.append(
+                            state.ledger,
+                            PointsEntry(
+                                id = UUID.randomUUID().toString(),
+                                atEpochMs = System.currentTimeMillis(),
+                                delta = -r.item.price,
+                                reason = "Bought ${r.item.name}",
+                                balanceAfter = r.balance,
+                            ),
+                        ),
+                    )
+                    else -> state
+                }
+            }
+        }
+    }
+
+    /** Wears one cosmetic on a friend; [itemId] null takes it off. */
+    fun equipItem(friendId: String, itemId: String?) {
+        scope.launch {
+            repository.edit { state ->
+                val friend = state.friends.firstOrNull { it.id == friendId } ?: return@edit state
+                state.copy(
+                    equipped = ShopRules.equip(
+                        equipped = state.equipped,
+                        friendId = friend.id,
+                        kind = friend.kind,
+                        owned = state.ownedItems,
+                        itemId = itemId,
+                    ),
+                )
+            }
+        }
+    }
+
     fun addFriend(kind: FriendKind) {
         scope.launch {
             repository.edit { state ->
                 if (state.friends.size >= Friend.MAX_FRIENDS) return@edit state
                 if (state.friends.any { it.kind == kind }) return@edit state
-                val name = when (kind) {
-                    FriendKind.PLANT -> "Sprout"
-                    FriendKind.CAT -> "Mochi"
-                    FriendKind.DIPPY -> "Dippy"
-                }
+                val name = FriendNameRules.defaultNameFor(kind)
                 state.copy(
                     friends = state.friends + Friend(
                         id = UUID.randomUUID().toString(),

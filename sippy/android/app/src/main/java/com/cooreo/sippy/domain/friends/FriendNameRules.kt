@@ -42,5 +42,9 @@ object FriendNameRules {
         com.cooreo.sippy.model.FriendKind.DIPPY -> "Dippy"
         com.cooreo.sippy.model.FriendKind.PLANT -> "Sprout"
         com.cooreo.sippy.model.FriendKind.CAT -> "Mochi"
+        com.cooreo.sippy.model.FriendKind.KOI -> "Koi"
+        com.cooreo.sippy.model.FriendKind.OTTER -> "Pebble"
+        com.cooreo.sippy.model.FriendKind.TURTLE -> "Shelly"
+        com.cooreo.sippy.model.FriendKind.AXOLOTL -> "Axy"
     }
 }

@@ -1,0 +1,14 @@
+{
+  "versionCode": 2,
+  "versionName": "1.1.0",
+  "apkUrl": "https://github.com/Cooreo/SippyDippy/releases/download/v1.1.0/sippy-1.1.0.apk",
+  "sha256": "b9c17bcac2cda51e5f46474e6568f6bb54f47a978f8bfb70d9abbe93bba400b7",
+  "sizeBytes": 10096505,
+  "minSdk": 26,
+  "releasedAt": "2026-11-27T18:51:05Z",
+  "notes": [
+    "Sippy 1.1.0",
+    "Signed release built by GitHub Actions"
+  ],
+  "certSha256": "da0673068ccb41b265c7dbc0ec2d7f540f8df60cca8c96670585df2982f91900"
+}

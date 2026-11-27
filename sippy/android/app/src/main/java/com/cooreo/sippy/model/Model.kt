@@ -20,6 +20,16 @@ data class StoredState(
     val log: List<LogEntry> = emptyList(),
     val streak: StreakState = StreakState(),
     val update: UpdateState = UpdateState(),
+    /** Spendable points (B4). Never negative. */
+    val points: Int = 0,
+    /** Counted millilitres not yet worth a full point — the partial carry-over. */
+    val pointsCarryMl: Int = 0,
+    /** Newest last, capped by PointsRules.LEDGER_LIMIT. */
+    val ledger: List<PointsEntry> = emptyList(),
+    /** Item ids the player owns. Keyed by item, so a friend leaving keeps them. */
+    val ownedItems: Set<String> = emptySet(),
+    /** friendId -> equipped item id. At most one cosmetic per friend. */
+    val equipped: Map<String, String> = emptyMap(),
 )
 
 @Serializable
@@ -54,7 +64,27 @@ data class Settings(
 }
 
 @Serializable
-enum class FriendKind { DIPPY, PLANT, CAT }
+enum class FriendKind {
+    DIPPY,
+    PLANT,
+    CAT,
+    KOI,
+    OTTER,
+    TURTLE,
+    AXOLOTL;
+
+    /** Short label for the Add-a-friend chips. */
+    val short: String
+        get() = when (this) {
+            DIPPY -> "Dippy"
+            PLANT -> "Plant"
+            CAT -> "Cat"
+            KOI -> "Koi"
+            OTTER -> "Otter"
+            TURTLE -> "Turtle"
+            AXOLOTL -> "Axolotl"
+        }
+}
 
 @Serializable
 data class Friend(
@@ -63,6 +93,8 @@ data class Friend(
     val name: String,
     /** Streak milestone the friend has grown to (0, 3, 7, 14, 30, 100). */
     val grownAtStreak: Int = 0,
+    /** Sits in one of the two slots beside the water orb (B2). Max two. */
+    val pinned: Boolean = false,
     val addedAtEpochDay: Long = 0L,
 ) {
     companion object {
@@ -84,6 +116,18 @@ data class LogEntry(
     /** Volume x hydration factor, frozen at log time. */
     val hydratedMl: Int,
     val sugary: Boolean,
+    /** Points this entry earned when it was logged (B4); reversed on removal. */
+    val pointsEarned: Int = 0,
+)
+
+/** One line of the points ledger. [delta] is negative for purchases. */
+@Serializable
+data class PointsEntry(
+    val id: String,
+    val atEpochMs: Long,
+    val delta: Int,
+    val reason: String,
+    val balanceAfter: Int,
 )
 
 @Serializable
