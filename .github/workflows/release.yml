@@ -466,7 +466,13 @@ jobs:
   publish:
     name: Publish release
     needs: [check, build, smoke]
-    if: needs.check.outputs.publish == 'true'
+    # Runs whenever the release decision says so and the APK was built and
+    # verified: the emulator job is advisory, so any of its outcomes is fine.
+    if: |
+      always() &&
+      needs.check.outputs.publish == 'true' &&
+      needs.build.result == 'success'
+
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
