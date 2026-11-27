@@ -1,4 +1,4 @@
-import { useRef, type PointerEvent } from "react";
+import { useEffect, useRef, type PointerEvent } from "react";
 import {
   motion,
   useMotionValue,
@@ -8,6 +8,11 @@ import {
 } from "motion/react";
 import { CtaButton } from "../components/CtaButton";
 import { HeroWaterRing } from "../components/HeroWaterRing";
+import {
+  canHoverFine,
+  isReducedMotionActive,
+  useQualityTier,
+} from "../lib/quality";
 import { asset } from "../lib/router";
 import { springs } from "../lib/tokens";
 
@@ -16,15 +21,6 @@ const WORDS = ["Drink", "consistently.", "Joyfully."];
 /**
  * Hero — two-column grid inside the shared 1280px wrap (same width as the
  * nav), vertically centered, full-viewport height.
- *
- * Round 2: the CTA row is the shared CtaButton (primary "See install
- * steps"/"Get the APK" + ghost "How it works"); the preview is the
- * filling water ring (HeroWaterRing — the phone preview is gone).
- * Words rise
- * blur-to-sharp when the intro reveals (playWords), fast under a skip.
- *
- * The hero is dark via the backdrop's soft scrim — it has NO section
- * background of its own.
  */
 export function Hero({
   playWords,
@@ -35,27 +31,75 @@ export function Hero({
   /** Skipped intro — finish the entrance fast (end state in ~150 ms). */
   wordsFast: boolean;
 }) {
-  const reduced = useReducedMotion();
+  const osReduced = useReducedMotion() ?? false;
+  const reduced = osReduced || isReducedMotionActive();
+  const tier = useQualityTier();
+  const hoverTilt = tier === "high" && canHoverFine();
+
+  const sectionRef = useRef<HTMLElement>(null);
   const visualRef = useRef<HTMLDivElement>(null);
+  const rectRef = useRef<DOMRect | null>(null);
   const mx = useMotionValue(0);
   const my = useMotionValue(0);
   const rotateY = useSpring(useTransform(mx, [-0.5, 0.5], [-5.5, 5.5]), springs.gentle);
   const rotateX = useSpring(useTransform(my, [-0.5, 0.5], [4.5, -4.5]), springs.gentle);
 
+  // Pause Hero's CSS float loops whenever the section scrolls offscreen.
+  useEffect(() => {
+    const sec = sectionRef.current;
+    if (!sec) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const visible = entries[0]?.isIntersecting ?? true;
+        if (visible) {
+          delete sec.dataset.offscreen;
+        } else {
+          sec.dataset.offscreen = "true";
+        }
+      },
+      { threshold: 0 },
+    );
+    io.observe(sec);
+
+    const invalidateRect = () => {
+      rectRef.current = null;
+    };
+    window.addEventListener("scroll", invalidateRect, { passive: true });
+    window.addEventListener("resize", invalidateRect, { passive: true });
+    return () => {
+      io.disconnect();
+      window.removeEventListener("scroll", invalidateRect);
+      window.removeEventListener("resize", invalidateRect);
+    };
+  }, []);
+
+  const onPointerEnter = () => {
+    if (reduced || !hoverTilt || !visualRef.current) return;
+    rectRef.current = visualRef.current.getBoundingClientRect();
+  };
+
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (reduced) return; // no parallax under reduced motion
+    if (reduced || !hoverTilt || e.pointerType === "touch") return;
     const el = visualRef.current;
     if (!el) return;
-    const r = el.getBoundingClientRect();
+    const r = rectRef.current ?? (rectRef.current = el.getBoundingClientRect());
+    if (r.width <= 0 || r.height <= 0) return;
     mx.set((e.clientX - r.left) / r.width - 0.5);
     my.set((e.clientY - r.top) / r.height - 0.5);
   };
 
+  const onPointerLeave = () => {
+    rectRef.current = null;
+    mx.set(0);
+    my.set(0);
+  };
+
   const wordDur = wordsFast ? 0.15 : 0.5;
   const wordStagger = wordsFast ? 0.02 : 0.09;
+  const useWordBlur = tier === "high" && !reduced;
 
   return (
-    <section id="hero" className="hero">
+    <section id="hero" className="hero" ref={sectionRef}>
       <div className="wrap hero-inner">
         <div className="hero-copy">
           <h1 className="hero-title">
@@ -65,12 +109,16 @@ export function Hero({
                 className="hero-word"
                 initial={
                   reduced
-                    ? { opacity: 1, y: 0, filter: "blur(0px)" }
-                    : { opacity: 0, y: 26, filter: "blur(10px)" }
+                    ? { opacity: 1, y: 0 }
+                    : useWordBlur
+                      ? { opacity: 0, y: 26, filter: "blur(10px)" }
+                      : { opacity: 0, y: 20 }
                 }
                 animate={
                   playWords || reduced
-                    ? { opacity: 1, y: 0, filter: "blur(0px)" }
+                    ? useWordBlur
+                      ? { opacity: 1, y: 0, filter: "blur(0px)" }
+                      : { opacity: 1, y: 0 }
                     : { opacity: 0 }
                 }
                 transition={{
@@ -85,9 +133,9 @@ export function Hero({
           </h1>
           <motion.p
             className="lead"
-            initial={{ opacity: 0, y: 16 }}
-            animate={playWords ? { opacity: 1, y: 0 } : { opacity: 0 }}
-            transition={{ delay: wordsFast ? 0.1 : 0.55, duration: wordDur }}
+            initial={reduced ? { opacity: 1, y: 0 } : { opacity: 0, y: 16 }}
+            animate={playWords || reduced ? { opacity: 1, y: 0 } : { opacity: 0 }}
+            transition={{ delay: reduced ? 0 : wordsFast ? 0.1 : 0.55, duration: reduced ? 0 : wordDur }}
           >
             Sippy tracks water and every other drink you actually have — with
             friends who notice, streaks that keep you honest, and reminders
@@ -95,13 +143,11 @@ export function Hero({
           </motion.p>
           <motion.div
             className="hero-cta"
-            initial={{ opacity: 0, y: 14 }}
-            animate={playWords ? { opacity: 1, y: 0 } : { opacity: 0 }}
-            transition={{ delay: wordsFast ? 0.12 : 0.75, duration: wordDur }}
+            initial={reduced ? { opacity: 1, y: 0 } : { opacity: 0, y: 14 }}
+            animate={playWords || reduced ? { opacity: 1, y: 0 } : { opacity: 0 }}
+            transition={{ delay: reduced ? 0 : wordsFast ? 0.12 : 0.75, duration: reduced ? 0 : wordDur }}
           >
-            {/* primary CTA — strongest element; label follows the APK rule */}
             <CtaButton apk size="lg" />
-            {/* ghost glass button, same hover behaviour */}
             <CtaButton
               variant="ghost"
               size="lg"
@@ -111,31 +157,32 @@ export function Hero({
             />
           </motion.div>
         </div>
-        <div className="hero-visual" ref={visualRef} onPointerMove={onPointerMove}>
-          {/* Dippy floating by the ring — gentle idle bob, never over text */}
-          <motion.div
-            className="hero-buddy-wrap"
-            animate={reduced ? { y: 0 } : { y: [0, -7, 0] }}
-            transition={{ duration: 5.2, repeat: Infinity, ease: "easeInOut", delay: 0.8 }}
-          >
+        <div
+          className="hero-visual"
+          ref={visualRef}
+          onPointerEnter={hoverTilt ? onPointerEnter : undefined}
+          onPointerMove={hoverTilt ? onPointerMove : undefined}
+          onPointerLeave={hoverTilt ? onPointerLeave : undefined}
+        >
+          {/* Dippy floating by the ring — CSS transform bob, paused offscreen/hidden/RM */}
+          <div className="hero-buddy-wrap">
             <img
               className="hero-buddy"
               src={asset("assets/dippy-happy.webp")}
+              srcSet={`${asset("assets/dippy-happy-128.webp")} 128w, ${asset("assets/dippy-happy.webp")} 248w`}
+              sizes="(max-width: 1000px) 64px, 76px"
               alt=""
               width={76}
               height={76}
               loading="eager"
               decoding="async"
             />
-          </motion.div>
-          <motion.div
-            animate={reduced ? { y: 0 } : { y: [0, -9, 0] }}
-            transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-          >
-            <motion.div style={{ rotateX, rotateY }}>
+          </div>
+          <div className="hero-orb-bob">
+            <motion.div style={hoverTilt && !reduced ? { rotateX, rotateY } : undefined}>
               <HeroWaterRing />
             </motion.div>
-          </motion.div>
+          </div>
         </div>
       </div>
     </section>

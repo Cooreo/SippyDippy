@@ -30,6 +30,7 @@ precision mediump float;
 #endif
 
 uniform vec2  u_res;      // canvas size in DEVICE px (drawing buffer)
+uniform float u_dpr;      // effective device-pixel scale (CSS -> buffer)
 uniform float u_time;     // seconds into the intro
 uniform float u_revealR;  // reveal hole radius in DEVICE px (0 = closed)
 uniform vec2  u_mark;     // mark centre in uv (0.5, 0.5)
@@ -154,9 +155,9 @@ void main() {
   // mark stroke-draw as it forms (1.85-2.5)
   float markVis = smoothstep(1.85, 2.0, t) * (1.0 - smoothstep(2.45, 2.6, t));
   if (markVis > 0.001) {
-    // mark units (132px box). q's +y is UP in GL space, the mark is
+    // mark units (132px CSS box). q's +y is UP in GL space, the mark is
     // authored +y DOWN (IconDroplet) — flip y so the tip points up.
-    vec2 pm = vec2(q.x, -q.y) * (u_res.y / 132.0);
+    vec2 pm = vec2(q.x, -q.y) * (u_res.y / (132.0 * max(u_dpr, 0.25)));
     float ang = atan(pm.y, pm.x) / 6.28318 + 0.5;
     float draw = smoothstep(1.85, 2.5, t);
     float reveal = smoothstep(draw - 0.5, draw, ang);
@@ -172,7 +173,7 @@ void main() {
 
   // reveal: alpha hole centred on the mark (the page shows through)
   float r = u_revealR / u_res.y;
-  float aa = 2.0 / u_res.y;
+  float aa = (2.0 * max(u_dpr, 0.5)) / u_res.y;
   float hole = r <= 0.001 ? 0.0 : 1.0 - smoothstep(r - aa, r + aa, d0);
   float alpha = 1.0 - hole;
 
@@ -184,6 +185,7 @@ export interface IntroGL {
   render(t: number, revealRpx: number): void;
   resize(cssW: number, cssH: number, dpr: number): void;
   setTexture(src: TexImageSource): void;
+  precompile(): void;
   dispose(): void;
 }
 
@@ -247,6 +249,7 @@ export function createIntroGL(
 
   const u = {
     res: gl.getUniformLocation(prog, "u_res"),
+    dpr: gl.getUniformLocation(prog, "u_dpr"),
     time: gl.getUniformLocation(prog, "u_time"),
     revealR: gl.getUniformLocation(prog, "u_revealR"),
     mark: gl.getUniformLocation(prog, "u_mark"),
@@ -257,6 +260,7 @@ export function createIntroGL(
 
   const tex = gl.createTexture();
   let hasTex = false;
+  let currentDpr = 1;
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.uniform1i(u.tex, 0);
@@ -271,6 +275,7 @@ export function createIntroGL(
         gl.clear(gl.COLOR_BUFFER_BIT);
       }
       gl.uniform2f(u.res, gl.drawingBufferWidth, gl.drawingBufferHeight);
+      gl.uniform1f(u.dpr, currentDpr);
       gl.uniform1f(u.time, t);
       gl.uniform1f(u.revealR, revealRpx);
       gl.uniform2f(u.mark, 0.5, 0.5);
@@ -280,6 +285,7 @@ export function createIntroGL(
     },
     resize(cssW, cssH, dpr) {
       if (disposed) return;
+      currentDpr = dpr;
       const w = Math.max(1, Math.floor(cssW * dpr));
       const h = Math.max(1, Math.floor(cssH * dpr));
       if (canvas.width !== w || canvas.height !== h) {
@@ -287,6 +293,19 @@ export function createIntroGL(
         canvas.height = h;
       }
       gl.viewport(0, 0, w, h);
+    },
+    precompile() {
+      if (disposed) return;
+      // Force driver pipeline compilation + warmup draw BEFORE frame 0 starts.
+      gl.uniform2f(u.res, gl.drawingBufferWidth || 1, gl.drawingBufferHeight || 1);
+      gl.uniform1f(u.dpr, currentDpr);
+      gl.uniform1f(u.time, 0);
+      gl.uniform1f(u.revealR, 0);
+      gl.uniform2f(u.mark, 0.5, 0.5);
+      gl.uniform3f(u.base, clearTone.r, clearTone.g, clearTone.b);
+      gl.uniform1f(u.hasTex, hasTex ? 1 : 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.flush?.();
     },
     setTexture(src) {
       if (disposed) return;

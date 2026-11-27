@@ -2,6 +2,8 @@
 
 **CURRENT STATE (2026-11-27, post-round-4 merge — start here for new sessions):** `main` is up to date and deployed (PR #6 "Fix CTA labels, improve water orb", Pages deploy green). Shipped so far: glass design system + gallery, CTA contrast fixes, surface-break intro, hero water ring (fill 0→100% loop + counting label, wave/caustics, glass rim depth), no-cache Pages headers. **Nothing pending; all gates green** (tsc 0 · lint 0 err / 3 pre-existing warn · 37/37 tests · build ~4.6 s · `VITE_BASE=/sippy/` subpath build ✓). Standing rules: every completed round → commit + push session branch → PR → merge to main → verify Pages deploy green → report (PLAN.md top note + decision log #12); **no SPEC.md exists** in the repo — work from the round's inline brief + this file; the live site only updates on merge to `main` (workflow) and serves no-cache via `public/_headers`; no headless browser in the sandbox — "computed" values are CSS/PIL-derived, label them as such; keep `PhoneMock`/Showcase and the intro out of scope unless asked.
 
+**STEP 1 (performance, quality tiers, mobile fit) is implemented on the session branch — measured before/after table, gates and the list of what still needs human eyes are in the `STEP 1` section at the bottom of this file. STEP 2 (light theme) has not been started.**
+
 ## Phase 0 (plan) — ✅ approved with changes
 Old repo: empty (README only). Toolchain: Node 22 only — no Java/SDK/browser/KVM. Network: npm + GitHub API + codeload only (all Maven/Google hosts blocked) → APK built by user (Option A, agreed). See PLAN.md v2.
 
@@ -378,3 +380,63 @@ All ≥ 4.5:1 in both themes; no viewport-dependent values involved (colours are
 
 
 
+
+## STEP 1 — performance, quality tiers & mobile fit (2026-11-27)
+
+Scope: the brief's Step 1 (1a quality tier → 1e mobile layout), no visual redesign —
+same glass language, same motion beats, cheaper everywhere the user isn't looking.
+Nothing from Step 2 (light theme) is in this change.
+
+### 1a — Quality tier (`src/lib/quality.tsx`)
+- `resolveQualityTier()` → `"low" | "high"`; **`?quality=low|high` wins over everything** (also parsed from `#/?quality=low`).
+- `low` when: touch-only input, viewport `< 768px`, `deviceMemory <= 4`, or `hardwareConcurrency <= 4`.
+- `QualityProvider` mirrors the tier to `<html data-quality>` and mirrors tab visibility to `<html data-doc-hidden>` (used by both the CSS pause rules and the JS rAF loops).
+- `isReducedMotionActive()` (OS media query **or** `[data-emulate-motion]`) now gates every new effect, so the gallery's "reduce effects" switch still emulates it.
+- **No visual difference** between tiers except the two intended ones (no SVG refraction, no `filter: blur()` reveals on `low`).
+
+### 1b — Bytes (measured: `vite build` at `f42b53b` vs. this branch)
+
+| Metric | Before | After | Δ |
+|---|---|---|---|
+| Home critical JS | `296.3 + 412.9 + 197.8 kB` (`index` + `glin` + `fluid`) = **907.0 kB raw / 270.3 kB gzip** | `361.5 + 12.0 + 108.7 kB` (`index` + `react` + `motion`) = **482.2 kB raw / 157.9 kB gzip** | **−424.8 kB raw / −112.4 kB gzip (−41.6 %)** |
+| `lenis` | in the critical path | **lazy** `21.7 kB / 6.2 kB gzip`, desktop `high` tier only, loaded after idle | off the critical path |
+| CSS | 1 file, 78.31 kB / 15.68 kB gzip | 1 file, 81.46 kB / 16.03 kB gzip | +3.15 kB raw (all new rules above; +0.35 kB gzip) |
+| Fonts shipped | **14** `.woff2`, 452 kB | **2** `.woff2`, 92 kB (`48.3 + 44.9`) | **−360 kB** |
+| Fonts a browser actually fetches on the home route | 4 files ≈ 268 kB — one `→` (U+2192) escaped the Latin subset and pulled both Latin-Ext faces (`85.1 + 89.8 kB`) | **2 files, 93 kB**, both `<link rel="preload">` | **−175 kB** |
+| Home images | 11 assets / 175 kB, `0` `srcset`, hero caustics as an inline CSS `background-image` (`76.4 kB`) | 11 responsive variants; phone (`390 @2x`) first screen = caustics `50.1 kB` + Dippy `4.5 kB`, real `srcset`/`sizes`/`width`/`height` | **−30.6 kB** on the phone first screen |
+
+How the JS dropped: `CtaButton`/`GlassButton` no longer import the `@glinui/ui` barrel
+(local `components/glass/ShimmerButton.tsx`, same DOM contract), and `manualChunks`
+no longer force `glin`/`fluid` vendors into the home graph (no hash-based vendoring →
+Rollup tree-shakes the gallery-only Glin/fluidkit code out of the home route; the
+gallery route now carries it in one `GalleryPage` chunk, same total bytes).
+
+### 1b — Work per frame, idle cost
+- `backdrop-filter` surfaces in the home DOM: **25 → 3** on `low` (`.page-nav .gnav`, `.hero .cta--ghost`, `.download-card`, each capped at `<= 16px`); **0** live SVG `url(#sippyRefraction)` on `low`.
+- Continuous loops before: **8** (aurora canvas, droplet rAF + 12 CSS drifts, Lenis, 2× fluidkit `useAnimationFrame` at 60 fps, 3× CTA shimmer, 2× Framer `repeat: Infinity` hero bobs, water-ring rAF + 13 CSS loops, intro rAF + a mid-animation shader compile). After: every one of them is either **paused at rest** (`animation-play-state`, `MotionConfig isStatic`, sleeping rAF woken by input/scroll), **offscreen-paused** (`IntersectionObserver` → `[data-offscreen="true"]`), **tab-hidden paused** (`html[data-doc-hidden]`), or **quality-capped**.
+- 15 idle `will-change` declarations removed; `.hero-visual::before` `filter: blur(48px)` replaced by a wide multi-stop radial gradient (same falloff, no filter pass).
+- Intro: WebGL program + texture are compiled/uploaded **before** `t0` (no mid-animation stall), rendered at `dpr * 0.5` on `low` with a `u_dpr` uniform (mark radius `132 * u_dpr` device px, reveal radius passed in device px), and the `rAF` is paused/resumed on `visibilitychange`.
+
+### 1d — Mobile layout
+- Root cause: `.page-nav` (fixed pill) measured `323px` at a `360px` viewport → the document scrolled horizontally and exposed a `#04060b` strip past the `100vw` backdrop. Fixed with `html, body { overflow-x: clip }`, `.page-nav { overflow-x: clip }`, `min-width: 0` on the pill/actions, and a `<= 440px` compaction (brand 15px, `6px` gaps, `12px` pill padding).
+- `HowItWorks` steps are a real 2-column grid (`54px` / `44px` + `minmax(0, 1fr)`) — the old `padding-left: 0` at `<= 640px` dropped the badge on top of the heading.
+- `>= 44 x 44 px` tap targets for nav CTA, drink buttons, friend tiles, icon buttons and FAQ rows on phones.
+- Hero buddy wrap is now a real `position: absolute; inset: 0` layer (it was floating inside the grid), so its bob can never push the ring.
+
+### 1c — Fonts (self-hosted, Latin only)
+- `@fontsource-variable/*` imports removed; two explicit `@font-face` rules (`font-display: swap`, `font-weight: 100 900`, Latin `unicode-range`) point at `public/fonts/*.woff2`.
+- The `→` in the download steps was replaced with `&gt;` so no Latin-Ext glyph is ever needed.
+- Verified: the built CSS keeps the `url(/fonts/…)` references and Vite rebases them with the base path (`VITE_BASE=/SippyDippy/` → `url(/SippyDippy/fonts/…)`, preloads too).
+
+### Gates (real output, this branch)
+- `npx tsc --noEmit` → exit `0`
+- `npx eslint .` → `0 errors, 11 warnings` (all pre-existing `react-refresh/only-export-components`)
+- `npx vitest run` → **12 files / 69 tests passed** (new `src/lib/__tests__/quality.test.ts`: tier resolution, `?quality=` override, dataset sync, hidden-tab pause, low-tier backdrop-filter gates, no idle `will-change`, Latin-only font faces)
+- `npx vite build` → clean (`5.40 s`), `dist/assets/index-*.css 81.46 kB`, home `index` chunk `361.53 kB / 117.03 kB gzip`
+- `VITE_BASE=/SippyDippy/ npx vite build` → clean; `dist/index.html` preloads, `og:*` and CSS font URLs all prefixed `/SippyDippy/`
+- Dev server (`0.0.0.0:5173`): `/`, `/src/main.tsx`, every touched module, the CSS and `/fonts/inter-latin-var.woff2` → **HTTP 200**
+
+### Unverified (needs your eyes — no headless browser in this sandbox)
+- Real GPU `backdrop-filter` cost and the felt smoothness of the paused loops.
+- The visual result at `1440x900` (desktop `high`), `?quality=low`, and `360x800` / `390x844`.
+- That the compacted nav pill fits `360px` in a real engine (computed box math only).

@@ -18,8 +18,7 @@ const STREAK_MILESTONES = [
 
 /**
  * Features — bento grid of glass cards (cursor specular + pointer tilt via
- * BentoCard). The 3 core features get the biggest cards; every card carries
- * an illustration or a Dippy state from the generated pack.
+ * BentoCard on desktop high tier; press feedback only on touch / low tier).
  */
 export function Features() {
   return (
@@ -63,6 +62,8 @@ export function Features() {
           <img
             className="bento-art"
             src={asset("assets/dippy-happy.webp")}
+            srcSet={`${asset("assets/dippy-happy-128.webp")} 128w, ${asset("assets/dippy-happy.webp")} 248w`}
+            sizes="(max-width: 1000px) 64px, 84px"
             alt="Dippy the droplet friend, looking happy"
             width={84}
             height={84}
@@ -92,6 +93,8 @@ export function Features() {
           <img
             className="bento-art bento-art-lg"
             src={asset("assets/dippy-dancing.webp")}
+            srcSet={`${asset("assets/dippy-dancing-128.webp")} 128w, ${asset("assets/dippy-dancing.webp")} 230w`}
+            sizes="(max-width: 1000px) 76px, 104px"
             alt="Dippy dancing — goal reached"
             width={104}
             height={113}
@@ -112,6 +115,8 @@ export function Features() {
           <img
             className="bento-art"
             src={asset("assets/dippy-sleepy.webp")}
+            srcSet={`${asset("assets/dippy-sleepy-120.webp")} 120w, ${asset("assets/dippy-sleepy.webp")} 207w`}
+            sizes="(max-width: 1000px) 64px, 72px"
             alt="Dippy looking sleepy and thirsty"
             width={72}
             height={91}
@@ -132,6 +137,8 @@ export function Features() {
           <img
             className="bento-art"
             src={asset("assets/friend-plant-bloom.webp")}
+            srcSet={`${asset("assets/friend-plant-bloom-128.webp")} 128w, ${asset("assets/friend-plant-bloom.webp")} 248w`}
+            sizes="(max-width: 1000px) 64px, 84px"
             alt="A glossy plant friend with a violet bloom"
             width={84}
             height={83}
@@ -152,6 +159,8 @@ export function Features() {
           <img
             className="bento-art"
             src={asset("assets/friend-pet-cub.webp")}
+            srcSet={`${asset("assets/friend-pet-cub-140.webp")} 140w, ${asset("assets/friend-pet-cub.webp")} 281w`}
+            sizes="(max-width: 1000px) 64px, 84px"
             alt="A chubby glossy pet friend"
             width={84}
             height={63}

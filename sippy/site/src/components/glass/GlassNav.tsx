@@ -1,7 +1,9 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { motion } from "motion/react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { MotionConfig, motion, useReducedMotion } from "motion/react";
 import { LiquidSwitch } from "fluidkit";
 import { useTheme } from "../../lib/theme";
+import { getLenis, wakeLenis } from "../../lib/lenis";
+import { isReducedMotionActive, useQualityTier } from "../../lib/quality";
 import { APK_CTA_LABEL } from "../../lib/download";
 import { IconDroplet, IconMoon, IconSun } from "../Icons";
 
@@ -25,9 +27,10 @@ export interface GlassNavProps {
 }
 
 /**
- * GlassNav — the floating glass pill navbar (reference 3: image edge visible
- * THROUGH the bar; sun/moon toggle; white pill CTA). Phase 3 adds:
- * compresses on scroll, and a liquid lens that slides to the active section.
+ * GlassNav — the floating glass pill navbar. Scroll compression mutates classList
+ * directly on the DOM ref (zero React setState on scroll), and LiquidSwitch's
+ * internal `useAnimationFrame` loop is gated via `MotionConfig isStatic` so it
+ * ticks ONLY during the 900 ms liquid toggle animation and runs 0 rAF at rest.
  */
 export function GlassNav({
   links,
@@ -36,12 +39,19 @@ export function GlassNav({
   enterDelay = 0,
 }: GlassNavProps) {
   const { mode, toggle } = useTheme();
+  const tier = useQualityTier();
+  const osReduced = useReducedMotion() ?? false;
+  const reduced = osReduced || isReducedMotionActive();
+  const navRef = useRef<HTMLElement>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [scrolled, setScrolled] = useState(false);
+  const [switchSettling, setSwitchSettling] = useState(false);
 
-  // Scroll-spy: which section is in the "hot band" of the viewport.
+  // Scroll-spy: skipped on narrow viewports where `.gnav-links` is hidden.
   useEffect(() => {
     if (!sections?.length) return;
+    if (typeof window !== "undefined" && window.innerWidth > 0 && window.innerWidth <= 780) {
+      return;
+    }
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -57,13 +67,43 @@ export function GlassNav({
     return () => observer.disconnect();
   }, [sections]);
 
-  // Scroll compression (reference 3's "compresses on scroll").
+  // Scroll compression — classList toggled only on threshold crossings (0 React renders).
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24);
-    onScroll();
+    const nav = navRef.current;
+    if (!nav) return;
+    let isScrolled = window.scrollY > 24;
+    nav.classList.toggle("gnav-scrolled", isScrolled);
+    const onScroll = () => {
+      const next = window.scrollY > 24;
+      if (next !== isScrolled) {
+        isScrolled = next;
+        nav.classList.toggle("gnav-scrolled", next);
+      }
+    };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  // Pause LiquidSwitch's internal rAF if tab becomes hidden mid-settle.
+  useEffect(() => {
+    if (!switchSettling) return;
+    const timer = window.setTimeout(() => setSwitchSettling(false), 950);
+    const onVis = () => {
+      if (document.hidden) setSwitchSettling(false);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [switchSettling]);
+
+  const handleThemeToggle = () => {
+    if (!reduced && !document.hidden) {
+      setSwitchSettling(true);
+    }
+    toggle();
+  };
 
   const navLinks: { id: string; label: string; href: string }[] =
     sections?.map((s) => ({ id: s.id, label: s.label, href: `#${s.id}` })) ??
@@ -72,6 +112,7 @@ export function GlassNav({
 
   return (
     <motion.nav
+      ref={navRef}
       initial={{ y: -26, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{
@@ -81,7 +122,7 @@ export function GlassNav({
         damping: 30,
         mass: 1,
       }}
-      className={`glass gnav${scrolled ? " gnav-scrolled" : ""}`}
+      className="glass gnav"
       style={{ borderRadius: "999px" }}
       aria-label="Primary"
     >
@@ -90,7 +131,13 @@ export function GlassNav({
         href={import.meta.env.BASE_URL}
         onClick={(e) => {
           e.preventDefault();
-          window.scrollTo({ top: 0, behavior: "smooth" });
+          const lenis = getLenis();
+          if (lenis && !reduced) {
+            wakeLenis();
+            lenis.scrollTo(0, { duration: 0.9 });
+          } else {
+            window.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" });
+          }
         }}
       >
         <IconDroplet width={20} height={20} />
@@ -118,19 +165,20 @@ export function GlassNav({
         <span className="gnav-theme" aria-hidden="true">
           <IconSun width={16} height={16} />
         </span>
-        <LiquidSwitch
-          checked={mode === "dark"}
-          onCheckedChange={() => toggle()}
-          size={20}
-          checkedTint="#2E7CF6"
-          material="glass"
-          aria-label="Toggle dark mode"
-        />
+        <MotionConfig isStatic={!switchSettling || reduced}>
+          <LiquidSwitch
+            checked={mode === "dark"}
+            onCheckedChange={handleThemeToggle}
+            size={20}
+            checkedTint="#2E7CF6"
+            material={tier === "low" ? "flat" : "glass"}
+            aria-label="Toggle dark mode"
+          />
+        </MotionConfig>
         <span className="gnav-theme" aria-hidden="true">
           <IconMoon width={16} height={16} />
         </span>
         {cta ?? (
-          // APK label rule: single constant from lib/download
           <button type="button" className="pill-cta pressable">
             {APK_CTA_LABEL}
           </button>

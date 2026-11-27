@@ -3,22 +3,6 @@ import { BentoCard } from "../components/BentoCard";
 import { IconDroplet, IconHeart, IconSparkle } from "../components/Icons";
 import { asset } from "../lib/router";
 
-/**
- * Showcase — "Three things Sippy does best."
- *
- * Replaces the phone showcase completely. Three interactive feature cards
- * built on the shared BentoCard (cursor-following specular, ±6° spring tilt,
- * 4px hover lift, 0.98 press scale, mascot parallax; touch = press only;
- * reduced motion = static highlight only).
- *
- * Backdrop-filter budget: each card is one GlassSurface (3 total here + 1 nav
- * pill = 4 backdrop-filter surfaces in the viewport, within the 6-surface cap).
- *
- * Note on drink data: sippy/app does not exist yet (Phase 4), so Card 1
- * displays volumes only and labels the total "ml logged" (never "hydration",
- * zero invented stats).
- */
-
 interface DrinkOption {
   id: string;
   name: string;
@@ -35,6 +19,9 @@ const DRINKS: DrinkOption[] = [
 interface FriendMood {
   mood: string;
   file: string;
+  smallFile: string;
+  smallW: number;
+  fullW: number;
   w: number;
   h: number;
 }
@@ -50,26 +37,90 @@ const FRIENDS: FriendDef[] = [
     id: "dippy",
     name: "Dippy",
     moods: [
-      { mood: "Happy", file: "assets/dippy-happy.webp", w: 64, h: 64 },
-      { mood: "Dancing", file: "assets/dippy-dancing.webp", w: 60, h: 65 },
-      { mood: "Waving", file: "assets/dippy-waving.webp", w: 59, h: 64 },
-      { mood: "Sleepy", file: "assets/dippy-sleepy.webp", w: 52, h: 65 },
+      {
+        mood: "Happy",
+        file: "assets/dippy-happy.webp",
+        smallFile: "assets/dippy-happy-128.webp",
+        smallW: 128,
+        fullW: 248,
+        w: 64,
+        h: 64,
+      },
+      {
+        mood: "Dancing",
+        file: "assets/dippy-dancing.webp",
+        smallFile: "assets/dippy-dancing-128.webp",
+        smallW: 128,
+        fullW: 230,
+        w: 60,
+        h: 65,
+      },
+      {
+        mood: "Waving",
+        file: "assets/dippy-waving.webp",
+        smallFile: "assets/dippy-waving-128.webp",
+        smallW: 128,
+        fullW: 227,
+        w: 59,
+        h: 64,
+      },
+      {
+        mood: "Sleepy",
+        file: "assets/dippy-sleepy.webp",
+        smallFile: "assets/dippy-sleepy-120.webp",
+        smallW: 120,
+        fullW: 207,
+        w: 52,
+        h: 65,
+      },
     ],
   },
   {
     id: "plant",
     name: "Plant",
     moods: [
-      { mood: "Sprout", file: "assets/friend-plant-sprout.webp", w: 56, h: 64 },
-      { mood: "Bloom", file: "assets/friend-plant-bloom.webp", w: 64, h: 63 },
+      {
+        mood: "Sprout",
+        file: "assets/friend-plant-sprout.webp",
+        smallFile: "assets/friend-plant-sprout-112.webp",
+        smallW: 112,
+        fullW: 156,
+        w: 56,
+        h: 64,
+      },
+      {
+        mood: "Bloom",
+        file: "assets/friend-plant-bloom.webp",
+        smallFile: "assets/friend-plant-bloom-128.webp",
+        smallW: 128,
+        fullW: 248,
+        w: 64,
+        h: 63,
+      },
     ],
   },
   {
     id: "cat",
     name: "Cat",
     moods: [
-      { mood: "Playful", file: "assets/friend-pet-cub.webp", w: 68, h: 51 },
-      { mood: "Grown", file: "assets/friend-pet-adult.webp", w: 48, h: 65 },
+      {
+        mood: "Playful",
+        file: "assets/friend-pet-cub.webp",
+        smallFile: "assets/friend-pet-cub-140.webp",
+        smallW: 140,
+        fullW: 281,
+        w: 68,
+        h: 51,
+      },
+      {
+        mood: "Grown",
+        file: "assets/friend-pet-adult.webp",
+        smallFile: "assets/friend-pet-adult-104.webp",
+        smallW: 104,
+        fullW: 177,
+        w: 48,
+        h: 65,
+      },
     ],
   },
 ];
@@ -179,6 +230,8 @@ export function Showcase() {
                           <img
                             className="sc-friend-art"
                             src={asset(current.file)}
+                            srcSet={`${asset(current.smallFile)} ${current.smallW}w, ${asset(current.file)} ${current.fullW}w`}
+                            sizes="68px"
                             alt=""
                             width={current.w}
                             height={current.h}

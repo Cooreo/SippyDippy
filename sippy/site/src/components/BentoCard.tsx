@@ -2,12 +2,13 @@
  * BentoCard — shared glass card with spring pointer reaction (used by both
  * Features bento cards and Showcase feature cards — single implementation).
  *
- *  - Fine hover pointer (not reduced motion):
+ *  - Desktop high tier + fine hover pointer (not reduced motion):
  *      • cursor-following specular highlight (transform + opacity only)
- *      • 3D tilt up to ±6 deg on a spring
+ *      • 3D tilt up to ±6 deg on a spring (rect cached on pointerenter,
+ *        never read inside pointermove)
  *      • 4px lift on hover
  *      • mascot parallax (--mascot-x / --mascot-y, shifting against pointer)
- *  - Touch / non-hover devices (not reduced motion):
+ *  - Touch / low tier (not reduced motion):
  *      • press feedback only (scale 0.98 on spring), no tilt/lift/parallax
  *  - Reduced motion (OS or gallery emulate switch):
  *      • no tilt, lift, press scale or parallax; keeps static .spec highlight
@@ -20,26 +21,16 @@ import {
   type ReactNode,
 } from "react";
 import { motion, useReducedMotion, useSpring } from "motion/react";
+import {
+  canHoverFine,
+  isReducedMotionActive,
+  useQualityTier,
+} from "../lib/quality";
 import { springs } from "../lib/tokens";
 import { GlassSurface } from "./glass/GlassSurface";
 
 const MAX_TILT_DEG = 6;
 const PARALLAX_PX = 6;
-
-function queryHoverFine(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(hover: hover) and (pointer: fine)").matches
-  );
-}
-
-function isMotionEmulatedOff(): boolean {
-  return (
-    typeof document !== "undefined" &&
-    document.documentElement.hasAttribute("data-emulate-motion")
-  );
-}
 
 export function BentoCard({
   children,
@@ -49,23 +40,37 @@ export function BentoCard({
   className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const rectRef = useRef<DOMRect | null>(null);
+  const tier = useQualityTier();
   const osReduced = useReducedMotion() ?? false;
-  const [canHover, setCanHover] = useState<boolean>(queryHoverFine);
+  const [canHover, setCanHover] = useState<boolean>(canHoverFine);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function")
       return;
     const mq = window.matchMedia("(hover: hover) and (pointer: fine)");
-    const onChange = () => setCanHover(mq.matches);
+    const onChange = () => setCanHover(canHoverFine());
     onChange();
     mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
+
+    const invalidateRect = () => {
+      rectRef.current = null;
+    };
+    window.addEventListener("scroll", invalidateRect, { passive: true });
+    window.addEventListener("resize", invalidateRect, { passive: true });
+    return () => {
+      mq.removeEventListener("change", onChange);
+      window.removeEventListener("scroll", invalidateRect);
+      window.removeEventListener("resize", invalidateRect);
+    };
   }, []);
 
   const rotateX = useSpring(0, springs.base);
   const rotateY = useSpring(0, springs.base);
   const liftY = useSpring(0, springs.base);
   const scale = useSpring(1, springs.snappy);
+
+  const hoverEffectsEnabled = tier === "high" && canHover;
 
   const resetPointerVars = (el: HTMLDivElement | null) => {
     if (!el) return;
@@ -75,23 +80,22 @@ export function BentoCard({
   };
 
   const onEnter = (e: PointerEvent<HTMLDivElement>) => {
-    const reduced = osReduced || isMotionEmulatedOff();
-    if (reduced || !canHover || e.pointerType === "touch") return;
+    const reduced = osReduced || isReducedMotionActive();
+    if (reduced || !hoverEffectsEnabled || e.pointerType === "touch") return;
+    if (ref.current) {
+      rectRef.current = ref.current.getBoundingClientRect();
+    }
     liftY.set(-4);
   };
 
   const onMove = (e: PointerEvent<HTMLDivElement>) => {
     const el = ref.current;
     if (!el) return;
-    const reduced = osReduced || isMotionEmulatedOff();
-    if (reduced || !canHover || e.pointerType === "touch") {
-      rotateX.set(0);
-      rotateY.set(0);
-      liftY.set(0);
-      resetPointerVars(el);
+    const reduced = osReduced || isReducedMotionActive();
+    if (reduced || !hoverEffectsEnabled || e.pointerType === "touch") {
       return;
     }
-    const r = el.getBoundingClientRect();
+    const r = rectRef.current ?? (rectRef.current = el.getBoundingClientRect());
     if (r.width <= 0 || r.height <= 0) return;
     const lx = e.clientX - r.left;
     const ly = e.clientY - r.top;
@@ -110,6 +114,7 @@ export function BentoCard({
   };
 
   const onLeave = () => {
+    rectRef.current = null;
     rotateX.set(0);
     rotateY.set(0);
     liftY.set(0);
@@ -118,7 +123,7 @@ export function BentoCard({
   };
 
   const onDown = (e: PointerEvent<HTMLDivElement>) => {
-    const reduced = osReduced || isMotionEmulatedOff();
+    const reduced = osReduced || isReducedMotionActive();
     if (reduced) return;
     const target = e.target as HTMLElement | null;
     if (target?.closest('input[type="range"]')) return;
@@ -129,7 +134,7 @@ export function BentoCard({
     scale.set(1);
   };
 
-  const reduced = osReduced || isMotionEmulatedOff();
+  const reduced = osReduced || isReducedMotionActive();
 
   return (
     <motion.div
@@ -138,23 +143,27 @@ export function BentoCard({
       style={
         reduced
           ? undefined
-          : {
-              transformPerspective: 900,
-              rotateX,
-              rotateY,
-              y: liftY,
-              scale,
-            }
+          : hoverEffectsEnabled
+            ? {
+                transformPerspective: 900,
+                rotateX,
+                rotateY,
+                y: liftY,
+                scale,
+              }
+            : { scale }
       }
-      onPointerEnter={onEnter}
-      onPointerMove={onMove}
-      onPointerLeave={onLeave}
+      onPointerEnter={hoverEffectsEnabled ? onEnter : undefined}
+      onPointerMove={hoverEffectsEnabled ? onMove : undefined}
+      onPointerLeave={hoverEffectsEnabled ? onLeave : undefined}
       onPointerDown={onDown}
       onPointerUp={onUp}
       onPointerCancel={onUp}
     >
       <GlassSurface specular className="bento-inner">
-        <span aria-hidden="true" className="bento-cursor-spec" />
+        {hoverEffectsEnabled && (
+          <span aria-hidden="true" className="bento-cursor-spec" />
+        )}
         {children}
       </GlassSurface>
     </motion.div>

@@ -8,6 +8,8 @@ export function Footer() {
       <img
         className="footer-ripple"
         src={asset("assets/ripple-ring.webp")}
+        srcSet={`${asset("assets/ripple-ring-240.webp")} 240w, ${asset("assets/ripple-ring.webp")} 341w`}
+        sizes="240px"
         alt=""
         width={240}
         height={138}

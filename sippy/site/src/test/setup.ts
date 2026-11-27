@@ -25,7 +25,13 @@ if (!("IntersectionObserver" in globalThis)) {
   });
 }
 
-// fluidkit/lenis/motion probe matchMedia; happy-dom's may lack addEventListener.
+if (typeof navigator !== "undefined") {
+  Object.defineProperty(navigator, "hardwareConcurrency", {
+    value: 8,
+    configurable: true,
+    writable: true,
+  });
+}
 const probe =
   typeof window !== "undefined" && typeof window.matchMedia === "function"
     ? window.matchMedia("(prefers-color-scheme: dark)")

@@ -1,5 +1,7 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { MotionConfig, useReducedMotion } from "motion/react";
 import { LiquidSwitch } from "fluidkit";
+import { isReducedMotionActive, useQualityTier } from "../../lib/quality";
 
 export interface GlassToggleProps {
   checked?: boolean;
@@ -15,9 +17,9 @@ export interface GlassToggleProps {
 }
 
 /**
- * GlassToggle — fluidkit LiquidSwitch (verified API: checked,
- * onCheckedChange, label, size, checkedTint; real hidden checkbox
- * underneath; reduced motion degrades to a snapping thumb automatically).
+ * GlassToggle — fluidkit LiquidSwitch with `MotionConfig isStatic` gating so
+ * its internal `useAnimationFrame` loop runs ONLY during the 950 ms toggle
+ * settle window and stays at 0 rAF when idle, hidden, or under reduced motion.
  */
 export function GlassToggle({
   checked,
@@ -28,17 +30,42 @@ export function GlassToggle({
   checkedTint = "#2E7CF6",
   disabled,
 }: GlassToggleProps) {
+  const tier = useQualityTier();
+  const osReduced = useReducedMotion() ?? false;
+  const reduced = osReduced || isReducedMotionActive();
+  const [settling, setSettling] = useState(false);
+
+  useEffect(() => {
+    if (!settling) return;
+    const timer = window.setTimeout(() => setSettling(false), 950);
+    const onVis = () => {
+      if (document.hidden) setSettling(false);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [settling]);
+
+  const handleChange = (next: boolean) => {
+    if (!reduced && !document.hidden) setSettling(true);
+    onCheckedChange?.(next);
+  };
+
   return (
-    <LiquidSwitch
-      checked={checked}
-      defaultChecked={defaultChecked}
-      onCheckedChange={onCheckedChange}
-      label={label}
-      size={size}
-      checkedTint={checkedTint}
-      material="glass"
-      intensity="present"
-      disabled={disabled}
-    />
+    <MotionConfig isStatic={!settling || reduced}>
+      <LiquidSwitch
+        checked={checked}
+        defaultChecked={defaultChecked}
+        onCheckedChange={handleChange}
+        label={label}
+        size={size}
+        checkedTint={checkedTint}
+        material={tier === "low" ? "flat" : "glass"}
+        intensity="present"
+        disabled={disabled}
+      />
+    </MotionConfig>
   );
 }

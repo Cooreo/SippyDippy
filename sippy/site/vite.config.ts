@@ -33,8 +33,6 @@ export default defineConfig(({ mode }) => {
           manualChunks: {
             react: ["react", "react-dom"],
             motion: ["motion"],
-            fluid: ["fluidkit"],
-            glin: ["@glinui/ui"],
           },
         },
       },

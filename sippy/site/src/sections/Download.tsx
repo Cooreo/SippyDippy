@@ -10,7 +10,7 @@ import { getDownloadState } from "../lib/download";
  * URL + size + SHA-256 exist in lib/download.ts (Phase 6).
  */
 const STEPS = [
-  <><b>Allow</b> installs from this source (Settings → Security → Install unknown apps)</>,
+  <><b>Allow</b> installs from this source (Settings &gt; Security &gt; Install unknown apps)</>,
   <><b>Open</b> the downloaded file from your downloads</>,
   <><b>Confirm</b> “Install Sippy”</>,
   <><b>Open</b> Sippy — Dippy is already waiting</>,
@@ -22,10 +22,12 @@ export function Download() {
   return (
     <section id="download" className="download">
       <div className="narrow">
-        <GlassCard id="download-card" blur="lg" className="download-card" specular>
+        <GlassCard id="download-card" blur="lg" lowTierBlur className="download-card" specular>
           <div className="download-head">
             <img
               src={asset("assets/dippy-waving.webp")}
+              srcSet={`${asset("assets/dippy-waving-128.webp")} 128w, ${asset("assets/dippy-waving.webp")} 227w`}
+              sizes="72px"
               alt="Dippy the droplet friend, waving hello"
               width={72}
               height={78}
