@@ -1046,3 +1046,36 @@ and the carry, groups the items by friend with a 44 dp preview and a proposed
 price, and lists the last six ledger lines. A friend wears its cosmetic as a
 32 dp badge on its corner in the Friends list — see the B3 note for why items
 are badged rather than fitted onto the body.
+
+## Part C — motion (round 7)
+
+**Design decision: one switch, transform only.** The shell already computes
+`animate = !(reduceEffects || systemAnimatorScale == 0)`; a `LocalMotionAllowed`
+CompositionLocal now carries that answer to the glass controls, and every new
+animation asks `motionAllowed()` (or takes `animate`) instead of guessing. When
+it is off, each one is not merely fast — it is absent: `EnterTransition.None` for
+the tab change, `snap()` for the lens and the counter, and a constant 1f scale for
+a press. Nothing animates a size or a position that would trigger layout; every
+effect is `graphicsLayer` scale/translation or alpha, so the FROST tier costs the
+same as LENS.
+
+- **Tab change:** `AnimatedContent` with a shared-axis slide (incoming screen
+  from 1/6 of the width on the side it came from, outgoing 1/5 the other way,
+  both on one spring at damping 0.86 / stiffness 320) plus a short cross-fade.
+  The offset is scaled by `full`, so a narrow phone moves less in pixels.
+- **Liquid lens on the active tab:** inside each nav item, a radial-gradient
+  droplet with a white rim. It springs in at damping 0.5 (overshoot), squashing
+  narrower and flatter on the way in (`scaleX` 0.84→1, `scaleY` 0.68→1), and
+  shrinks away when the tab is left. The old flat 16% tint is gone, so the bar
+  reads as one glass sheet with a lens under the active glyph.
+- **New log entry:** the Home list and the History rows use
+  `Modifier.animateItem()`, so a freshly logged sip springs into place and pushes
+  the rest down instead of appearing at once.
+- **Ring:** already spring-driven (`spring(dampingRatio = 0.76f, StiffnessLow)`
+  in `WaterOrb`), so no change was needed; the level, the meniscus and the goal
+  flare all follow the same value.
+- **Glass controls:** 0.97 press scale on `GlassButton` and `GlassChip` through
+  the click's `MutableInteractionSource`, spring at stiffness 700, so it is a
+  tick rather than a bounce.
+- **Points count up:** the shop balance runs through `animateIntAsState` with a
+  spring, so the number rolls to the new total instead of jumping.

@@ -1,6 +1,7 @@
 package com.cooreo.sippy.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -99,7 +100,9 @@ fun HistoryScreen(
                 DayHeader(group)
             }
             items(group.entries.size, key = { index -> "e-${group.entries[index].id}" }) { index ->
-                HistoryRow(group.entries[index], goalMl = state.settings.goalMl)
+                Box(Modifier.animateItem()) {
+                    HistoryRow(group.entries[index], goalMl = state.settings.goalMl)
+                }
             }
         }
     }

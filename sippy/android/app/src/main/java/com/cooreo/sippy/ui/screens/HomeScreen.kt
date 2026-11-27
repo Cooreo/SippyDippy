@@ -211,7 +211,11 @@ fun HomeScreen(
                 }
             }
             items(todayEntries.take(3), key = { it.id }) { entry ->
-                EntryCard(entry = entry, goalMl = goalMl, onClick = { onEditEntry(entry) })
+                // A freshly logged entry springs into place and pushes the rest
+                // down instead of appearing at once (Part C).
+                Box(Modifier.animateItem()) {
+                    EntryCard(entry = entry, goalMl = goalMl, onClick = { onEditEntry(entry) })
+                }
             }
         }
 

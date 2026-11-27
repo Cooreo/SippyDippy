@@ -1,5 +1,8 @@
 package com.cooreo.sippy.ui.screens
 
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -44,9 +48,16 @@ fun ShopScreen(
     onEquip: (String, String) -> Unit,
     onBack: () -> Unit,
     bottomPadding: Dp,
+    animate: Boolean = true,
 ) {
     val c = LocalSippyColors.current
     val carry = state.pointsCarryMl.coerceIn(0, PointsRules.STEP_ML - 1)
+    // The balance counts up instead of jumping (Part C); instant when motion is off.
+    val shownPoints by animateIntAsState(
+        targetValue = state.points,
+        animationSpec = if (animate) spring(dampingRatio = 0.62f, stiffness = 240f) else snap(),
+        label = "pointsCountUp",
+    )
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -73,7 +84,7 @@ fun ShopScreen(
             GlassCard {
                 Column {
                     Text("Your points", style = SippyType.label, color = c.text3)
-                    Text("${state.points}", style = SippyType.value, color = c.text1)
+                    Text("$shownPoints", style = SippyType.value, color = c.text1)
                     Spacer(Modifier.height(4.dp))
                     Text(
                         text = "$carry ml carried toward the next point " +

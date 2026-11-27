@@ -4,7 +4,11 @@ import android.os.Build
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -15,10 +19,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -30,6 +38,8 @@ import kotlin.math.sin
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.cooreo.sippy.ui.system.LocalMotionAllowed
+import com.cooreo.sippy.ui.system.motionAllowed
 import com.cooreo.sippy.ui.theme.Dimens
 import com.cooreo.sippy.ui.theme.LocalSippyColors
 import com.kyant.backdrop.Backdrop
@@ -255,6 +265,26 @@ fun GlassSurface(
     Box(modifier = modifier.clip(shape).then(glass).then(rim), content = content)
 }
 
+/**
+ * Press feedback for a glass control: 0.97 scale, transform only. Instant when
+ * motion is off (Reduce effects or the system animator scale), so a control is
+ * never mid-animation for a player who asked for stillness.
+ */
+@Composable
+private fun pressScale(interaction: MutableInteractionSource): Modifier {
+    val pressed by interaction.collectIsPressedAsState()
+    val moving = motionAllowed() && LocalMotionAllowed.current
+    val scale by animateFloatAsState(
+        targetValue = if (pressed && moving) 0.97f else 1f,
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = 700f),
+        label = "pressScale",
+    )
+    return Modifier.graphicsLayer {
+        scaleX = if (moving) scale else 1f
+        scaleY = if (moving) scale else 1f
+    }
+}
+
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
@@ -288,11 +318,25 @@ fun GlassButton(
         prominent -> c.accent.copy(alpha = 0.82f)
         else -> null
     }
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = modifier
             .defaultMinSize(minHeight = Dimens.touch, minWidth = Dimens.touch)
             .clip(shape)
-            .then(if (enabled) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier),
+            .then(
+                if (enabled) {
+                    Modifier
+                        .clickable(
+                            interactionSource = interaction,
+                            indication = null,
+                            role = Role.Button,
+                            onClick = onClick,
+                        )
+                        .then(pressScale(interaction))
+                } else {
+                    Modifier
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         GlassSurface(
@@ -323,11 +367,18 @@ fun GlassChip(
 ) {
     val c = LocalSippyColors.current
     val shape = RoundedCornerShape(Dimens.pill)
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = modifier
             .defaultMinSize(minHeight = Dimens.touch, minWidth = Dimens.touch)
             .clip(shape)
-            .clickable(role = Role.Button, onClick = onClick),
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .then(pressScale(interaction)),
         contentAlignment = Alignment.Center,
     ) {
         // matchParentSize: the visible pill is exactly the cell the caller
