@@ -13,8 +13,8 @@ import { fileNameFromUrl, type ReleaseManifest } from "./release";
 
 export const APP_DOWNLOAD = {
   url: "",
-  version: "v1.0.0",
-  fileName: "sippy-v1.0.0.apk",
+  version: "v1.1.0",
+  fileName: "sippy-1.1.0.apk",
   sizeBytes: 0,
   sha256: "",
 } as const;

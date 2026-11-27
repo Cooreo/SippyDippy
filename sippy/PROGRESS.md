@@ -823,3 +823,29 @@ drink table stay in step) · `StreakCalculatorTest.todaysEntryIsWhatKeepsTheStre
 - The emulator smoke job stays advisory (`continue-on-error`) — it has never
   passed on a hosted runner, so nothing visual is proven by CI.
 - Calorie/food work remains out of scope; nothing in this round touches it.
+
+## RELEASE 1.1.0 — onboarding + rebuilt Home (prepared 2026-11-27)
+
+The site and the APK still said **v1.0.0** because `release.yml` only runs on a push
+to `main` and only builds when `version.properties` carries a `versionCode` newer
+than `releases/latest.json`. Nothing on the site hardcodes the version: the
+download card renders the manifest (`releases/latest.json`), which is what still
+said 1.0.0. So the fix is the normal ship ritual, not a site edit.
+
+- `sippy/android/version.properties` → **versionCode 2, versionName 1.1.0**.
+  Merging the branch to `main` makes `release.yml` see 2 > 1: it builds, signs,
+  smoke-tests, publishes the GitHub Release `v1.1.0` with
+  `sippy-1.1.0.apk`, rewrites `releases/latest.json`, and asks for a site deploy.
+  From that moment the site shows `v1.1.0 · <size> · <sha>` and the in-app updater
+  offers versionCode 2 to every 1.0.0 install.
+- `sippy/site/src/lib/download.ts` — the blank `APP_DOWNLOAD` fallback was still
+  labelled `v1.0.0` / `sippy-v1.0.0.apk`; it now reads `v1.1.0` /
+  `sippy-1.1.0.apk` (which is the real asset naming the pipeline uses). The URL is
+  still blank, so the card stays disabled until a manifest exists — the fallback
+  is a placeholder, never a claim.
+- Verified in this sandbox before pushing: site `tsc --noEmit` clean,
+  `vitest run` **14 files / 89 tests** pass. The Android side is unchanged apart
+  from the version file, so the green runs on `2ff89f6`, `d9643a3` and `74a86b1`
+  still describe the code being released.
+- **Not yet published:** the release exists only after the PR is merged. Until
+  then both the site and the APK honestly say 1.0.0.
