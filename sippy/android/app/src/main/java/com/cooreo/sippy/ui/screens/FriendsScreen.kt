@@ -72,7 +72,12 @@ fun FriendsScreen(
                         fontSize = 13.sp,
                     )
                 }
-                GlassChip(label = "Shop", onClick = onOpenShop)
+                // A1: both chips size to their text; the column above absorbs any
+                // squeeze instead.
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GlassChip(label = "${state.points} pts", onClick = onOpenShop)
+                    GlassChip(label = "Shop", onClick = onOpenShop)
+                }
             }
         }
         items(state.friends, key = { it.id }) { friend ->
@@ -120,18 +125,16 @@ fun FriendsScreen(
                 val missing = FriendKind.entries.filter { kind ->
                     kind != FriendKind.DIPPY && state.friends.none { it.kind == kind }
                 }
-                missing.chunked(2).forEach { pair ->
+                // Three per row, each chip at its natural width: weighting them
+                // to equal shares is what turned "Axolotl" into "A…" at 1.5x.
+                missing.chunked(3).forEach { trio ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        pair.forEach { kind ->
-                            Box(Modifier.weight(1f)) {
-                                GlassChip(
-                                    label = kind.short,
-                                    onClick = { controller.addFriend(kind) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
+                        trio.forEach { kind ->
+                            GlassChip(
+                                label = kind.short,
+                                onClick = { controller.addFriend(kind) },
+                            )
                         }
-                        if (pair.size == 1) Box(Modifier.weight(1f)) {}
                     }
                     Spacer(Modifier.height(8.dp))
                 }
@@ -197,21 +200,12 @@ private fun FriendCard(
                     )
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Box(Modifier.weight(1f)) {
-                            GlassChip(
-                                label = "Rename",
-                                onClick = onStartRename,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                        Box(Modifier.weight(1f)) {
-                            GlassChip(
-                                label = if (friend.pinned) "Unpin" else "Pin",
-                                selected = friend.pinned,
-                                onClick = onTogglePin,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
+                        GlassChip(label = "Rename", onClick = onStartRename)
+                        GlassChip(
+                            label = if (friend.pinned) "Unpin" else "Pin",
+                            selected = friend.pinned,
+                            onClick = onTogglePin,
+                        )
                     }
                 }
             }

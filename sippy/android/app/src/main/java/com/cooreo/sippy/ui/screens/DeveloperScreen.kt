@@ -144,6 +144,9 @@ fun DeveloperScreen(
                 }
             }
             item {
+                LayoutCheckCard()
+            }
+            item {
                 GlassCard {
                     Text("Danger zone", color = c.danger, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(6.dp))

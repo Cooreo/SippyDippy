@@ -36,6 +36,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import com.cooreo.sippy.BuildConfig
 import com.cooreo.sippy.domain.drinks.DrinkTable
@@ -153,19 +154,25 @@ fun SettingsScreen(
         item {
             SettingsCard {
                 SectionTitle("Daily goal")
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // A1: the chips are measured first at their natural width and the
+                // number takes the slack in the middle, so "−250" can never be
+                // squeezed into "−…".
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                     GlassChip(
                         label = "−250",
                         onClick = { controller.setGoal(state.settings.goalMl - 250) },
                     )
-                    Spacer(Modifier.weight(1f))
                     Text(
                         text = "${state.settings.goalMl} ml",
                         color = c.text1,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f),
                     )
-                    Spacer(Modifier.weight(1f))
                     GlassChip(
                         label = "+250",
                         onClick = { controller.setGoal(state.settings.goalMl + 250) },
