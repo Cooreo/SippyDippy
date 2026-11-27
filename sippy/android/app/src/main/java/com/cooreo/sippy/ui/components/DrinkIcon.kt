@@ -93,10 +93,9 @@ private fun iconRes(category: DrinkCategory): Int? = when (category) {
     DrinkCategory.JUICE -> R.drawable.drink_juice
     DrinkCategory.MILK -> R.drawable.drink_milk
     DrinkCategory.SMOOTHIE -> R.drawable.drink_smoothie
-    // Still to be painted; these fall back to the drawn droplet below.
-    DrinkCategory.SODA -> null
-    DrinkCategory.ALCOHOL -> null
-    DrinkCategory.OTHER -> null
+    DrinkCategory.SODA -> R.drawable.drink_soda
+    DrinkCategory.ALCOHOL -> R.drawable.drink_alcohol
+    DrinkCategory.OTHER -> R.drawable.drink_other
 }
 
 /**

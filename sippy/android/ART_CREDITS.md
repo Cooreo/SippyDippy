@@ -91,9 +91,13 @@ shipping (tried on three icons, rejected). What works:
 | `drink_juice.webp` | 192px, 8.6 KB | yes |
 | `drink_milk.webp` | 192px, 7.3 KB | yes |
 | `drink_smoothie.webp` | 192px, 7.8 KB | yes |
-| `drink_soda.webp` | — | **not yet** — category falls back to the drawn droplet |
-| `drink_alcohol.webp` | — | **not yet** — same fallback |
-| `drink_other.webp` | — | **not yet** — same fallback |
+| `drink_soda.webp` | 192px, 12.2 KB | yes |
+| `drink_alcohol.webp` | 192px, 8.7 KB | yes |
+| `drink_other.webp` | 192px, 11.7 KB | yes |
+
+All ten categories have art. `DrinkIcon` still keeps the drawn droplet as its
+`drinkId`-unknown fallback, because the drink table is data and may outgrow the
+ten families.
 
 Rejected along the way: nine earlier attempts with checkerboard transparency (all
 discarded), and one milk where the key left a magenta slab on the right shoulder
