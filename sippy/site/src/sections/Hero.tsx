@@ -63,15 +63,19 @@ export function Hero({
               <motion.span
                 key={w}
                 className="hero-word"
-                initial={{ opacity: 0, y: 26, filter: "blur(10px)" }}
+                initial={
+                  reduced
+                    ? { opacity: 1, y: 0, filter: "blur(0px)" }
+                    : { opacity: 0, y: 26, filter: "blur(10px)" }
+                }
                 animate={
-                  playWords
+                  playWords || reduced
                     ? { opacity: 1, y: 0, filter: "blur(0px)" }
                     : { opacity: 0 }
                 }
                 transition={{
-                  duration: wordDur,
-                  delay: i * wordStagger,
+                  duration: reduced ? 0 : wordDur,
+                  delay: reduced ? 0 : i * wordStagger,
                   ease: [0.22, 1, 0.36, 1],
                 }}
               >

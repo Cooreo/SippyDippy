@@ -2192,13 +2192,24 @@ section[id] {
    the hole is a transform-scaled 9999px-shadow circle). The page renders
    underneath from t=0 (zero CLS); the ring never distorts the page
    itself (that would require capturing the DOM). — */
+/* — Surface-break intro (SPEC.md section 3: zero #000, transparent .sb over
+   frame-0 <Backdrop />, 800ms smooth opacity exit). — */
 .sb {
   position: fixed;
   inset: 0;
   z-index: 100;
   overflow: hidden;
-  background: #020409;
+  background: transparent;
   cursor: pointer;
+  will-change: opacity;
+}
+.sb--reduced {
+  cursor: pointer;
+}
+.sb-rm-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--backdrop-base, #060a14);
 }
 .sb-canvas {
   position: absolute;
@@ -2207,7 +2218,8 @@ section[id] {
   height: 100%;
   display: block;
 }
-/* CSS fallback world (mirrors the shader's phase timing) */
+/* CSS fallback world (mirrors the shader's phase timing; darkest stop is
+   #060a14 = --bg-0, never #000) */
 .sb-scene {
   position: absolute;
   inset: 0;
@@ -2223,8 +2235,8 @@ section[id] {
   background: linear-gradient(
     180deg,
     #0a1c3f 0%,
-    #04102a 45%,
-    #020614 100%
+    #071226 52%,
+    #060a14 100%
   );
 }
 /* the SAME asset + position as the hero backdrop (.backdrop-caustics) so
@@ -2346,10 +2358,10 @@ section[id] {
 @keyframes sb-dippy-bob {
   0%,
   100% {
-    transform: translateY(0) rotate(-3deg);
+    transform: translate(-50%, 0) rotate(-4deg);
   }
   50% {
-    transform: translateY(-8px) rotate(3deg);
+    transform: translate(-50%, -8px) rotate(4deg);
   }
 }
 /* reduced-motion: a ~350 ms logo crossfade, no rise/ring/shader */

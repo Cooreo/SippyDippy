@@ -1,35 +1,34 @@
 /**
- * SurfaceBreakIntro — round-2 intro ("surface break").
+ * SurfaceBreakIntro — round-3 smooth-exit intro ("surface break").
  *
- * The page renders underneath from t=0 (zero CLS). The overlay carries:
- *  - the scene: a WebGL canvas (shader path) or .sb-scene (CSS path —
- *    same timeline with gradients/blur/ring); texture not ready within
- *    300 ms or no WebGL → CSS path, so a blank frame is never shown
- *  - the mark: DOM logo SVG, centred; at 3.0 s it FLIPs to the nav logo
- *    slot while the nav fades in
- *  - Dippy popping from the hole edge (3.05 s)
- *  - the reveal: an alpha hole centred on the mark (shader) / a
- *    transform-scaled shadow circle (CSS)
- *
- * Rules honoured: pointer-events none once the hole is >80% open; skip on
- * ANY key/click/tap (end state within 150 ms); paused when the tab is
- * hidden; canvas removed + GL context released on finish; the overlay is
- * aria-hidden with no focusable content (never traps focus); reduced
- * motion → this component renders nothing (HomePage plays a 350 ms
- * crossfade instead, and no WebGL context is ever created).
- *
- * NOTE (honest scope): the ring refracts the INTRO SCENE ONLY — inside the
- * shader. The page itself is a separate DOM layer and is never refracted
- * (that would require capturing the DOM).
+ * Invariants (SPEC.md section 3):
+ *  - No `#000` frame ever: darkest tone is `--backdrop-base` / `#060a14`, and
+ *    WebGL clears to that tone at `alpha = 1` (never transparent black).
+ *  - The page `<Backdrop />` renders from frame 0 under `.sb` (`background:
+ *    transparent`); the hole opens from `markCentre(vp)` (`2.5–3.0 s`) to
+ *    reveal that live backdrop, so removing `.sb` changes zero backdrop pixels.
+ *  - Over the last 800 ms (`3.0–3.8 s`), `overlay.style.opacity` crossfades
+ *    smoothly to `0` while Dippy waves from the hole's edge, the mark FLIPs
+ *    to the nav slot, and hero words rise blur-to-sharp.
+ *  - `.sb` is removed ONLY AFTER `overlay.style.opacity` has reached `"0"`.
+ *  - Skip (click, tap, Esc, or any key) jumps to end state with a 150 ms
+ *    crossfade to `opacity = 0` and no black flash.
+ *  - Reduced motion: 500 ms crossfade from mark to page over `--backdrop-base`
+ *    with NO `<canvas>`, NO WebGL context, NO ring, and NO black frame.
  */
 import { useEffect, useRef } from "react";
 import { useReducedMotion } from "motion/react";
 import { asset } from "../../lib/router";
 import { createIntroGL, type IntroGL } from "../../lib/intro-shader";
 import {
+  DARKEST_BACKDROP_RGB,
   INTRO,
+  INTRO_REDUCED_FADE_MS,
+  INTRO_SKIP_FADE_MS,
+  clamp01,
   holeOpenFraction,
   maxRevealRadius,
+  overlayOpacity,
   revealRadius,
   type Viewport,
 } from "../../lib/intro2";
@@ -41,7 +40,7 @@ interface Props {
   onReveal: () => void;
   /** The user skipped — collapse all delays to ~0. */
   onSkip: () => void;
-  /** Timeline finished (or skip applied) — unmount the overlay. */
+  /** Timeline finished (after overlay opacity reached 0) — unmount overlay. */
   onDone: () => void;
   /** ?debug=perf — log frame times to the console. */
   perf: boolean;
@@ -49,6 +48,16 @@ interface Props {
 
 function easeInOut(p: number): number {
   return p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+}
+
+function isReducedMotionPreferred(): boolean {
+  if (typeof document !== "undefined" && document.documentElement.hasAttribute("data-emulate-motion")) {
+    return true;
+  }
+  if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+  return false;
 }
 
 /** Layout position (offsets ignore transforms — the nav's entry
@@ -65,12 +74,6 @@ function layoutCenter(el: HTMLElement): { x: number; y: number } {
   return { x: x + el.offsetWidth / 2, y: y + el.offsetHeight / 2 };
 }
 
-/**
- * Centre of the nav logo icon in layout coordinates. The nav's entry
- * animation is a translate, so getBoundingClientRect would include it —
- * offsets ignore transforms; the icon's width is transform-independent
- * (the nav never scales), so GBC is safe for the width only.
- */
 function navLogoTarget(): { x: number; y: number; size: number } | null {
   const brand = document.querySelector<HTMLElement>(".gnav-brand");
   const svg = brand?.querySelector("svg");
@@ -84,8 +87,27 @@ function navLogoTarget(): { x: number; y: number; size: number } | null {
   };
 }
 
+function SippyMarkSvg() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="100%"
+      height="100%"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 3.5c-2.5 4-6 8-6 11.5a6 6 0 0 0 12 0c0-3.5-3.5-7.5-6-11.5Z" />
+      <path d="M9.1 14.6c-.4 2 0 3.4 1.4 4.4" />
+    </svg>
+  );
+}
+
 export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
-  const reduced = useReducedMotion() ?? false;
+  const osReduced = useReducedMotion() ?? false;
+  const reduced = osReduced || isReducedMotionPreferred();
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const maskRef = useRef<HTMLDivElement>(null);
@@ -98,15 +120,89 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
   const markRef = useRef<HTMLDivElement>(null);
   const dippyRef = useRef<HTMLImageElement>(null);
 
+  // Reduced-motion path: 500 ms crossfade from mark to page (no canvas, no GL,
+  // no ring, no black frame), skipped in 150 ms on click/tap/key.
   useEffect(() => {
-    // reduced motion: NOTHING runs here — no canvas, no GL context
-    // (HomePage plays the 350 ms crossfade instead)
+    if (!reduced) return;
+    const overlay = rootRef.current;
+    if (!overlay) return;
+
+    overlay.style.opacity = "1";
+    onReveal();
+
+    let finished = false;
+    let raf = 0;
+    let zeroPainted = false;
+    let fadeStart = performance.now();
+    let fadeDur = INTRO_REDUCED_FADE_MS;
+    let startOpacity = 1;
+
+    const cleanupListeners = () => {
+      window.removeEventListener("keydown", onSkipInput);
+      window.removeEventListener("pointerdown", onSkipInput);
+    };
+
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      cancelAnimationFrame(raf);
+      cleanupListeners();
+      overlay.style.opacity = "0";
+      onDone();
+    };
+
+    const onSkipInput = () => {
+      if (finished) return;
+      startOpacity = Number(overlay.style.opacity || "1");
+      fadeStart = performance.now();
+      fadeDur = INTRO_SKIP_FADE_MS;
+      overlay.style.pointerEvents = "none";
+      onSkip();
+    };
+
+    window.addEventListener("keydown", onSkipInput);
+    window.addEventListener("pointerdown", onSkipInput, { passive: true });
+
+    const step = (now: number) => {
+      if (finished) return;
+      const p = clamp01((now - fadeStart) / fadeDur);
+      const op = startOpacity * (1 - easeInOut(p));
+      if (p >= 1 || op <= 0.001) {
+        overlay.style.opacity = "0";
+        overlay.style.pointerEvents = "none";
+        if (zeroPainted) {
+          finish();
+          return;
+        }
+        zeroPainted = true;
+      } else {
+        overlay.style.opacity = op.toFixed(4);
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+
+    return () => {
+      finished = true;
+      cancelAnimationFrame(raf);
+      cleanupListeners();
+    };
+  }, [reduced, onReveal, onSkip, onDone]);
+
+  // Full surface-break path (shader or CSS fallback)
+  useEffect(() => {
     if (reduced) return;
     const overlay = rootRef.current;
     const canvas = canvasRef.current;
     if (!overlay || !canvas) return;
 
+    overlay.style.opacity = "1";
+
     const vp: Viewport = { w: window.innerWidth, h: window.innerHeight };
+    let dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    let gl: IntroGL | null = null;
+    let mode: "pending" | "shader" | "css" = "pending";
+
     const onResize = () => {
       vp.w = window.innerWidth;
       vp.h = window.innerHeight;
@@ -115,24 +211,25 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
     };
     window.addEventListener("resize", onResize);
 
-    let dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-    let gl: IntroGL | null = null;
-    let mode: "pending" | "shader" | "css" = "pending";
-
     // — backdrop texture (the SAME asset as the hero backdrop) —
     const img = new Image();
     let textureReady = false;
     img.onload = () => {
       textureReady = true;
-      caustRef.current?.style.setProperty("background-image", `url(${asset("assets/hero-caustics.webp")})`);
+      caustRef.current?.style.setProperty(
+        "background-image",
+        `url(${asset("assets/hero-caustics.webp")})`,
+      );
     };
     img.src = asset("assets/hero-caustics.webp");
 
-    // 300 ms window: texture ready → shader, otherwise CSS. Never blank.
+    // 300 ms window: texture ready + WebGL → shader, otherwise CSS fallback.
+    // While pending (`0..300 ms`), cssFrame drives `.sb-scene` immediately so
+    // frame 0 is never blank or `#000`.
     const decide = window.setTimeout(() => {
       if (mode !== "pending") return;
       if (textureReady) {
-        const g = createIntroGL(canvas);
+        const g = createIntroGL(canvas, DARKEST_BACKDROP_RGB);
         if (g) {
           gl = g;
           g.resize(vp.w, vp.h, dpr);
@@ -143,13 +240,12 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
           requestAnimationFrame(() => {
             canvas.style.opacity = "1";
           });
-          // the canvas now owns the scene — its alpha hole must reveal the
-          // PAGE, not the CSS fallback scene, so remove the fallback once
-          // the crossfade has finished
+          // Once the shader canvas crossfade completes, hide `.sb-scene` so the
+          // shader's alpha hole reveals the live `<Backdrop />` directly.
           window.setTimeout(() => {
             const s = rootRef.current?.querySelector<HTMLElement>(".sb-scene");
             if (s) s.style.display = "none";
-          }, 220);
+          }, 180);
           return;
         }
       }
@@ -164,42 +260,26 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
     let minDt = Infinity;
     let maxDt = 0;
     let sumDt = 0;
+    let dippyShown = false;
     let revealed = false;
     let passed80 = false;
+    let zeroPainted = false;
     let finished = false;
     let skipped = false;
+    let skipStart = 0;
+    let skipStartOp = 1;
     let raf = 0;
 
     const onVisibility = () => {
       if (document.hidden) {
         pausedAt = performance.now();
       } else if (pausedAt !== null) {
-        t0 += performance.now() - pausedAt; // keep the timeline paused
+        t0 += performance.now() - pausedAt;
         lastNow = performance.now();
         pausedAt = null;
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
-
-    const applySkip = () => {
-      if (skipped || finished) return;
-      skipped = true;
-      // jump the clock past the reveal: end state within one frame (<150 ms)
-      t0 = performance.now() - 3.95 * 1000;
-      lastNow = performance.now();
-      // mark lands in the nav slot instantly
-      const target = navLogoTarget();
-      if (target && markRef.current) {
-        const s = target.size / MARK_PX;
-        markRef.current.style.transition = "opacity 0.12s ease";
-        markRef.current.style.transform = `translate(${target.x - vp.w / 2}px, ${target.y - vp.h / 2}px) scale(${s.toFixed(4)})`;
-        markRef.current.style.opacity = "0";
-      }
-      if (dippyRef.current) dippyRef.current.style.opacity = "0";
-      onSkip();
-      onReveal();
-      window.setTimeout(() => finish(), 140);
-    };
 
     const finish = () => {
       if (finished) return;
@@ -207,11 +287,11 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
       cancelAnimationFrame(raf);
       window.clearTimeout(decide);
       window.removeEventListener("keydown", onKey);
-      overlay.removeEventListener("pointerdown", onPointer);
+      window.removeEventListener("pointerdown", onPointer);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("resize", onResize);
-      gl?.dispose(); // GL context released (WEBGL_lose_context); the canvas
-      // node leaves the DOM with the overlay unmount — React owns it
+      overlay.style.opacity = "0";
+      gl?.dispose();
       if (perf && frame > 0) {
         console.log(
           `[intro-perf] frames=${frame} avg=${(sumDt / frame).toFixed(2)}ms ` +
@@ -221,19 +301,44 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
       onDone();
     };
 
+    const applySkip = () => {
+      if (skipped || finished) return;
+      skipped = true;
+      zeroPainted = false;
+      skipStart = performance.now();
+      skipStartOp = Number(overlay.style.opacity || "1");
+      overlay.style.pointerEvents = "none";
+
+      const target = navLogoTarget();
+      if (target && markRef.current) {
+        const s = target.size / MARK_PX;
+        markRef.current.style.transition = "opacity 0.12s ease";
+        markRef.current.style.transform = `translate(${target.x - vp.w / 2}px, ${target.y - vp.h / 2}px) scale(${s.toFixed(4)})`;
+        markRef.current.style.opacity = "0";
+      }
+      onSkip();
+      if (!revealed) {
+        revealed = true;
+        onReveal();
+      }
+    };
+
     const onKey = () => applySkip();
     const onPointer = () => applySkip();
     window.addEventListener("keydown", onKey);
-    overlay.addEventListener("pointerdown", onPointer);
+    window.addEventListener("pointerdown", onPointer, { passive: true });
 
     const cssFrame = (t: number) => {
       const light = Math.min(1, Math.max(0, (t - 0.4) / 1.2));
       const sc = 1.12 - 0.12 * Math.min(1, Math.max(0, (t - 0.4) / 1.2));
       if (worldRef.current) worldRef.current.style.transform = `scale(${sc})`;
-      if (lightRef.current) lightRef.current.style.opacity = String(light * 0.9);
+      if (lightRef.current)
+        lightRef.current.style.opacity = String(light * 0.9);
       shaftRefs.current.forEach((s, i) => {
         if (s) {
-          s.style.opacity = String(light * (0.5 + 0.4 * Math.sin(t * 0.6 + i * 2.1)));
+          s.style.opacity = String(
+            light * (0.5 + 0.4 * Math.sin(t * 0.6 + i * 2.1)),
+          );
           s.style.transform = `skewX(-14deg) translateX(${((t * 2.4 * (i + 1)) % 24).toFixed(2)}%)`;
         }
       });
@@ -261,20 +366,22 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
           (1 - Math.min(1, Math.max(0, (t - 2.9) / 0.1)));
         const rr = 0.03 + 1.02 * Math.min(1, Math.max(0, (t - 2.5) / 0.5));
         ringRef.current.style.opacity = String(rt * 0.95);
-        // .sb-ring base circle is 60px: scale to rr * viewport height
         ringRef.current.style.transform = `scale(${((rr * vp.h) / 60).toFixed(3)})`;
       }
-      // reveal: mask the SCENE subtree with a growing circular hole so the
-      // PAGE shows through (the mark/dippy live OUTSIDE the masked subtree
-      // so they stay visible while the hole opens). Fallback path only —
-      // the shader path carves the same hole as canvas alpha.
+      // CSS fallback circular hole centred on the mark: once `r >= maxR`, keep
+      // the scene hidden (`opacity = 0`) so the hole NEVER snaps shut!
       const mask = maskRef.current;
-      if (mask && mode === "css") {
+      if (mask && mode !== "shader") {
         const r = revealRadius(t, vp);
-        if (r <= 1 || r >= maxRevealRadius(vp) + 4) {
+        const maxR = maxRevealRadius(vp);
+        if (r <= 1) {
+          mask.style.opacity = "1";
           mask.style.maskImage = "none";
           mask.style.webkitMaskImage = "none";
+        } else if (r >= maxR) {
+          mask.style.opacity = "0";
         } else {
+          mask.style.opacity = "1";
           const g = `radial-gradient(circle at 50% 50%, transparent ${Math.max(
             0,
             r - 2,
@@ -285,9 +392,43 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
       }
     };
 
-    const frameFn = () => {
+    const showDippy = () => {
+      const dippy = dippyRef.current;
+      if (!dippy) return;
+      const dx = vp.w * 0.5 + Math.min(vp.w * 0.07, 120);
+      const dy = vp.h * 0.5 + vp.h * 0.16;
+      dippy.style.left = `${dx}px`;
+      dippy.style.top = `${dy}px`;
+      dippy.style.transition =
+        "transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease";
+      requestAnimationFrame(() => {
+        dippy.style.opacity = "1";
+        dippy.style.transform = "translate(-50%, 0) scale(1)";
+      });
+      dippy.style.animation = "sb-dippy-bob 1.2s ease-in-out 0.32s infinite";
+    };
+
+    const frameFn = (now: number) => {
       if (finished) return;
-      const now = performance.now();
+
+      // 150 ms skip crossfade to opacity = 0 before unmounting
+      if (skipped) {
+        const p = clamp01((now - skipStart) / INTRO_SKIP_FADE_MS);
+        const op = skipStartOp * (1 - easeInOut(p));
+        if (p >= 1 || op <= 0.001) {
+          overlay.style.opacity = "0";
+          if (zeroPainted) {
+            finish();
+            return;
+          }
+          zeroPainted = true;
+        } else {
+          overlay.style.opacity = op.toFixed(4);
+        }
+        raf = requestAnimationFrame(frameFn);
+        return;
+      }
+
       const dt = now - lastNow;
       lastNow = now;
       const t = (now - t0) / 1000;
@@ -301,22 +442,29 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
         );
       }
 
+      const clampedT = Math.min(t, INTRO.done);
       if (mode === "shader" && gl) {
-        // u_revealR is in DEVICE px (u_res is the drawing buffer size)
-        gl.render(Math.min(t, INTRO.done), revealRadius(t, vp) * dpr);
-      } else if (mode === "css") {
-        cssFrame(Math.min(t, INTRO.done));
+        gl.render(clampedT, revealRadius(clampedT, vp) * dpr);
+      } else {
+        cssFrame(clampedT);
       }
 
-      // pointer-events off once the hole is >80% open
+      // pointer-events off once the hole is >80 % open
       if (!passed80 && holeOpenFraction(t, vp) > 0.8) {
         passed80 = true;
         overlay.style.pointerEvents = "none";
       }
 
-      // 3.0 s: reveal the page (words rise), then the mark FLIPs to the nav
-      // (a skip has already applied the end state — never replay the beats)
-      if (!revealed && !skipped && t >= INTRO.breakEnd) {
+      // ~2.75 s: Dippy pops up right at the expanding hole's edge and waves
+      // through the 3.0–3.8 s exit crossfade
+      if (!dippyShown && t >= 2.75) {
+        dippyShown = true;
+        showDippy();
+      }
+
+      // 3.0 s: hole covers viewport → hero words rise blur-to-sharp, mark FLIPs
+      // into nav brand slot, and 800 ms overlay crossfade (3.0–3.8 s) begins
+      if (!revealed && t >= INTRO.breakEnd) {
         revealed = true;
         onReveal();
         const target = navLogoTarget();
@@ -328,6 +476,7 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
           const start = performance.now();
           const fly = 480;
           const stepFlip = () => {
+            if (finished) return;
             const p = Math.min(1, (performance.now() - start) / fly);
             const e = easeInOut(p);
             mark.style.transform = `translate(${(dx * e).toFixed(1)}px, ${(dy * e).toFixed(1)}px) scale(${(1 - (1 - s) * e).toFixed(4)})`;
@@ -339,90 +488,98 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
           };
           requestAnimationFrame(stepFlip);
         }
-        // Dippy pops from the hole edge
-        const dippy = dippyRef.current;
-        if (dippy) {
-          const dx = vp.w * 0.5 + Math.min(vp.w * 0.07, 120);
-          const dy = vp.h * 0.5 + vp.h * 0.16;
-          dippy.style.left = `${dx}px`;
-          dippy.style.top = `${dy}px`;
-          dippy.style.transition = "transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease";
-          requestAnimationFrame(() => {
-            dippy.style.opacity = "1";
-            dippy.style.transform = "translate(-50%, 0) scale(1)";
-          });
-          dippy.style.animation = "sb-dippy-bob 1.6s ease-in-out 0.4s infinite";
-          window.setTimeout(() => {
-            if (dippy) {
-              dippy.style.animation = "none";
-              dippy.style.transition = "opacity 0.25s ease";
-              dippy.style.opacity = "0";
-            }
-          }, 900);
+      }
+
+      // Last 800 ms (3.0 → 3.8 s): crossfade overlay opacity smoothly to 0;
+      // unmount ONLY AFTER opacity has reached "0" and painted.
+      const op = overlayOpacity(t);
+      if (op <= 0) {
+        overlay.style.opacity = "0";
+        if (zeroPainted && t >= INTRO.done) {
+          finish();
+          return;
         }
+        zeroPainted = true;
+      } else {
+        overlay.style.opacity = String(op);
       }
-      // 4.2 s: timeline complete (a skip finishes via its own 140 ms timeout)
-      if (!skipped && t >= INTRO.done) {
-        finish();
-        return;
-      }
+
       raf = requestAnimationFrame(frameFn);
     };
 
-    // initial static state (frame 0) — dark, hidden mark/dippy/hole
     if (markRef.current) markRef.current.style.opacity = "0";
     raf = requestAnimationFrame(frameFn);
 
-    // mark appears when the shader/blob forms it (2.4 s)
     const markAppear = window.setTimeout(() => {
       const m = markRef.current;
-      if (m && !skipped) {
+      if (m && !skipped && !finished) {
         m.style.transition = "opacity 0.15s ease";
         m.style.opacity = "1";
       }
     }, 2400);
 
     return () => {
-      // unmount: release everything. Deliberately NOT onDone() —
-      // StrictMode double-invokes effects in dev and onDone unmounts the
-      // component (it would kill the second, real run); a mid-intro
-      // navigation simply doesn't mark the intro played.
       finished = true;
       cancelAnimationFrame(raf);
       window.clearTimeout(decide);
       window.clearTimeout(markAppear);
       window.removeEventListener("keydown", onKey);
-      overlay.removeEventListener("pointerdown", onPointer);
+      window.removeEventListener("pointerdown", onPointer);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("resize", onResize);
       gl?.dispose();
     };
   }, [reduced, onReveal, onSkip, onDone, perf]);
 
-  // reduced motion: nothing renders — no canvas, no GL context
-  if (reduced) return null;
+  // Reduced motion: 500 ms mark-to-page crossfade over `--backdrop-base`.
+  // Strictly NO `<canvas>` (no WebGL context), NO ring, and NO `#000`.
+  if (reduced) {
+    return (
+      <div
+        ref={rootRef}
+        className="sb sb--reduced"
+        aria-hidden="true"
+        role="presentation"
+      >
+        <div className="sb-rm-backdrop" />
+        <div className="sb-mark">
+          <SippyMarkSvg />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div
-      ref={rootRef}
-      className="sb"
-      aria-hidden="true"
-      role="presentation"
-    >
-      {/* CSS fallback scene (also the guaranteed non-blank first frames).
-          This subtree gets the reveal MASK (growing circular hole) — the
-          mark and Dippy live outside it so they survive the reveal. */}
+    <div ref={rootRef} className="sb" aria-hidden="true" role="presentation">
+      {/* CSS fallback scene (also guarantees non-black frames 0..300 ms). */}
       <div ref={maskRef} className="sb-masked">
         <div className="sb-scene">
           <div ref={worldRef} className="sb-world">
             <div className="sb-deep" />
             <div ref={caustRef} className="sb-caustics" />
             <div ref={lightRef} className="sb-light" />
-            <div ref={(el) => { shaftRefs.current[0] = el; }} className="sb-shaft" style={{ left: "18%" }} />
-            <div ref={(el) => { shaftRefs.current[1] = el; }} className="sb-shaft" style={{ left: "46%" }} />
-            <div ref={(el) => { shaftRefs.current[2] = el; }} className="sb-shaft" style={{ left: "72%" }} />
+            <div
+              ref={(el) => {
+                shaftRefs.current[0] = el;
+              }}
+              className="sb-shaft"
+              style={{ left: "18%" }}
+            />
+            <div
+              ref={(el) => {
+                shaftRefs.current[1] = el;
+              }}
+              className="sb-shaft"
+              style={{ left: "46%" }}
+            />
+            <div
+              ref={(el) => {
+                shaftRefs.current[2] = el;
+              }}
+              className="sb-shaft"
+              style={{ left: "72%" }}
+            />
           </div>
-          {/* bubbles — CSS-driven (auto-pause when the tab is hidden) */}
           {Array.from({ length: 10 }).map((_, i) => (
             <span
               key={i}
@@ -438,31 +595,24 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
             />
           ))}
           {Array.from({ length: 4 }).map((_, i) => (
-            <span key={`d${i}`} ref={(el) => { dropRefs.current[i] = el; }} className="sb-drop" />
+            <span
+              key={`d${i}`}
+              ref={(el) => {
+                dropRefs.current[i] = el;
+              }}
+              className="sb-drop"
+            />
           ))}
           <div ref={ringRef} className="sb-ring" />
         </div>
       </div>
-      {/* shader scene (fades in over the CSS scene if it wins the 300 ms
-          race); its own alpha hole does the reveal in shader mode */}
+      {/* WebGL scene (clears to #060a14 at alpha = 1; alpha hole reveals <Backdrop />). */}
       <canvas ref={canvasRef} className="sb-canvas" style={{ opacity: 0 }} />
-      {/* the mark (DOM, crisp) — FLIP source at viewport centre */}
+      {/* Centred DOM mark — FLIP source to nav brand slot */}
       <div ref={markRef} className="sb-mark">
-        <svg
-          viewBox="0 0 24 24"
-          width="100%"
-          height="100%"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.75}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M12 3.5c-2.5 4-6 8-6 11.5a6 6 0 0 0 12 0c0-3.5-3.5-7.5-6-11.5Z" />
-          <path d="M9.1 14.6c-.4 2 0 3.4 1.4 4.4" />
-        </svg>
+        <SippyMarkSvg />
       </div>
-      {/* Dippy popping from the hole edge */}
+      {/* Dippy popping up from the hole's edge during crossfade and waving */}
       <img
         ref={dippyRef}
         className="sb-dippy"
@@ -470,7 +620,11 @@ export function SurfaceBreakIntro({ onReveal, onSkip, onDone, perf }: Props) {
         alt=""
         width={74}
         height={80}
-        style={{ left: 0, top: 0, transform: "translate(-50%, 40px) scale(0.7)" }}
+        style={{
+          left: 0,
+          top: 0,
+          transform: "translate(-50%, 40px) scale(0.7)",
+        }}
         decoding="async"
       />
     </div>
