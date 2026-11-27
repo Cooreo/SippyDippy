@@ -10,8 +10,12 @@ object Dates {
 
     fun todayEpochDay(now: LocalDate = LocalDate.now()): Long = now.toEpochDay()
 
-    fun dayOf(epochMs: Long): Long =
-        LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(epochMs), ZoneId.systemDefault())
+    /**
+     * The local day an instant belongs to. The zone is a parameter so midnight
+     * and the DST boundaries are unit tested instead of assumed (A3).
+     */
+    fun dayOf(epochMs: Long, zone: ZoneId = ZoneId.systemDefault()): Long =
+        LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(epochMs), zone)
             .toLocalDate()
             .toEpochDay()
 

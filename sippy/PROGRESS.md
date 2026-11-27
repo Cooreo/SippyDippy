@@ -1143,3 +1143,214 @@ so the rollback can also reach back before this change.
 **What this means for round 7:** the work is no longer "done but unreleased". It
 is 1.2.0, published by the pipeline, with the new rollback available before the
 first automatic ship — so there is something to revert to if 1.2.0 misbehaves.
+
+---
+
+# Round 8 — HANDOFF
+
+**Where things stand:** 1.2.0 is published and live (site, GitHub release and the
+in-app updater all point at `versionCode 3`). Round 7 shipped: immersive bars,
+the glass diagnosis row, the Settings layout pass, the dated log, two pinned
+friends, four new friends with cosmetics, points + ledger + shop, and the motion
+pass. Round 8 is a two-round job. **Round 1** (fixes and layout) shipped; **Round 2**
+(look and motion) is in progress: B1, B2, B3, B4 part 1, B5, B6, B9 and B10 are
+pushed and green, while **B4's icons, B7, B8 and B11 are still open**. The sketch
+and the screenshots for Round 1 did not arrive, so A5 was built from its written
+description, which is now the layout authority for Home.
+
+**Evidence note:** the host can never read the Gradle log (blocked blob host) and
+the emulator job dies before it can take a screenshot, so every CI verdict in this
+round is from job/step conclusions plus the code, and every visual is a phone
+check, never a claim.
+
+## Root causes, written before the code
+
+**A1 — truncated labels ("S…", "B…", "−…", "+…", "…").** `GlassButton` and
+`GlassChip` draw their label with `maxLines = 1, overflow = Ellipsis`, so any
+squeeze silently becomes an ellipsis instead of wrapping. The squeeze comes from
+the callers: Settings' stepper Row, the Friends and Shop headers and the Shop item
+rows all put text chips next to text that grows (the goal number, the balance,
+"Need 12"), and some wrap chips in `Box(Modifier.weight(1f))`, which hands the
+chip a fixed share of the width. One component decides, so it is fixed once.
+
+**A2 — the status bar disappeared.** Round 7's A1 called
+`WindowInsetsController.hide(systemBars())` with `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`,
+and the content frame's padding came from `Modifier.statusBarsPadding()` — which
+returns **0 while the bar is hidden**. So hiding the bars and padding by the bar
+inset cannot coexist: with bars shown the content needs the inset, with bars
+hidden it needs none. Fix: stop hiding, make the bar transparent over the
+backdrop, and pad by status bar *plus* display cutout.
+
+**A3 — the log is incomplete and unsorted.** Two independent causes.
+(1) `SippyController.addDrink` keeps only the newest `MAX_LOG_ENTRIES = 400`
+(`takeLast`) — the tail is *deleted*, not just hidden. (2) History exists but is a
+plain `LazyColumn` fed by `LogGroups.byDay`, which sorts by `atEpochMs` only (no
+id tie-break, so identical timestamps can swap), formats dates without a year, and
+has no edit/delete path at all. There is also no way to see a day's counted
+millilitres or whether it met the goal.
+
+**A4 — cosmetics can be bought but not worn.** `StoredState.equipped` is
+`Map<friendId, itemId>`: one item per friend, no slot concept, so a hat and an
+outfit cannot coexist. Nothing draws a cosmetic on a friend — `FriendImage` has no
+item parameters and there is no anchor data — and the Shop's only action is
+`buyItem`; the chip that was meant to say "Equip" is the one A1 turns into "…".
+Ownership is already keyed by item id, which is why removal survives; equip state
+is keyed by friend id, which is why renaming survives, but neither slot nor
+renderer exists.
+
+## Round 8, Round 1 — what shipped
+
+One commit per lettered item, each pushed on its own:
+
+| item | commit | CI on that commit |
+| --- | --- | --- |
+| root causes (before any code) | `3a7221b` | skipped by design |
+| A1 labels, icon-only buttons, Layout check | `9da1ab8` | cancelled (the next push superseded it) |
+| A2 status bar, scrim, insets | `9d7b270` | failed — see below |
+| A3 full dated log | `34597f8` | failed — see below |
+| A4 cosmetics, one avatar, dress-up, tuner | `22c8afe` | **green** |
+| A5 Home rebuild | `2a82747` | **green** |
+
+**Two build breaks were introduced by the blind edits and are repaired in `22c8afe`.**
+(1) A2 used `Brush`, `Color` and `WindowInsets.statusBars` in `SippyRoot` without
+importing them. (2) A1's Layout check called `GlassIconButton` without its required
+`onClick`. Neither was visible from the sandbox: the Gradle log host
+(`results-receiver.actions.githubusercontent.com`) is blocked, so `gh run view
+--log` returns EOF and the job page needs a login. The causes were found by
+diffing every new call site against its declaration — the same class of error will
+keep happening until the log is readable, which is worth fixing before Round 2.
+
+**Design notes worth keeping:**
+- `ShopRules` + `Wardrobe` hold every cosmetic rule (`purchase`, `canEquip`,
+  `worn`, `toggle`, `unequip`), and the two maps are `equipped` (hats) and
+  `equippedOutfits`. A pre-round-8 scarf left in the hat map is promoted on read,
+  so old saves keep it.
+- `FriendAvatar` is the only renderer; `ui/friends/Anchors.kt` is the only place an
+  overlay position lives. The Developer-options Anchor tuner prints the four
+  numbers to paste back into it. Otter, turtle and axolotl outfits have no art, so
+  the table and the Shop still list only the five painted items.
+- Home is now one `LazyColumn` of four items (header, orb, pills, today card), so
+  the whole screen scrolls as one surface; the orb is centred and the pinned
+  friends overlay its corners rather than sitting in a row beside it.
+- `LogGroups.byDay` is the single source of day grouping, labels and goal ticks;
+  History, Home's three rows and the tests all read it.
+
+**Not verified, on purpose:** everything visual — orb size at 360dp, the anchor
+numbers, the speech bubble timing, the nested-glass look of the log card. The
+round-8 sketch and screenshots never reached the sandbox, so the written
+description was the authority for A5. All of it needs a phone check.
+
+---
+
+## Round 8, Round 2 — look and motion (in progress)
+
+| item | commit | CI on that commit |
+| --- | --- | --- |
+| B1 exaggerated glass + live-tier report | `f085eea` | failed (imports) |
+| B2 backdrop art, shafts, bubbles, tab tints | `72cc0e2` | failed (imports) |
+| B3 three glass levels | `28f45e9` | failed (imports) |
+| B4 part 1 — type scale, rhythm, share bar | `b7c45b0` | failed (imports) |
+| B5 the orb becomes the star | `1fd686f` | failed (imports) |
+| fix — `glassBoost` setter | `bfb26a4` | failed (imports) |
+| fix — the four missing imports + forgotten-import check | `7e96e92` | failed (unit test) |
+| fix — `soup` is a legitimate OTHER drink | `cd0e42e` | **green** |
+| B10 haptics switch, frame counter, tab tick | `e73ce8b` | **green** |
+| B9 friends that talk, grow, breathe and flinch | `d013ad0` → `980cab2` | failed → **green** |
+| B6 one liquid lens | `fee2a1f` | **green** |
+
+**Honest note on the red runs.** Six commits in a row were red, and none of them
+was a design problem: they were four missing imports (`StrokeCap` is in
+`ui.graphics` and not `graphics.drawscope`; `setValue` for a `MutableIntState`;
+`animateFloat` is an `animation.core` extension on `InfiniteTransition`) and one
+wrong test expectation (`soup` was unmapped, so a legitimate row fell into OTHER).
+The owner supplied the Gradle log twice; because the sandbox cannot read it, each
+round trip cost a push and a three-minute build. The local check now also looks
+for **forgotten extension imports** (`.animateFloat`, `.setValue`, `.drawBehind`,
+`.graphicsLayer` …), which is the exact class that produced all four, and it runs
+before every commit.
+
+**What the round has added, in the owner's terms:**
+
+- **B1** `LocalGlassBoost` (1x, or 2.4x from Developer options) multiplies both the
+  blur radius and the lens parameters; `GlassLevel.LIVE` is still one blur + one
+  runtime shader, so exaggerating glass does not add surfaces.
+- **B2** one generated backdrop (`res/drawable-nodpi/backdrop.webp`, 1080x2400,
+  under 250 KB) plus two 40s light-shaft layers and twelve bubbles drifting up —
+  transform and alpha only, paused under Reduce effects and off-screen.
+- **B3** `GlassLevel.LIVE/CHEAP/CHIP` with `LocalGlassLevel`, and `DrinkTints`
+  keyed off `DrinkCategory` (26 drink ids → 10 families).
+- **B5** the orb: two wave layers at different speeds, eight rising bubbles, a
+  specular arc, an inner glow that grows with the level, a reflection oval under
+  the glass, gravity tilt through `rememberGravityTilt` (low-pass filtered, sensor
+  registered only while the screen is visible), a splash ring where the water lands,
+  a ten-droplet burst at the goal, a shimmer above 100%, and the pinned friends
+  dancing for 1.6s when the goal is reached.
+- **B6** one lens travelling the five-slot bar, spring + velocity stretch (1.25x /
+  0.9x cap), magnified glyph and label, drag-to-slide with a snap on release,
+  sliding behind the Log button. Maths in `domain/nav/NavLens.kt`, seven tests.
+- **B9** 56 distinct mood lines (eight per species, picked by friend id), growth
+  scale + halo from the streak, a 6.8s bob-and-hop idle, tap squash with eight
+  sparkles, and pin buttons that read "Pin left" / "Pin right" / "Unpin".
+- **B10** `Settings.hapticsEnabled` (on by default, backward compatible), a tab
+  tick, the log thud and goal pattern already wired, and a Developer-options frame
+  card (fps, worst frame, frames counted) measured only while it is on screen.
+
+### Round 2, complete
+
+| item | commit(s) | CI |
+| --- | --- | --- |
+| B1 exaggerated glass + live-tier report | `f085eea` | red on its own run; green afterwards in `cd0e42e` |
+| B2 backdrop, shafts, bubbles, tab tints | `72cc0e2` | red; green in `cd0e42e` |
+| B3 three glass levels | `28f45e9` | red; green in `cd0e42e` |
+| B4 part 1 — type, rhythm, share bar | `b7c45b0` | red; green in `cd0e42e` |
+| B5 orb as the star | `1fd686f` | red; green in `cd0e42e` |
+| B10 haptics switch, frame counter, tab tick | `e73ce8b` | **green** |
+| B9 friends that talk, grow, breathe, flinch | `d013ad0` → `980cab2` | failed → **green** |
+| B6 one liquid lens | `fee2a1f` | **green** |
+| B4 part 2 — seven painted icons | `60be618` | **green** |
+| B7 Log container transform + droplet flight | `bb8916a` → `255e3f3` → `7456913`, reverted in `a566116`, restored and fixed in `6c89ed4` | red ×3 → **green** |
+| B4 part 3 — soda, alcohol, other | `69df762` | **green** |
+| B8 splash + four vignettes | `4dba93f` | **green** |
+| B11 tilt parallax | `dd09396` | **green** |
+
+**The one-line bug behind the B7 failure**, for the record:
+
+    import com.cooreo.sippy.model.Drink     // there is no Drink there
+
+The class lives in `com.cooreo.sippy.domain.drinks`. Three red runs, a revert and a
+bisect (composables in / sheet files out / flight alone) found it. Lesson: the
+bisect, not more staring.
+
+**Two local checks now run before every commit**, because every build break this
+round was invisible to me:
+
+1. forgotten extension imports (`.animateFloat`, `.setValue`, `.drawBehind`,
+   `.graphicsLayer`, …) — this caught the Backdrop parallax's missing import;
+2. **phantom project imports**: every `com.cooreo.sippy.*` import must name
+   something that package actually declares. This is what B7 would have failed on
+   in one second instead of three builds.
+
+**Round 2 delivered, in one line each:** exaggerated glass from Developer options;
+a generated underwater backdrop with two shaft layers, twelve bubbles and a
+crossfading per-tab tint; three glass levels with a hard cap of three live surfaces;
+a type scale and an 8dp rhythm; ten painted drink icons and a share bar per log row;
+an orb with waves, bubbles, specular, glow, reflection, gravity slosh, landing
+splash, goal burst, shimmer and a friends' dance; one liquid lens that travels,
+stretches and can be dragged; friends with 56 mood lines, growth scale and glow, a
+bob-and-hop idle, tap squash and sparkles; haptics behind a switch with a real
+frame counter; a + button that grows into the Log sheet and flies its droplet into
+the orb; a platform splash in the backdrop's own blue and four arrival vignettes
+with Full/Short/Off; and a tilt that leans the backdrop and the pinned friends.
+
+**Still true:** nothing visual has been seen on a device. Every claim above is code
+plus a green `testDebugUnitTest` and `assembleDebug`.
+
+### 1.3.0 — the release this round ships as
+
+`versionCode 4`, `versionName 1.3.0`. Round 8 in full: the fix-and-layout pass (A1
+labels, A2 status bar, A3 dated log, A4 cosmetics, A5 Home) and the look-and-motion
+pass (B1–B11 above), on top of the 1.2.0 baseline. The pipeline publishes it from the
+merge to `main`: `release.yml` builds, signs, smoke-tests on an emulator, publishes
+the GitHub Release, rewrites `releases/latest.json` and redeploys the site, and
+`rollback.yml` withdraws it in one click if it misbehaves (1.2.0 is the manifest it
+would restore).

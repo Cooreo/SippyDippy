@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,7 +28,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -36,6 +40,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import kotlin.math.sin
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cooreo.sippy.ui.system.LocalMotionAllowed
@@ -73,6 +78,13 @@ val LocalBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 val LocalGlassTier = staticCompositionLocalOf { GlassTier.FROST }
 
 /**
+ * Developer-only exaggeration factor for the glass (round 8, B1). 1f is the
+ * shipping look; 2.4f makes the refraction and the blur impossible to miss, so
+ * "is the lens actually running?" is a switch, not an argument.
+ */
+val LocalGlassBoost = staticCompositionLocalOf { 1f }
+
+/**
  * The one fixed backdrop the whole app is drawn on (SPEC §1: a single
  * full-viewport layer; content is transparent). It is captured once into a
  * layer, and every glass surface samples it — no per-surface backdrops.
@@ -83,130 +95,22 @@ fun SippyBackdropHost(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val backdrop = rememberLayerBackdrop()
+    // B2: the host owns the tab tint; a screen writes LocalBackdropTint.color and
+    // the backdrop crossfades to it.
+    val tint = remember { BackdropTint() }
     Box(modifier.fillMaxSize()) {
-        AmbientBackground(
-            modifier = Modifier
-                .fillMaxSize()
-                .layerBackdrop(backdrop),
-        )
-        CompositionLocalProvider(LocalBackdrop provides backdrop) {
-            Box(Modifier.fillMaxSize()) { content() }
+        CompositionLocalProvider(LocalBackdropTint provides tint) {
+            AmbientBackground(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .layerBackdrop(backdrop),
+            )
         }
-    }
-}
-
-/**
- * The site's underwater scene, static: the deep gradient, three light pools, a
- * diagonal shaft, drifting caustic ribbons and ambient droplets. Nothing here
- * animates and no image is loaded — but the detail is deliberate (round 7, A2):
- * a blur or a lens over a smooth gradient is invisible, so the backdrop has to
- * carry structure if the glass is to look like glass.
- */
-@Composable
-fun AmbientBackground(modifier: Modifier = Modifier) {
-    val c = LocalSippyColors.current
-    val dark = c.isDark
-    Box(
-        modifier = modifier.background(
-            Brush.verticalGradient(listOf(c.bg0, c.bg1, c.bg2)),
-        ),
-    ) {
-        Canvas(Modifier.fillMaxSize()) {
-            fun pool(x: Float, y: Float, r: Float, color: Color) {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(color, Color.Transparent),
-                        center = Offset(size.width * x, size.height * y),
-                        radius = size.minDimension * r,
-                    ),
-                    radius = size.minDimension * r,
-                    center = Offset(size.width * x, size.height * y),
-                )
-            }
-            val accent = c.accent.copy(alpha = if (dark) 0.34f else 0.26f)
-            pool(0.16f, 0.12f, 0.55f, accent)
-            pool(0.92f, 0.34f, 0.42f, c.accentBright.copy(alpha = if (dark) 0.20f else 0.18f))
-            pool(0.44f, 0.98f, 0.60f, c.accentDeep.copy(alpha = if (dark) 0.16f else 0.10f))
-
-            // Light shaft from the top-left, like the hero scrim on the site.
-            drawPath(
-                path = Path().apply {
-                    moveTo(size.width * 0.06f, 0f)
-                    lineTo(size.width * 0.42f, 0f)
-                    lineTo(size.width * 0.30f, size.height)
-                    lineTo(size.width * -0.04f, size.height)
-                    close()
-                },
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = if (dark) 0.05f else 0.16f),
-                        Color.Transparent,
-                    ),
-                    startY = 0f,
-                    endY = size.height * 0.9f,
-                ),
-            )
-
-            // Caustic ribbons: three travelling wave bands, painted as strokes so
-            // their edges are what the lens bends.
-            val caustic = if (dark) 0.10f else 0.20f
-            repeat(3) { band ->
-                val baseY = size.height * (0.30f + band * 0.22f)
-                val amplitude = size.height * (0.045f + band * 0.012f)
-                val path = Path()
-                var x = -size.width * 0.05f
-                var first = true
-                while (x <= size.width * 1.05f) {
-                    val y = baseY + sin(x / size.width * 5.2f + band * 1.7f) * amplitude
-                    if (first) {
-                        path.moveTo(x, y)
-                        first = false
-                    } else {
-                        path.lineTo(x, y)
-                    }
-                    x += size.width / 40f
-                }
-                drawPath(
-                    path = path,
-                    color = c.accentBright.copy(alpha = caustic * (1f - band * 0.22f)),
-                    style = Stroke(width = (2.5f - band * 0.5f).dp.toPx()),
-                )
-            }
-
-            // Ambient droplets: fixed positions, small, soft.
-            val droplets = floatArrayOf(
-                0.08f, 0.16f, 0.030f,
-                0.24f, 0.34f, 0.018f,
-                0.38f, 0.12f, 0.022f,
-                0.52f, 0.44f, 0.016f,
-                0.66f, 0.22f, 0.026f,
-                0.74f, 0.62f, 0.020f,
-                0.86f, 0.40f, 0.030f,
-                0.92f, 0.74f, 0.017f,
-                0.16f, 0.68f, 0.021f,
-                0.46f, 0.80f, 0.026f,
-                0.60f, 0.92f, 0.015f,
-                0.30f, 0.52f, 0.013f,
-            )
-            var i = 0
-            while (i + 2 < droplets.size) {
-                val x = droplets[i] * size.width
-                val y = droplets[i + 1] * size.height
-                val r = droplets[i + 2] * size.minDimension
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = if (dark) 0.16f else 0.30f),
-                            Color.Transparent,
-                        ),
-                        center = Offset(x - r * 0.3f, y - r * 0.3f),
-                        radius = r,
-                    ),
-                    radius = r,
-                    center = Offset(x, y),
-                )
-                i += 3
-            }
+        CompositionLocalProvider(
+            LocalBackdrop provides backdrop,
+            LocalBackdropTint provides tint,
+        ) {
+            Box(Modifier.fillMaxSize()) { content() }
         }
     }
 }
@@ -216,33 +120,58 @@ fun AmbientBackground(modifier: Modifier = Modifier) {
  * highlight and a soft drop shadow. [content] sits on the single surface — no
  * nested backdrop-filter layers (SPEC §1 budget).
  */
+/**
+ * The three glass levels (round 8, B3). This *is* the performance budget:
+ *
+ *  - LIVE — the real thing: backdrop blur plus the AGSL lens. The orb overlay,
+ *    the bottom bar, the + button and sheets. Never more than three at once.
+ *  - CHEAP — level 2: tint, gradient rim, inner top highlight, soft blue shadow,
+ *    no live blur. Every list card and the Today card.
+ *  - CHIP — level 3: a thin tint and a rim. Chips, pills, tags.
+ *
+ * Reduce effects (or a device without RenderEffect) collapses everything to
+ * CHEAP, so the app never blurs on a phone that asked it not to.
+ */
+enum class GlassLevel { LIVE, CHEAP, CHIP }
+
+val LocalGlassLevel = staticCompositionLocalOf { GlassLevel.CHEAP }
+
+/**
+ * A glass surface. [level] overrides [LocalGlassLevel] for one call; null means
+ * "use the ambient level", which is what most call sites want.
+ */
 @Composable
 fun GlassSurface(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(Dimens.card),
     tint: Color? = null,
     shadow: Boolean = true,
+    level: GlassLevel? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val c = LocalSippyColors.current
     val backdrop = LocalBackdrop.current
     val tier = LocalGlassTier.current
-    val surface = tint ?: c.glassTint
+    val boost = LocalGlassBoost.current
+    val requested = level ?: LocalGlassLevel.current
+    val effective = if (tier == GlassTier.FROST) GlassLevel.CHEAP else requested
+    val surface = if (effective == GlassLevel.CHIP) {
+        (tint ?: c.glassTint).copy(alpha = 0.55f)
+    } else {
+        tint ?: c.glassTint
+    }
 
-    val glass = if (backdrop != null) {
-        Modifier.drawBackdrop(
+    val glass = when {
+        // Level 1 — the lens. Only reachable on API 33+ with shaders.
+        effective == GlassLevel.LIVE && backdrop != null -> Modifier.drawBackdrop(
             backdrop = backdrop,
             shape = { shape },
             effects = {
-                when (tier) {
-                    GlassTier.LENS -> {
-                        blur(radius = 14.dp.toPx())
-                        lens(refractionHeight = 26.dp.toPx(), refractionAmount = 22.dp.toPx())
-                    }
-                    GlassTier.BLUR -> blur(radius = 18.dp.toPx())
-                    // Static frosting: tint + rim only, zero GPU work.
-                    GlassTier.FROST -> Unit
-                }
+                blur(radius = 14.dp.toPx() * boost)
+                lens(
+                    refractionHeight = 26.dp.toPx() * boost,
+                    refractionAmount = 22.dp.toPx() * boost,
+                )
             },
             highlight = { Highlight.Default },
             shadow = if (shadow) {
@@ -252,17 +181,52 @@ fun GlassSurface(
             },
             onDrawSurface = { drawRect(surface) },
         )
-    } else {
-        Modifier.background(surface, shape)
+
+        // Level 2 — cheap glass: a tinted plate with a soft blue shadow. No blur,
+        // so it costs nothing per frame while scrolling.
+        effective == GlassLevel.CHEAP -> Modifier
+            .then(
+                if (shadow) {
+                    Modifier.shadow(
+                        elevation = 16.dp,
+                        shape = shape,
+                        clip = false,
+                        ambientColor = Color(0xFF2E7CF6).copy(alpha = 0.30f),
+                        spotColor = Color(0xFF2E7CF6).copy(alpha = 0.26f),
+                    )
+                } else {
+                    Modifier
+                },
+            )
+            .background(surface, shape)
+
+        // Level 3 — a thin tint; the rim below does the rest.
+        else -> Modifier.background(surface, shape)
     }
-    // A real rim: bright at the top, fading at the bottom, drawn on top of the
-    // surface. It is what makes a card read as glass even at FROST (A2).
+
+    // The rim: brighter at the top-left, fading out, drawn on top of the surface.
     val rim = Modifier.border(
-        width = 1.dp,
-        brush = Brush.verticalGradient(listOf(c.glassRimStart, c.glassRimEnd)),
+        width = if (effective == GlassLevel.CHIP) 0.8.dp else 1.dp,
+        brush = Brush.linearGradient(listOf(c.glassRimStart, c.glassRimEnd)),
         shape = shape,
     )
-    Box(modifier = modifier.clip(shape).then(glass).then(rim), content = content)
+    // An inner highlight along the top edge — the thing that makes level 2 read
+    // as glass without any GPU work.
+    val highlight = if (effective == GlassLevel.CHIP) {
+        Modifier
+    } else {
+        Modifier.background(
+            Brush.verticalGradient(
+                0f to Color.White.copy(alpha = if (c.isDark) 0.10f else 0.34f),
+                0.42f to Color.Transparent,
+            ),
+            shape,
+        )
+    }
+
+    Box(modifier = modifier.clip(shape).then(glass).then(highlight).then(rim)) {
+        content()
+    }
 }
 
 /**
@@ -344,13 +308,18 @@ fun GlassButton(
             shape = shape,
             tint = tint,
             shadow = false,
+            level = GlassLevel.CHIP,
         ) {
             Box(Modifier.padding(contentPadding), contentAlignment = Alignment.Center) {
+                // A1: labels are never ellipsised. If a row is too tight the text
+                // wraps to a second line and the control grows with it.
                 androidx.compose.material3.Text(
                     text = label,
                     color = if (prominent) Color.White else c.text1,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 2,
+                    softWrap = true,
+                    overflow = TextOverflow.Visible,
+                    textAlign = TextAlign.Center,
                 )
             }
         }
@@ -388,15 +357,59 @@ fun GlassChip(
             shape = shape,
             tint = if (selected) c.accent.copy(alpha = 0.72f) else null,
             shadow = false,
+            level = GlassLevel.CHIP,
         ) {
-            Box(Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+            Box(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
                 androidx.compose.material3.Text(
                     text = label,
                     color = if (selected) Color.White else c.text1,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 2,
+                    softWrap = true,
+                    overflow = TextOverflow.Visible,
+                    textAlign = TextAlign.Center,
                 )
             }
+        }
+    }
+}
+
+/**
+ * Icon-only glass control (round 8, A1): an icon, never a truncated word. The
+ * description is for TalkBack only; the icon is drawn by [content].
+ */
+@Composable
+fun GlassIconButton(
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val c = LocalSippyColors.current
+    val shape = RoundedCornerShape(Dimens.pill)
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        modifier = modifier
+            .size(Dimens.touch)
+            .clip(shape)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .then(pressScale(interaction))
+            .semantics { this.contentDescription = contentDescription },
+        contentAlignment = Alignment.Center,
+    ) {
+        GlassSurface(
+            modifier = Modifier.matchParentSize(),
+            shape = shape,
+            tint = if (selected) c.accent.copy(alpha = 0.72f) else null,
+            shadow = false,
+            level = GlassLevel.CHIP,
+        ) {
+            Box(Modifier.size(20.dp), contentAlignment = Alignment.Center, content = content)
         }
     }
 }

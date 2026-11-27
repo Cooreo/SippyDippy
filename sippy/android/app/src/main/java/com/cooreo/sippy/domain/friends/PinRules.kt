@@ -30,6 +30,22 @@ object PinRules {
         }
     }
 
+    /**
+     * The button label for [id] (round 8, B9): the pin buttons name the slot they
+     * will fill, so "Pin left" and "Pin right" say something different, and an
+     * already pinned friend reads "Unpin".
+     */
+    fun pinLabel(friends: List<Friend>, id: String): String {
+        val target = friends.firstOrNull { it.id == id } ?: return "Pin"
+        if (target.pinned) return "Unpin"
+        val slots = slots(friends)
+        return when {
+            slots[0] == null -> "Pin left"
+            slots[1] == null -> "Pin right"
+            else -> "Pin"
+        }
+    }
+
     /** Left and right slots, in list order; null means an empty slot. */
     fun slots(friends: List<Friend>): List<Friend?> {
         val pinned = friends.filter { it.pinned }.take(MAX_PINNED)

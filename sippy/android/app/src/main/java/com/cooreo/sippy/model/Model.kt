@@ -28,8 +28,14 @@ data class StoredState(
     val ledger: List<PointsEntry> = emptyList(),
     /** Item ids the player owns. Keyed by item, so a friend leaving keeps them. */
     val ownedItems: Set<String> = emptySet(),
-    /** friendId -> equipped item id. At most one cosmetic per friend. */
+    /**
+     * friendId -> item id on the **hat** slot (round 8, A4). Keyed by friend id,
+     * so renaming a friend keeps what it wears; owned items are keyed by item id,
+     * so removing a friend keeps what was bought.
+     */
     val equipped: Map<String, String> = emptyMap(),
+    /** friendId -> item id on the outfit slot. */
+    val equippedOutfits: Map<String, String> = emptyMap(),
 )
 
 @Serializable
@@ -37,6 +43,13 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 @Serializable
 enum class AccentId { BLUE, TEAL, VIOLET, CORAL }
+
+/**
+ * How much of the startup animation to play (round 8, B8). Off skips straight to
+ * the app; Short keeps the arrival but cuts the flight.
+ */
+@Serializable
+enum class StartupAnimation { FULL, SHORT, OFF }
 
 @Serializable
 data class Settings(
@@ -47,6 +60,12 @@ data class Settings(
     /** "HH:mm", 24h, at most [MAX_REMINDERS] entries. */
     val reminderTimes: List<String> = listOf("09:00", "13:00", "17:00", "21:00"),
     val reduceEffects: Boolean = false,
+    /** Round 8, B10: the three haptics, on by default. */
+    val hapticsEnabled: Boolean = true,
+    /** Round 8, B8: Full by default. */
+    val startupAnimation: StartupAnimation = StartupAnimation.FULL,
+    /** Index of the vignette shown last start; -1 before the first. */
+    val lastIntroVignette: Int = -1,
     val developerUnlocked: Boolean = false,
     /** Optional; when blank the Home greeting says "Good morning" alone. */
     val displayName: String = "",

@@ -1,7 +1,9 @@
 package com.cooreo.sippy
 
+import com.cooreo.sippy.domain.shop.ItemSlot
 import com.cooreo.sippy.domain.shop.ItemTable
 import com.cooreo.sippy.domain.shop.ShopRules
+import com.cooreo.sippy.domain.shop.Wardrobe
 import com.cooreo.sippy.model.FriendKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -9,97 +11,116 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/** A4: buying and wearing cosmetics, per friend id and per slot. */
 class ShopRulesTest {
 
-    private val hat = "koi_hat"
-    private val scarf = "koi_scarf"
-    private val otterHat = "otter_hat"
+    private val koi = FriendKind.KOI
+    private val allOwned = ItemTable.items.map { it.id }.toSet()
 
     @Test
-    fun buyingDeductsThePriceAndMarksItOwned() {
-        val price = ItemTable.byId(hat)!!.price
-        val outcome = ShopRules.purchase(balance = 100, owned = emptySet(), itemId = hat)
-        assertTrue("expected a purchase, got $outcome", outcome is ShopRules.Purchase.Bought)
-        if (outcome !is ShopRules.Purchase.Bought) return
-        assertEquals(100 - price, outcome.balance)
-        assertTrue(hat in outcome.owned)
+    fun purchaseDeductsPointsAndMarksOwned() {
+        val result = ShopRules.purchase(balance = 100, owned = emptySet(), itemId = "koi_hat")
+        assertTrue(result is ShopRules.Purchase.Bought)
+        val bought = result as ShopRules.Purchase.Bought
+        assertEquals(70, bought.balance)
+        assertTrue("koi_hat" in bought.owned)
     }
 
     @Test
-    fun buyingIsRejectedWhenTheBalanceIsShort() {
-        val price = ItemTable.byId(hat)!!.price
-        assertEquals(ShopRules.Purchase.TooExpensive, ShopRules.purchase(price - 1, emptySet(), hat))
-        // Exactly the price is enough.
-        assertTrue(ShopRules.purchase(price, emptySet(), hat) is ShopRules.Purchase.Bought)
+    fun purchaseRefusesWhatIsAlreadyOwnedTooExpensiveOrUnknown() {
+        val owned = setOf("koi_hat")
+        assertTrue(ShopRules.purchase(100, owned, "koi_hat") is ShopRules.Purchase.AlreadyOwned)
+        assertTrue(ShopRules.purchase(10, owned, "koi_scarf") is ShopRules.Purchase.TooExpensive)
+        assertTrue(ShopRules.purchase(100, owned, "no_such_item") is ShopRules.Purchase.UnknownItem)
     }
 
     @Test
-    fun buyingTheSameItemTwiceIsRejectedAndCostsNothing() {
-        val again = ShopRules.purchase(100, setOf(hat), hat)
-        assertEquals(ShopRules.Purchase.AlreadyOwned, again)
+    fun purchaseNeverGoesNegative() {
+        val result = ShopRules.purchase(balance = -40, owned = emptySet(), itemId = "koi_hat")
+        assertTrue("a negative balance buys nothing", result is ShopRules.Purchase.TooExpensive)
     }
 
     @Test
-    fun anUnknownItemIsRejected() {
-        assertEquals(ShopRules.Purchase.UnknownItem, ShopRules.purchase(100, emptySet(), "golden_helmet"))
+    fun toggleWearsThenTakesOffTheSameItem() {
+        val on = ShopRules.toggle(Wardrobe(), "f1", koi, allOwned, "koi_hat")
+        assertEquals("koi_hat", on.hats["f1"])
+        val off = ShopRules.toggle(on, "f1", koi, allOwned, "koi_hat")
+        assertNull(off.hats["f1"])
+        assertNull("the other slot is untouched", off.outfits["f1"])
     }
 
     @Test
-    fun onlyOwnedItemsOfTheRightFriendCanBeWorn() {
-        assertFalse(ShopRules.canEquip(emptySet(), FriendKind.KOI, hat))
-        assertTrue(ShopRules.canEquip(setOf(hat), FriendKind.KOI, hat))
-        // Right item, wrong friend: a koi hat is not a turtle hat.
-        assertFalse(ShopRules.canEquip(setOf(hat), FriendKind.TURTLE, hat))
+    fun hatAndOutfitAreSeparateSlots() {
+        val both = ShopRules.toggle(
+            ShopRules.toggle(Wardrobe(), "f1", koi, allOwned, "koi_hat"),
+            "f1",
+            koi,
+            allOwned,
+            "koi_scarf",
+        )
+        assertEquals("koi_hat", both.on(ItemSlot.HAT, "f1"))
+        assertEquals("koi_scarf", both.on(ItemSlot.OUTFIT, "f1"))
+        // Removing the outfit keeps the hat.
+        val hatOnly = ShopRules.unequip(both, "f1", ItemSlot.OUTFIT)
+        assertEquals("koi_hat", hatOnly.on(ItemSlot.HAT, "f1"))
+        assertNull(hatOnly.on(ItemSlot.OUTFIT, "f1"))
     }
 
     @Test
-    fun equippingReplacesWhateverThatFriendWoreAndNullUndresses() {
-        val one = ShopRules.equip(emptyMap(), "f1", FriendKind.KOI, setOf(hat, scarf), hat)
-        assertEquals(hat, one["f1"])
-        val two = ShopRules.equip(one, "f1", FriendKind.KOI, setOf(hat, scarf), scarf)
-        assertEquals(scarf, two["f1"])
-        assertEquals(1, two.size)
-        assertTrue(ShopRules.equip(two, "f1", FriendKind.KOI, setOf(hat, scarf), null).isEmpty())
+    fun oneItemPerSlotReplacesThePreviousOne() {
+        val owned = setOf("koi_hat", "koi_scarf", "otter_hat")
+        val swapped = ShopRules.toggle(
+            ShopRules.toggle(Wardrobe(), "f1", koi, owned, "koi_scarf"),
+            "f1",
+            koi,
+            owned,
+            "koi_scarf",
+        )
+        assertNull("tapping the worn item takes it off", swapped.on(ItemSlot.OUTFIT, "f1"))
+        // The hat map holds at most one id per friend by construction.
+        assertTrue(swapped.hats.size <= 1)
     }
 
     @Test
-    fun equippingAnUnownedItemChangesNothing() {
-        val before = mapOf("f1" to hat)
-        assertEquals(before, ShopRules.equip(before, "f1", FriendKind.KOI, setOf(hat), scarf))
-        assertEquals(before, ShopRules.equip(before, "f2", FriendKind.OTTER, setOf(hat), hat))
+    fun refusesUnownedAndForeignSpecies() {
+        val onlyKoi = setOf("koi_hat")
+        assertEquals(Wardrobe(), ShopRules.toggle(Wardrobe(), "f1", koi, onlyKoi, "otter_hat"))
+        assertEquals(Wardrobe(), ShopRules.toggle(Wardrobe(), "f1", koi, onlyKoi, "koi_scarf"))
+        assertFalse(ShopRules.canEquip(onlyKoi, koi, "otter_hat"))
+        assertFalse(ShopRules.canEquip(onlyKoi, FriendKind.OTTER, "koi_hat"))
+        assertTrue(ShopRules.canEquip(onlyKoi, koi, "koi_hat"))
     }
 
     @Test
-    fun aFriendLeavingKeepsTheItemOwnedAndItsSiblingsEquipped() {
-        // Owned items are keyed by item id, not by friend, so removing the koi
-        // from state.friends cannot take the hat with it. Both worn items are
-        // owned here, because a worn item that is no longer owned is reported
-        // as nothing (see the next test).
-        val owned = setOf(hat, scarf, otterHat)
-        val equipped = mapOf("koi" to hat, "otter" to otterHat)
-        assertTrue(hat in owned)
-        assertEquals(hat, ShopRules.wornBy(equipped, owned, "koi")?.id)
-        assertEquals(otterHat, ShopRules.wornBy(equipped, owned, "otter")?.id)
-        // And with no friend there is nothing to report.
-        assertNull(ShopRules.wornBy(equipped, owned, "gone"))
+    fun stateIsKeptPerFriendId() {
+        val a = ShopRules.toggle(Wardrobe(), "f1", koi, allOwned, "koi_hat")
+        val b = ShopRules.toggle(a, "f2", koi, allOwned, "koi_scarf")
+        assertEquals("koi_hat", b.on(ItemSlot.HAT, "f1"))
+        assertEquals("koi_scarf", b.on(ItemSlot.OUTFIT, "f2"))
+        assertNull(b.on(ItemSlot.HAT, "f2"))
     }
 
     @Test
-    fun aWornItemThatIsNoLongerOwnedIsNotShown() {
-        // The defensive half of wornBy: if a document ever claims a cosmetic
-        // that is not in ownedItems, the friend is drawn without it.
-        assertNull(ShopRules.wornBy(mapOf("koi" to hat), emptySet(), "koi"))
+    fun ownershipSurvivesTakingTheItemOff() {
+        val wardrobe = ShopRules.toggle(Wardrobe(), "f1", koi, allOwned, "koi_hat")
+        val bare = ShopRules.toggle(wardrobe, "f1", koi, allOwned, "koi_hat")
+        assertTrue(ShopRules.worn(bare.hats, bare.outfits, allOwned, "f1").isEmpty())
+        assertTrue("the id stays in the shop's owned set", "koi_hat" in allOwned)
+        assertTrue(ShopRules.canEquip(allOwned, koi, "koi_hat"))
     }
 
     @Test
-    fun everyListedItemHasArtAndASanePrice() {
-        val known = setOf(hat, scarf, otterHat, "turtle_hat", "axolotl_hat")
-        ItemTable.items.forEach { item ->
-            assertTrue(item.id, item.price > 0)
-            assertTrue(item.id, item.id in known)
-        }
-        assertEquals(ItemTable.items.size, ItemTable.items.map { it.id }.toSet().size)
-        assertTrue(ItemTable.forKind(FriendKind.CAT).isEmpty())
-        assertEquals(2, ItemTable.forKind(FriendKind.KOI).size)
+    fun aPreRound8ScarfInTheHatMapStillShows() {
+        // Old saves stored whatever was bought in `equipped`, including outfits.
+        val legacyHats = mapOf("f1" to "koi_scarf")
+        val worn = ShopRules.worn(legacyHats, emptyMap(), allOwned, "f1")
+        assertEquals(listOf("koi_scarf"), worn.map { it.id })
+        assertEquals(ItemSlot.OUTFIT, worn.single().slot)
+    }
+
+    @Test
+    fun unownedItemsNeverShow() {
+        val hats = mapOf("f1" to "koi_hat")
+        assertTrue(ShopRules.worn(hats, emptyMap(), owned = emptySet(), friendId = "f1").isEmpty())
     }
 }

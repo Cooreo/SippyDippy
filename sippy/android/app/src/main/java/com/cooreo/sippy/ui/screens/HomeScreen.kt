@@ -1,9 +1,16 @@
 package com.cooreo.sippy.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -15,74 +22,80 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.cooreo.sippy.domain.drinks.DrinkCategory
 import com.cooreo.sippy.domain.drinks.DrinkTable
 import com.cooreo.sippy.domain.friends.Mood
 import com.cooreo.sippy.domain.friends.MoodRules
 import com.cooreo.sippy.domain.friends.PinRules
 import com.cooreo.sippy.domain.layout.OrbLayout
+import com.cooreo.sippy.domain.shop.ItemSlot
+import com.cooreo.sippy.domain.shop.ShopItem
+import com.cooreo.sippy.domain.shop.ShopRules
 import com.cooreo.sippy.domain.water.VolumeRules
 import com.cooreo.sippy.domain.water.WaterMath
 import com.cooreo.sippy.model.Friend
+import com.cooreo.sippy.model.FriendKind
 import com.cooreo.sippy.model.LogEntry
 import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.ui.components.DrinkIcon
-import com.cooreo.sippy.ui.components.FriendImage
+import com.cooreo.sippy.ui.components.FriendAvatar
+import com.cooreo.sippy.ui.components.OrbAnchor
+import com.cooreo.sippy.ui.components.ShareBar
 import com.cooreo.sippy.ui.components.WaterOrb
 import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.glass.GlassSurface
+import com.cooreo.sippy.ui.system.rememberHaptics
 import com.cooreo.sippy.ui.theme.Dimens
+import com.cooreo.sippy.ui.theme.DrinkTints
 import com.cooreo.sippy.ui.theme.LocalSippyColors
 import com.cooreo.sippy.ui.theme.SippyType
 import java.time.Instant
-import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 
 private val timeFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-private val dateFormat: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault())
 
 /**
- * Home (Today), rebuilt on the site's language: glass header chips, the water
- * orb, a quick-add bar, the day's drinks as glass cards, and the friend strip.
- * Pure in its inputs — every action is a callback, so it stays previewable and
- * has no dependency on the controller.
+ * Home, rebuilt top to bottom for round 8 (A5):
+ *
+ *   status bar // slim header (greeting, streak, points)
+ *   orb with the pinned friends in its upper corners, tap for a mood bubble
+ *   three equal quick-add pills
+ *   one card: "Today" + "See all", the last three rows, then the friend strip
+ *
+ * The layout follows the round-8 sketch; the sketch itself never reached the
+ * sandbox, so the exact spacing is judged on the phone, not from this comment.
  */
 @Composable
 fun HomeScreen(
@@ -94,9 +107,8 @@ fun HomeScreen(
     ringOverride: Float?,
     bottomPadding: Dp,
     onQuickAdd: (Int) -> Unit,
-    onCustomAdd: () -> Unit,
     onOpenFriends: () -> Unit,
-    onOpenReminders: () -> Unit,
+    onOpenShop: () -> Unit,
     onEditEntry: (LogEntry) -> Unit,
     onFriendTap: (Friend) -> Unit,
     onSeeAll: () -> Unit,
@@ -105,161 +117,141 @@ fun HomeScreen(
     val fraction = ringOverride ?: WaterMath.goalFraction(hydratedMl, goalMl)
     val remaining = WaterMath.remainingMl(hydratedMl, goalMl)
     val goalMet = WaterMath.goalMet(hydratedMl, goalMl)
-    val today = LocalDate.now()
+    val hasEntries = todayEntries.isNotEmpty()
+    val pins = PinRules.slots(state.friends).filterNotNull()
+    val host = state.friends.firstOrNull { it.kind == FriendKind.DIPPY } ?: state.friends.firstOrNull()
+    val hostMood = host?.let { moodFor(it, state, goalMet, hasEntries) } ?: Mood.SLEEPY
+    var bubble by remember { mutableStateOf(false) }
+    // B5: a goal crossing makes the pinned friends dance for a moment, and the
+    // orb's own burst is what asks for it.
+    val haptics = rememberHaptics(enabled = state.settings.hapticsEnabled)
+    var dancing by remember { mutableStateOf(false) }
+    LaunchedEffect(dancing) {
+        if (dancing) {
+            delay(1600)
+            dancing = false
+        }
+    }
+    LaunchedEffect(bubble) {
+        if (bubble) {
+            delay(4200)
+            bubble = false
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             start = Dimens.screenPadding,
             end = Dimens.screenPadding,
-            top = 16.dp,
+            top = 12.dp,
             bottom = bottomPadding,
         ),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(key = "header") {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    DateChip(today)
-                    Spacer(Modifier.weight(1f))
-                    StreakBadge(days = state.streak.currentDays)
-                    Spacer(Modifier.width(8.dp))
-                    BellButton(onClick = onOpenReminders)
-                }
-                Spacer(Modifier.height(14.dp))
-                Text(
-                    text = greeting(state.settings.displayName),
-                    style = SippyType.title,
-                    color = c.text1,
-                )
-                Text(
-                    text = when {
-                        goalMet -> "Goal met — ${state.streak.currentDays}-day streak alive."
-                        todayEntries.isEmpty() -> "Nothing logged yet. One sip starts it."
-                        else -> "$remaining ml to go today."
-                    },
-                    style = SippyType.body,
-                    color = c.text2,
-                )
-            }
+            Header(
+                title = greeting(state.settings.displayName),
+                subline = when {
+                    goalMet -> "Goal reached · ${hydratedMl} ml today"
+                    hasEntries -> "$remaining ml to go today"
+                    else -> "Nothing logged yet. One sip starts it."
+                },
+                streakDays = state.streak.currentDays,
+                points = state.points,
+                onOpenShop = onOpenShop,
+            )
         }
 
         item(key = "orb") {
-            // Two pinned friends sit one on each side; with none pinned the orb
-            // stays centred and full size (B2).
-            val slots = PinRules.slots(state.friends)
-            val pinnedCount = slots.count { it != null }
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val diameter = OrbLayout.orbDiameter(maxWidth.value, pinnedCount).dp
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (pinnedCount > 0) {
-                        PinnedSlot(
-                            friend = slots[0],
-                            state = state,
-                            goalMetToday = goalMet,
-                            hasEntriesToday = todayEntries.isNotEmpty(),
-                            animate = animate,
-                            onTap = onFriendTap,
-                        )
-                    }
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        WaterOrb(
-                            hydratedMl = hydratedMl,
-                            goalMl = goalMl,
-                            fraction = fraction,
-                            animate = animate,
-                            diameter = diameter,
-                            modifier = Modifier.padding(vertical = 4.dp),
-                        )
-                    }
-                    if (pinnedCount > 0) {
-                        PinnedSlot(
-                            friend = slots[1],
-                            state = state,
-                            goalMetToday = goalMet,
-                            hasEntriesToday = todayEntries.isNotEmpty(),
-                            animate = animate,
-                            onTap = onFriendTap,
-                        )
-                    }
-                }
-            }
-        }
-
-        item(key = "quick-add") {
-            QuickAddBar(onQuickAdd = onQuickAdd, onCustomAdd = onCustomAdd)
-        }
-
-        if (todayEntries.isEmpty()) {
-            item(key = "empty") {
-                EmptyState()
-            }
-        } else {
-            item(key = "list-title") {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("Today", style = SippyType.emphasis, color = c.text1)
-                    Spacer(Modifier.weight(1f))
-                    // Home keeps the three most recent; the dated log lives behind
-                    // "See all" (B1).
-                    GlassChip(label = "See all", onClick = onSeeAll)
-                }
-            }
-            items(todayEntries.take(3), key = { it.id }) { entry ->
-                // A freshly logged entry springs into place and pushes the rest
-                // down instead of appearing at once (Part C).
-                Box(Modifier.animateItem()) {
-                    EntryCard(entry = entry, goalMl = goalMl, onClick = { onEditEntry(entry) })
-                }
-            }
-        }
-
-        item(key = "friends") {
-            FriendStrip(
+            OrbBlock(
                 state = state,
-                goalMetToday = goalMet,
-                hasEntriesToday = todayEntries.isNotEmpty(),
-                onOpenFriends = onOpenFriends,
+                pins = pins,
+                hydratedMl = hydratedMl,
+                goalMl = goalMl,
+                fraction = fraction,
+                goalMet = goalMet,
+                hasEntries = hasEntries,
+                animate = animate,
+                hostName = host?.name ?: "Dippy",
+                hostMood = hostMood,
+                bubble = bubble,
+                dancing = dancing,
+                onOrbTap = { bubble = !bubble },
+                onGoalReached = {
+                    haptics.success()
+                    dancing = true
+                },
                 onFriendTap = onFriendTap,
             )
         }
-    }
-}
 
-@Composable
-private fun DateChip(day: LocalDate) {
-    val c = LocalSippyColors.current
-    val shape = RoundedCornerShape(Dimens.pill)
-    Box(
-        modifier = Modifier
-            .heightIn(min = Dimens.touch)
-            .clip(shape)
-            .semantics { contentDescription = "Today, ${day.format(dateFormat)}" },
-        contentAlignment = Alignment.Center,
-    ) {
-        GlassSurface(shape = shape, shadow = false) {
-            Text(
-                text = day.format(dateFormat),
-                style = SippyType.caption,
-                color = c.text1,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        item(key = "pills") {
+            QuickPills(
+                onQuickAdd = { ml ->
+                    haptics.thud()
+                    onQuickAdd(ml)
+                },
+            )
+        }
+
+        item(key = "today") {
+            TodayCard(
+                state = state,
+                entries = todayEntries,
+                goalMl = goalMl,
+                hasEntries = hasEntries,
+                goalMet = goalMet,
+                animate = animate,
+                onEditEntry = onEditEntry,
+                onFriendTap = onFriendTap,
+                onOpenFriends = onOpenFriends,
+                onSeeAll = onSeeAll,
             )
         }
     }
 }
 
+/** Greeting on the left, two chips on the right. No bell — that lives in Settings. */
 @Composable
-private fun StreakBadge(days: Int) {
+private fun Header(
+    title: String,
+    subline: String,
+    streakDays: Int,
+    points: Int,
+    onOpenShop: () -> Unit,
+) {
+    val c = LocalSippyColors.current
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = title,
+                style = SippyType.title,
+                color = c.text1,
+                maxLines = 2,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            StreakChip(days = streakDays)
+            Spacer(Modifier.width(6.dp))
+            GlassChip(
+                label = "$points pts",
+                onClick = onOpenShop,
+                modifier = Modifier.semantics { contentDescription = "$points points, open the shop" },
+            )
+        }
+        Spacer(Modifier.height(2.dp))
+        Text(subline, style = SippyType.caption, color = c.text2)
+    }
+}
+
+@Composable
+private fun StreakChip(days: Int) {
     val c = LocalSippyColors.current
     val shape = RoundedCornerShape(Dimens.pill)
     Box(
         modifier = Modifier
-            .heightIn(min = Dimens.touch)
+            .defaultMinSize(minHeight = Dimens.touch)
             .clip(shape)
             .semantics {
                 contentDescription = if (days == 0) "No streak yet" else "$days day streak"
@@ -268,10 +260,10 @@ private fun StreakBadge(days: Int) {
     ) {
         GlassSurface(shape = shape, shadow = false) {
             Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Canvas(Modifier.size(15.dp)) {
+                Canvas(Modifier.size(14.dp)) {
                     val flame = Path().apply {
                         moveTo(size.width * 0.5f, 0f)
                         cubicTo(
@@ -287,131 +279,132 @@ private fun StreakBadge(days: Int) {
                         close()
                     }
                     drawPath(flame, c.warn)
-                    drawPath(
-                        Path().apply {
-                            moveTo(size.width * 0.5f, size.height * 0.42f)
-                            cubicTo(
-                                size.width * 0.74f, size.height * 0.66f,
-                                size.width * 0.64f, size.height * 0.94f,
-                                size.width * 0.5f, size.height * 0.94f,
-                            )
-                            cubicTo(
-                                size.width * 0.36f, size.height * 0.94f,
-                                size.width * 0.26f, size.height * 0.66f,
-                                size.width * 0.5f, size.height * 0.42f,
-                            )
-                            close()
-                        },
-                        c.bg0.copy(alpha = 0.28f),
-                    )
                 }
-                Spacer(Modifier.width(6.dp))
-                Text("$days", style = SippyType.emphasis, color = c.text1)
+                Spacer(Modifier.width(5.dp))
+                Text("$days", style = SippyType.caption, color = c.text1)
             }
         }
-    }
-}
-
-@Composable
-private fun BellButton(onClick: () -> Unit) {
-    val c = LocalSippyColors.current
-    Box(
-        modifier = Modifier
-            .size(Dimens.touch)
-            .clip(CircleShape)
-            .clickable(role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = "Reminders" },
-        contentAlignment = Alignment.Center,
-    ) {
-        GlassSurface(shape = CircleShape, shadow = false) {
-            Canvas(
-                modifier = Modifier
-                    .size(22.dp)
-                    .padding(2.dp)
-                    .clearAndSetSemantics { },
-            ) {
-                val w = size.width
-                val h = size.height
-                val stroke = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round)
-                val body = Path().apply {
-                    moveTo(w * 0.20f, h * 0.68f)
-                    cubicTo(w * 0.30f, h * 0.58f, w * 0.28f, h * 0.34f, w * 0.50f, h * 0.24f)
-                    cubicTo(w * 0.72f, h * 0.34f, w * 0.70f, h * 0.58f, w * 0.80f, h * 0.68f)
-                    close()
-                }
-                drawPath(body, c.text1, style = stroke)
-                drawPath(
-                    Path().apply {
-                        moveTo(w * 0.14f, h * 0.70f)
-                        lineTo(w * 0.86f, h * 0.70f)
-                    },
-                    c.text1,
-                    style = stroke,
-                )
-                drawPath(
-                    Path().apply {
-                        moveTo(w * 0.42f, h * 0.82f)
-                        cubicTo(w * 0.45f, h * 0.92f, w * 0.55f, h * 0.92f, w * 0.58f, h * 0.82f)
-                    },
-                    c.text1,
-                    style = stroke,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun QuickAddBar(onQuickAdd: (Int) -> Unit, onCustomAdd: () -> Unit) {
-    val c = LocalSippyColors.current
-    GlassCard(contentPadding = PaddingValues(12.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            VolumeRules.PRESETS.forEach { volume ->
-                Box(Modifier.weight(1f)) {
-                    GlassChip(
-                        label = "+$volume",
-                        onClick = { onQuickAdd(volume) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { contentDescription = "Add $volume millilitres of water" },
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        GlassChip(
-            label = "Custom…",
-            onClick = onCustomAdd,
-            modifier = Modifier
-                .fillMaxWidth()
-                .semantics { contentDescription = "Add a custom volume" },
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = "Quick adds log water.",
-            style = SippyType.caption,
-            color = c.text3,
-        )
     }
 }
 
 /**
- * One slot beside the orb: the friend bobs by translation only (never layout),
- * and a tap reports its current mood line.
+ * The orb, centred on its own, with the pinned friends in its upper corners.
+ * Overlaying instead of putting them in a row is what keeps the number clear:
+ * the orb grows to its full 248dp and the pins never sit beside the digits.
  */
 @Composable
-private fun PinnedSlot(
+private fun OrbBlock(
+    state: StoredState,
+    pins: List<Friend>,
+    hydratedMl: Int,
+    goalMl: Int,
+    fraction: Float,
+    goalMet: Boolean,
+    hasEntries: Boolean,
+    animate: Boolean,
+    hostName: String,
+    hostMood: Mood,
+    bubble: Boolean,
+    dancing: Boolean,
+    onOrbTap: () -> Unit,
+    onGoalReached: () -> Unit,
+    onFriendTap: (Friend) -> Unit,
+) {
+    // B11: one gravity registration for both pinned friends, off with Reduce effects.
+    val parallax = com.cooreo.sippy.ui.system.rememberTiltParallax(enabled = animate)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        // 360dp phones get 320dp of content: the orb drops to 72% of that so the
+        // pins, the number and the pills all still fit without scrolling apart.
+        val diameter = if (maxWidth.value < 330f) {
+            maxWidth.value * 0.72f
+        } else {
+            minOf(OrbLayout.MAX_DIAMETER_DP, maxWidth.value * 0.86f)
+        }.dp
+
+        Column {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                WaterOrb(
+                    hydratedMl = hydratedMl,
+                    goalMl = goalMl,
+                    fraction = fraction,
+                    animate = animate,
+                    diameter = diameter,
+                    onGoalReached = onGoalReached,
+                    modifier = Modifier
+                        // B7: the droplet flies into this rectangle.
+                        .onGloballyPositioned { OrbAnchor.bounds = it.boundsInRoot() }
+                        .clip(RoundedCornerShape(Dimens.pill))
+                        .clickable(onClick = onOrbTap)
+                        .semantics {
+                            contentDescription = if (goalMet) {
+                                "Goal reached, $hydratedMl millilitres. Tap for a mood."
+                            } else {
+                                "$hydratedMl of $goalMl millilitres. Tap for a mood."
+                            }
+                        },
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter)
+                        .padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    PinnedChip(
+                        friend = pins.getOrNull(0),
+                        state = state,
+                        goalMetToday = goalMet,
+                        hasEntriesToday = hasEntries,
+                        animate = animate,
+                        dancing = dancing,
+                        onTap = onFriendTap,
+                        parallax = parallax,
+                    )
+                    PinnedChip(
+                        friend = pins.getOrNull(1),
+                        state = state,
+                        goalMetToday = goalMet,
+                        hasEntriesToday = hasEntries,
+                        animate = animate,
+                        dancing = dancing,
+                        onTap = onFriendTap,
+                        parallax = parallax,
+                    )
+                }
+            }
+            AnimatedVisibility(visible = bubble) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    GlassSurface(shape = RoundedCornerShape(Dimens.inner), shadow = false) {
+                        Text(
+                            text = moodLine(hostName, hostMood),
+                            style = SippyType.caption,
+                            color = LocalSippyColors.current.text1,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** One pinned friend in an orb corner. Bobs by translation, never by layout. */
+@Composable
+private fun PinnedChip(
     friend: Friend?,
     state: StoredState,
     goalMetToday: Boolean,
     hasEntriesToday: Boolean,
     animate: Boolean,
+    dancing: Boolean,
     onTap: (Friend) -> Unit,
+    /** B11: the same tilt the backdrop leans with, read in the layer. */
+    parallax: com.cooreo.sippy.ui.system.TiltParallax? = null,
 ) {
     val c = LocalSippyColors.current
-    val width = OrbLayout.SLOT_DP.dp
     if (friend == null) {
-        Spacer(Modifier.width(width))
+        Spacer(Modifier.width(56.dp))
         return
     }
     val phase = if (animate) {
@@ -428,28 +421,43 @@ private fun PinnedSlot(
         0f
     }
     val mood = moodFor(friend, state, goalMetToday, hasEntriesToday)
+    val worn = ShopRules.worn(state.equipped, state.equippedOutfits, state.ownedItems, friend.id)
+    // B5: the goal dance — a scale and a tilt, transform only.
+    val dance by animateFloatAsState(
+        targetValue = if (dancing && animate) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.38f, stiffness = 340f),
+        label = "dance",
+    )
 
     Column(
         modifier = Modifier
-            .width(width)
+            .width(56.dp)
             .defaultMinSize(minHeight = Dimens.touch)
             .clip(RoundedCornerShape(Dimens.inner))
-            .clickable(role = Role.Button) { onTap(friend) }
-            .semantics {
-                contentDescription = "${friend.name} is pinned; ${mood.name.lowercase()}"
-            }
-            .padding(vertical = 2.dp),
+            .clickable { onTap(friend) }
+            .semantics { contentDescription = "${friend.name} is pinned; ${mood.name.lowercase()}" },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        FriendImage(
-            kind = friend.kind,
+        FriendAvatar(
+            friend = friend,
             mood = mood,
-            growthStreak = friend.grownAtStreak,
-            size = 48,
+            size = 44.dp,
             animate = animate,
-            modifier = Modifier
-                .size(48.dp)
-                .graphicsLayer { translationY = phase * 4.dp.toPx() },
+            hat = worn.firstOrNull { it.slot == ItemSlot.HAT },
+            outfit = worn.firstOrNull { it.slot == ItemSlot.OUTFIT },
+            modifier = Modifier.graphicsLayer {
+                // B11: the friend leans with the backdrop, a couple of dp the
+                // other way. Read here, in the layer, so a sample never recomposes.
+                parallax?.let {
+                    translationX = it.x.floatValue * 2f * density
+                    translationY = it.y.floatValue * 2f * density
+                }
+                translationY += phase * 4.dp.toPx() - dance * 6.dp.toPx()
+                val scale = 1f + 0.16f * dance
+                scaleX = scale
+                scaleY = scale
+                rotationZ = dance * 9f
+            },
         )
         Text(
             text = friend.name,
@@ -461,40 +469,168 @@ private fun PinnedSlot(
     }
 }
 
+/** Three equal pills. The glass icon fills in proportion to what the pill logs. */
 @Composable
-private fun EmptyState() {
-    val c = LocalSippyColors.current
-    GlassSurface(shape = RoundedCornerShape(Dimens.card)) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 22.dp, horizontal = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            FriendImage(
-                kind = com.cooreo.sippy.model.FriendKind.DIPPY,
-                mood = Mood.SLEEPY,
-                growthStreak = 0,
-                size = 116,
-                animate = false,
-                modifier = Modifier.size(116.dp),
-            )
-            Spacer(Modifier.height(10.dp))
-            Text("Log your first sip", style = SippyType.emphasis, color = c.text1)
-            Text(
-                text = "Dippy is asleep until something counts.",
-                style = SippyType.caption,
-                color = c.text2,
-            )
+private fun QuickPills(onQuickAdd: (Int) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        VolumeRules.PRESETS.forEach { volume ->
+            Box(Modifier.weight(1f)) {
+                PillsButton(volume = volume, onClick = { onQuickAdd(volume) })
+            }
         }
     }
 }
 
 @Composable
-private fun EntryCard(entry: LogEntry, goalMl: Int, onClick: () -> Unit) {
+private fun PillsButton(volume: Int, onClick: () -> Unit) {
+    val c = LocalSippyColors.current
+    val shape = RoundedCornerShape(Dimens.inner)
+    val fill = (volume.toFloat() / VolumeRules.PRESETS.max().toFloat()).coerceIn(0f, 1f)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 56.dp)
+            .clip(shape)
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = "Add $volume millilitres of water" },
+    ) {
+        GlassSurface(shape = shape, modifier = Modifier.matchParentSize(), shadow = false) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                FillIcon(fraction = fill, color = c.accentBright)
+                Spacer(Modifier.width(6.dp))
+                Text("+$volume", style = SippyType.emphasis, color = c.text1)
+            }
+        }
+    }
+}
+
+/** A small glass whose fill matches the pill (250 → half, 500 → full). */
+@Composable
+private fun FillIcon(fraction: Float, color: androidx.compose.ui.graphics.Color) {
+    Canvas(Modifier.size(width = 14.dp, height = 18.dp)) {
+        val w = size.width
+        val h = size.height
+        val body = Path().apply {
+            moveTo(0f, 0f)
+            lineTo(w, 0f)
+            lineTo(w * 0.82f, h)
+            lineTo(w * 0.18f, h)
+            close()
+        }
+        drawPath(body, color.copy(alpha = 0.18f))
+        val top = h * (1f - fraction)
+        drawPath(
+            Path().apply {
+                moveTo(0f, 0f)
+                lineTo(w, 0f)
+                lineTo(w * 0.82f, h)
+                lineTo(w * 0.18f, h)
+                close()
+                moveTo(w * 0.10f, top)
+                lineTo(w * 0.90f, top)
+                lineTo(w * 0.82f, h)
+                lineTo(w * 0.18f, h)
+                close()
+            },
+            color,
+            style = Stroke(width = 1.4.dp.toPx()),
+        )
+        drawRect(
+            color = color,
+            topLeft = Offset(w * 0.20f, top),
+            size = androidx.compose.ui.geometry.Size(w * 0.60f, h - top - 1.5.dp.toPx()),
+        )
+    }
+}
+
+/**
+ * The one big card: "Today" and "See all" on top, the last three rows, then the
+ * friends that are not pinned on the orb (up to four).
+ */
+@Composable
+private fun TodayCard(
+    state: StoredState,
+    entries: List<LogEntry>,
+    goalMl: Int,
+    hasEntries: Boolean,
+    goalMet: Boolean,
+    animate: Boolean,
+    onEditEntry: (LogEntry) -> Unit,
+    onFriendTap: (Friend) -> Unit,
+    onOpenFriends: () -> Unit,
+    onSeeAll: () -> Unit,
+) {
+    val c = LocalSippyColors.current
+    val loose = state.friends.filterNot { it.pinned }.take(4)
+    // B3: the card takes its tint from the last drink in it.
+    val todayTint = entries.maxByOrNull { it.atEpochMs }
+        ?.let { DrinkTints.card(DrinkCategory.of(it.drinkId)) }
+    GlassCard(contentPadding = PaddingValues(16.dp), tint = todayTint) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Today", style = SippyType.emphasis, color = c.text1)
+            Spacer(Modifier.weight(1f))
+            GlassChip(label = "See all", onClick = onSeeAll)
+        }
+        Spacer(Modifier.height(4.dp))
+        if (!hasEntries) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                FriendAvatar(
+                    friend = Friend(id = "empty", kind = FriendKind.DIPPY, name = "Dippy"),
+                    mood = Mood.SLEEPY,
+                    size = 104.dp,
+                    animate = false,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("Log your first sip", style = SippyType.emphasis, color = c.text1)
+                Text(
+                    text = "Dippy is asleep until something counts.",
+                    style = SippyType.caption,
+                    color = c.text2,
+                )
+            }
+        } else {
+            // Newest first: today's last three, no more.
+            entries.sortedByDescending { it.atEpochMs }.take(3).forEach { entry ->
+                LogRow(entry = entry, goalMl = goalMl, onClick = { onEditEntry(entry) })
+            }
+            if (entries.size > 3) {
+                Text(
+                    text = "+${entries.size - 3} more today",
+                    style = SippyType.caption,
+                    color = c.text3,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        FriendsInCard(
+            state = state,
+            friends = loose,
+            goalMetToday = goalMet,
+            hasEntriesToday = hasEntries,
+            animate = animate,
+            onFriendTap = onFriendTap,
+            onOpenFriends = onOpenFriends,
+        )
+    }
+}
+
+/** A flat row: the glass belongs to the card, not to each line. */
+@Composable
+private fun LogRow(entry: LogEntry, goalMl: Int, onClick: () -> Unit) {
     val c = LocalSippyColors.current
     val drink = DrinkTable.byId(entry.drinkId)
-    val shape = RoundedCornerShape(Dimens.inner)
     val percent = if (goalMl > 0) {
         (entry.hydratedMl.toFloat() / goalMl * 100f).roundToInt()
     } else {
@@ -505,121 +641,113 @@ private fun EntryCard(entry: LogEntry, goalMl: Int, onClick: () -> Unit) {
         .toLocalTime()
         .format(timeFormat)
 
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .clickable(role = Role.Button, onClick = onClick)
+            .defaultMinSize(minHeight = Dimens.touch)
+            .clip(RoundedCornerShape(Dimens.inner))
+            .clickable(onClick = onClick)
             .semantics {
                 contentDescription = "${drink.name}, ${entry.volumeMl} millilitres at $time, " +
                     "$percent percent of the goal. Double tap to edit."
-            },
-    ) {
-        GlassSurface(shape = shape) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                DrinkIcon(
-                    drinkId = entry.drinkId,
-                    size = 42.dp,
-                    label = null,
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = drink.name,
-                        style = SippyType.emphasis,
-                        color = c.text1,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = "${entry.volumeMl} ml · $time",
-                        style = SippyType.caption,
-                        color = c.text2,
-                    )
-                    Text(
-                        text = "${entry.hydratedMl} ml counted",
-                        style = SippyType.caption,
-                        color = c.text3,
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = "$percent%",
-                    style = SippyType.emphasis,
-                    color = c.accentBright,
-                )
             }
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        DrinkIcon(drinkId = entry.drinkId, size = 34.dp, label = null)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = drink.name,
+                style = SippyType.emphasis,
+                color = c.text1,
+                maxLines = 2,
+            )
+            Text(
+                text = "${entry.volumeMl} ml · $time",
+                style = SippyType.caption,
+                color = c.text2,
+            )
+            Spacer(Modifier.height(6.dp))
+            // B4: the row's share of the goal, in the drink's own colour.
+            ShareBar(
+                fraction = if (goalMl > 0) entry.hydratedMl.toFloat() / goalMl else 0f,
+                color = DrinkTints.of(DrinkCategory.of(entry.drinkId)),
+            )
         }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = "$percent%",
+            style = SippyType.caption,
+            color = c.accentBright,
+        )
     }
 }
 
+/** The friends that are not on the orb: up to four, then "Friends ›". */
 @Composable
-private fun FriendStrip(
+private fun FriendsInCard(
     state: StoredState,
+    friends: List<Friend>,
     goalMetToday: Boolean,
     hasEntriesToday: Boolean,
-    onOpenFriends: () -> Unit,
+    animate: Boolean,
     onFriendTap: (Friend) -> Unit,
+    onOpenFriends: () -> Unit,
 ) {
     val c = LocalSippyColors.current
-    GlassSurface(shape = RoundedCornerShape(Dimens.card)) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Five friends at 360dp would overflow: scroll instead of clipping.
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                state.friends.forEach { friend ->
-                    val mood = moodFor(friend, state, goalMetToday, hasEntriesToday)
-                    Column(
-                        modifier = Modifier
-                            .defaultMinSize(minWidth = Dimens.touch, minHeight = Dimens.touch)
-                            .clip(RoundedCornerShape(Dimens.inner))
-                            .clickable(role = Role.Button, onClick = { onFriendTap(friend) })
-                            .semantics {
-                                contentDescription = "${friend.name}, ${mood.name.lowercase()}"
-                            }
-                            .padding(horizontal = 4.dp, vertical = 2.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        FriendImage(
-                            kind = friend.kind,
-                            mood = mood,
-                            growthStreak = friend.grownAtStreak,
-                            size = 52,
-                            animate = true,
-                            modifier = Modifier.size(52.dp),
-                        )
-                        Text(friend.name, style = SippyType.caption, color = c.text2)
-                    }
+            if (friends.isEmpty()) {
+                Text(
+                    text = "No one else yet.",
+                    style = SippyType.caption,
+                    color = c.text3,
+                )
+            }
+            friends.forEach { friend ->
+                val mood = moodFor(friend, state, goalMetToday, hasEntriesToday)
+                val worn = ShopRules.worn(
+                    state.equipped,
+                    state.equippedOutfits,
+                    state.ownedItems,
+                    friend.id,
+                )
+                Column(
+                    modifier = Modifier
+                        .defaultMinSize(minWidth = Dimens.touch, minHeight = Dimens.touch)
+                        .clip(RoundedCornerShape(Dimens.inner))
+                        .clickable { onFriendTap(friend) }
+                        .semantics { contentDescription = "${friend.name}, ${mood.name.lowercase()}" },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    FriendAvatar(
+                        friend = friend,
+                        mood = mood,
+                        size = 46.dp,
+                        animate = animate,
+                        hat = worn.firstOrNull { it.slot == ItemSlot.HAT },
+                        outfit = worn.firstOrNull { it.slot == ItemSlot.OUTFIT },
+                    )
+                    Text(friend.name, style = SippyType.caption, color = c.text2, maxLines = 1)
                 }
             }
-            Spacer(Modifier.width(4.dp))
-            Text(
-                text = "Friends ›",
-                style = SippyType.caption,
-                color = c.text3,
-                modifier = Modifier
-                    .defaultMinSize(minHeight = Dimens.touch)
-                    .clip(RoundedCornerShape(Dimens.pill))
-                    .clickable(role = Role.Button, onClick = onOpenFriends)
-                    .semantics { contentDescription = "Open friends" }
-                    .padding(horizontal = 10.dp, vertical = 14.dp),
-            )
         }
+        Text(
+            text = "Friends ›",
+            style = SippyType.caption,
+            color = c.text3,
+            modifier = Modifier
+                .defaultMinSize(minHeight = Dimens.touch)
+                .clip(RoundedCornerShape(Dimens.pill))
+                .clickable(onClick = onOpenFriends)
+                .semantics { contentDescription = "Open friends" }
+                .padding(horizontal = 8.dp, vertical = 14.dp),
+        )
     }
 }
 
@@ -637,7 +765,7 @@ fun moodFor(
         state.streak.currentDays < friend.grownAtStreak,
 )
 
-/** One line per mood, shown when a friend in the strip is tapped. */
+/** One line per mood, shown in the orb's speech bubble. */
 fun moodLine(name: String, mood: Mood): String = when (mood) {
     Mood.DANCING -> "$name is dancing — goal met and the streak is holding."
     Mood.HAPPY -> "$name is happy with today's sips."

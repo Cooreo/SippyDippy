@@ -16,6 +16,7 @@ kotlinxCoroutines = "1.10.2"    # verified stable on Central
 work = "2.12.0"                 # verified stable on google() 2026-11-27
 backdrop = "2.0.1"              # io.github.kyant0:backdrop (verified tag + build file)
 kyantShapes = "1.2.1"
+splashscreen = "1.0.1"            # androidx.core:core-splashscreen (stable since 2023)
 junit = "4.13.2"
 
 [libraries]
@@ -33,6 +34,7 @@ compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling", version.ref = 
 compose-material3 = { module = "androidx.compose.material3:material3", version.ref = "composeMaterial3" }
 compose-material-ripple = { module = "androidx.compose.material:material-ripple", version.ref = "composeUi" }
 
+androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "splashscreen" }
 androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 

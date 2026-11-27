@@ -13,6 +13,7 @@ import com.cooreo.sippy.domain.friends.PinRules
 import com.cooreo.sippy.domain.points.PointsRules
 import com.cooreo.sippy.domain.shop.ItemTable
 import com.cooreo.sippy.domain.shop.ShopRules
+import com.cooreo.sippy.domain.shop.Wardrobe
 import com.cooreo.sippy.domain.onboarding.Onboarding
 import com.cooreo.sippy.domain.streak.StreakCalculator
 import com.cooreo.sippy.domain.updates.UpdateDecision
@@ -66,6 +67,13 @@ class SippyController(
     var moodOverride by mutableStateOf<Mood?>(null)
         private set
 
+    /**
+     * Developer options → "Exaggerate glass" (B1). Not persisted: it is a
+     * diagnostic, and a restart should hand the phone back its normal glass.
+     * Public setter on purpose — the Developer screen is the only writer.
+     */
+    var glassBoost by mutableStateOf(false)
+
     /** A newer build is available and the sheet should be shown. */
     var updateOffer by mutableStateOf<UpdateManifest?>(null)
         private set
@@ -114,7 +122,10 @@ class SippyController(
                     pointsCarryMl = credit.carryMl,
                     ledger = ledger,
                 )
-                val log = (state.log + logged).takeLast(MAX_LOG_ENTRIES)
+                // A3: nothing is dropped. The log keeps every entry the player
+                // ever logged; the list is lazy, so size is a storage concern, not
+                // a UI one.
+                val log = state.log + logged
                 withStreak(credited, log, today)
             }
             val after = repository.state.value
@@ -166,18 +177,56 @@ class SippyController(
     }
 
     /** Re-quantifies one entry; hydration is recomputed from the drink table. */
-    fun updateEntryVolume(id: String, volumeMl: Int) {
+    fun updateEntryVolume(id: String, volumeMl: Int) = updateEntry(id, volumeMl, null)
+
+    /**
+     * Edits volume and/or the time of an entry (A3). Moving an entry across local
+     * midnight moves its day with it, so dayEpoch is recomputed, never copied.
+     */
+    fun updateEntry(id: String, volumeMl: Int, atEpochMs: Long?) {
         if (!VolumeRules.isValid(volumeMl)) return
         scope.launch {
             val today = Dates.todayEpochDay()
             repository.edit { state ->
                 val target = state.log.firstOrNull { it.id == id } ?: return@edit state
                 val drink = DrinkTable.byId(target.drinkId)
+                val whenMs = atEpochMs ?: target.atEpochMs
                 val edited = target.copy(
                     volumeMl = volumeMl,
                     hydratedMl = WaterMath.hydrate(volumeMl, drink.hydrationFactor),
+                    atEpochMs = whenMs,
+                    dayEpoch = Dates.dayOf(whenMs),
                 )
                 withStreak(state, state.log.map { if (it.id == id) edited else it }, today)
+            }
+        }
+    }
+
+    /** Puts a deleted entry back — the Undo half of swipe-to-delete (A3). */
+    fun restoreEntry(entry: LogEntry) {
+        scope.launch {
+            val today = Dates.todayEpochDay()
+            repository.edit { state ->
+                if (state.log.any { it.id == entry.id }) return@edit state
+                val log = (state.log + entry).sortedBy { it.atEpochMs }
+                val credited = if (entry.pointsEarned > 0) {
+                    state.copy(
+                        points = state.points + entry.pointsEarned,
+                        ledger = PointsRules.append(
+                            state.ledger,
+                            PointsEntry(
+                                id = "${entry.id}-undo",
+                                atEpochMs = System.currentTimeMillis(),
+                                delta = entry.pointsEarned,
+                                reason = "Undid a delete",
+                                balanceAfter = state.points + entry.pointsEarned,
+                            ),
+                        ),
+                    )
+                } else {
+                    state
+                }
+                withStreak(credited, log, today)
             }
         }
     }
@@ -217,6 +266,14 @@ class SippyController(
     fun setAccent(accent: AccentId) = update { it.copy(accent = accent) }
 
     fun setReduceEffects(reduce: Boolean) = update { it.copy(reduceEffects = reduce) }
+
+    fun setHaptics(enabled: Boolean) = update { it.copy(hapticsEnabled = enabled) }
+
+    fun setStartupAnimation(mode: com.cooreo.sippy.model.StartupAnimation) =
+        update { it.copy(startupAnimation = mode) }
+
+    /** Remembers which vignette played, so the next start is never the same one. */
+    fun rememberIntroVignette(index: Int) = update { it.copy(lastIntroVignette = index) }
 
     fun setDeveloperUnlocked(unlocked: Boolean) = update { it.copy(developerUnlocked = unlocked) }
 
@@ -356,19 +413,18 @@ class SippyController(
     }
 
     /** Wears one cosmetic on a friend; [itemId] null takes it off. */
-    fun equipItem(friendId: String, itemId: String?) {
+    fun equipItem(friendId: String, itemId: String) {
         scope.launch {
             repository.edit { state ->
                 val friend = state.friends.firstOrNull { it.id == friendId } ?: return@edit state
-                state.copy(
-                    equipped = ShopRules.equip(
-                        equipped = state.equipped,
-                        friendId = friend.id,
-                        kind = friend.kind,
-                        owned = state.ownedItems,
-                        itemId = itemId,
-                    ),
+                val next = ShopRules.toggle(
+                    wardrobe = Wardrobe(state.equipped, state.equippedOutfits),
+                    friendId = friend.id,
+                    kind = friend.kind,
+                    owned = state.ownedItems,
+                    itemId = itemId,
                 )
+                state.copy(equipped = next.hats, equippedOutfits = next.outfits)
             }
         }
     }
@@ -520,7 +576,6 @@ class SippyController(
 
     companion object {
         /** Bounded log: a few hundred sips, oldest dropped first. */
-        const val MAX_LOG_ENTRIES = 400
 
         const val SIGNING_MISMATCH_MESSAGE =
             "This update is signed with a different key than the copy on your phone, so Android " +

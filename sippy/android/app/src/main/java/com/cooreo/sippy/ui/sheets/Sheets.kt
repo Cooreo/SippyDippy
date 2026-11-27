@@ -22,6 +22,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +40,8 @@ import com.cooreo.sippy.domain.updates.UpdateManifest
 import com.cooreo.sippy.model.Settings
 import com.cooreo.sippy.ui.glass.GlassButton
 import com.cooreo.sippy.ui.glass.GlassCard
+import com.cooreo.sippy.ui.glass.GlassLevel
+import com.cooreo.sippy.ui.glass.LocalGlassLevel
 import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.theme.Dimens
 import com.cooreo.sippy.ui.theme.LocalSippyColors
@@ -67,7 +70,10 @@ internal fun SheetScrim(
                 .navigationBarsPadding(),
             contentAlignment = Alignment.BottomCenter,
         ) {
-            content()
+            // B3: a sheet is one of the three live-refraction surfaces.
+            CompositionLocalProvider(LocalGlassLevel provides GlassLevel.LIVE) {
+                content()
+            }
         }
     }
 }
@@ -76,6 +82,8 @@ internal fun SheetScrim(
 fun AddDrinkSheet(
     onDismiss: () -> Unit,
     onPick: (Drink, Int) -> Unit,
+    /** A5: "Custom" lives in this sheet instead of under the Home pills. */
+    onCustom: (() -> Unit)? = null,
 ) {
     val c = LocalSippyColors.current
     var selected by remember { mutableStateOf(DrinkTable.drinks.first()) }
@@ -153,6 +161,14 @@ fun AddDrinkSheet(
                     },
                     modifier = Modifier.fillMaxWidth(),
                 )
+                if (onCustom != null) {
+                    Spacer(Modifier.height(4.dp))
+                    GlassChip(
+                        label = "Custom…",
+                        onClick = onCustom,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
             }
         }

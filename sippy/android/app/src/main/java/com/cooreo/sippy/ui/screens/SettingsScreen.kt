@@ -7,8 +7,6 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -33,15 +33,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.cooreo.sippy.BuildConfig
 import com.cooreo.sippy.domain.drinks.DrinkTable
 import com.cooreo.sippy.domain.water.WaterMath
 import com.cooreo.sippy.model.AccentId
 import com.cooreo.sippy.model.Settings
+import com.cooreo.sippy.model.StartupAnimation
 import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.model.ThemeMode
 import com.cooreo.sippy.ui.glass.GlassButton
@@ -153,19 +155,25 @@ fun SettingsScreen(
         item {
             SettingsCard {
                 SectionTitle("Daily goal")
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // A1: the chips are measured first at their natural width and the
+                // number takes the slack in the middle, so "−250" can never be
+                // squeezed into "−…".
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                     GlassChip(
                         label = "−250",
                         onClick = { controller.setGoal(state.settings.goalMl - 250) },
                     )
-                    Spacer(Modifier.weight(1f))
                     Text(
                         text = "${state.settings.goalMl} ml",
                         color = c.text1,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f),
                     )
-                    Spacer(Modifier.weight(1f))
                     GlassChip(
                         label = "+250",
                         onClick = { controller.setGoal(state.settings.goalMl + 250) },
@@ -254,6 +262,53 @@ fun SettingsScreen(
                     Switch(
                         checked = state.settings.reduceEffects,
                         onCheckedChange = { controller.setReduceEffects(it) },
+                    )
+                }
+            }
+        }
+
+        item {
+            SettingsCard {
+                SectionTitle("Startup animation")
+                Text(
+                    text = "A friend arrives in front of the mark, then the app fades " +
+                        "up behind it. Full plays the whole arrival, Short cuts the flight, " +
+                        "Off goes straight to Home.",
+                    color = c.text3,
+                    fontSize = 11.sp,
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StartupAnimation.entries.forEach { mode ->
+                        GlassChip(
+                            label = when (mode) {
+                                StartupAnimation.FULL -> "Full"
+                                StartupAnimation.SHORT -> "Short"
+                                StartupAnimation.OFF -> "Off"
+                            },
+                            selected = state.settings.startupAnimation == mode,
+                            onClick = { controller.setStartupAnimation(mode) },
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            SettingsCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        SectionTitle("Haptics")
+                        Text(
+                            text = "A tick on tab changes, a thud when you log, and a " +
+                                "two-beat pattern when you reach the goal.",
+                            color = c.text3,
+                            fontSize = 11.sp,
+                        )
+                    }
+                    Switch(
+                        checked = state.settings.hapticsEnabled,
+                        onCheckedChange = { controller.setHaptics(it) },
                     )
                 }
             }

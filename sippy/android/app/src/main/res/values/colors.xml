@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Light window background (matches the site's light theme base). -->
-    <color name="sippy_window_background">#E3EBFA</color>
+    <!-- The first frame, before Compose draws anything (round 8, B8). It is the
+         same dark blue the splash screen and the intro paint, so cold start never
+         flashes white or black. -->
+    <color name="sippy_window_background">#0B1F38</color>
+    <color name="sippy_splash_background">#0B1F38</color>
 </resources>

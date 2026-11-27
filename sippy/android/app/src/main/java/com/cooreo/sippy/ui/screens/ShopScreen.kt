@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -28,9 +29,11 @@ import com.cooreo.sippy.domain.points.PointsRules
 import com.cooreo.sippy.domain.shop.ItemTable
 import com.cooreo.sippy.domain.shop.ShopItem
 import com.cooreo.sippy.domain.shop.ShopRules
+import com.cooreo.sippy.model.Friend
 import com.cooreo.sippy.model.FriendKind
 import com.cooreo.sippy.model.PointsEntry
 import com.cooreo.sippy.model.StoredState
+import com.cooreo.sippy.ui.components.FriendAvatar
 import com.cooreo.sippy.ui.components.ItemImage
 import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassChip
@@ -114,9 +117,13 @@ fun ShopScreen(
                             ItemRow(
                                 item = item,
                                 owned = item.id in state.ownedItems,
-                                equipped = friend != null && state.equipped[friend.id] == item.id,
+                                equipped = friend != null && ShopRules.worn(
+                                    state.equipped,
+                                    state.equippedOutfits,
+                                    state.ownedItems,
+                                    friend.id,
+                                ).any { it.id == item.id },
                                 canWear = friend != null,
-                                price = item.price,
                                 balance = state.points,
                                 onBuy = { onBuy(item.id) },
                                 onEquip = { friend?.let { onEquip(it.id, item.id) } },
@@ -159,31 +166,44 @@ private fun ItemRow(
     owned: Boolean,
     equipped: Boolean,
     canWear: Boolean,
-    price: Int,
     balance: Int,
     onBuy: () -> Unit,
     onEquip: () -> Unit,
 ) {
     val c = LocalSippyColors.current
+    // A4: the item is shown *on* the friend it belongs to, drawn the same way it
+    // will look once worn. Owning that friend is not required to look at it.
+    val model = remember(item.kind) { Friend(id = "shop-${item.kind.name}", kind = item.kind, name = item.kind.short) }
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        ItemImage(item = item, size = 44.dp)
+        FriendAvatar(
+            friend = model,
+            mood = com.cooreo.sippy.domain.friends.Mood.HAPPY,
+            size = 56.dp,
+            animate = false,
+            hat = if (item.slot == com.cooreo.sippy.domain.shop.ItemSlot.HAT) item else null,
+            outfit = if (item.slot == com.cooreo.sippy.domain.shop.ItemSlot.OUTFIT) item else null,
+        )
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text(item.name, style = SippyType.emphasis, color = c.text1)
             Text(
-                text = if (owned) "Owned" else "Proposed price: $price points",
+                text = when {
+                    !owned -> "Proposed price: ${item.price} points · you have $balance"
+                    else -> "${item.kind.short} · owned"
+                },
                 style = SippyType.caption,
                 color = c.text3,
             )
         }
         Spacer(Modifier.width(8.dp))
+        // One button, four states (A4).
         when {
             !owned -> GlassChip(
-                label = if (balance >= price) "Buy $price" else "Need ${price - balance}",
+                label = "Buy",
                 onClick = onBuy,
             )
-            !canWear -> Text("Owned", style = SippyType.caption, color = c.text3)
-            equipped -> GlassChip(label = "Worn", selected = true, onClick = onEquip)
-            else -> GlassChip(label = "Wear", onClick = onEquip)
+            !canWear -> GlassChip(label = "Needs ${item.kind.short}", onClick = {})
+            equipped -> GlassChip(label = "Equipped", selected = true, onClick = onEquip)
+            else -> GlassChip(label = "Equip", onClick = onEquip)
         }
     }
 }
