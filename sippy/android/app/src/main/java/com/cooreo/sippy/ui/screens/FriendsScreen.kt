@@ -108,23 +108,24 @@ fun FriendsScreen(
                     fontSize = 12.sp,
                 )
                 Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val hasPlant = state.friends.any { it.kind == FriendKind.PLANT }
-                    val hasCat = state.friends.any { it.kind == FriendKind.CAT }
-                    Box(Modifier.weight(1f)) {
-                        GlassChip(
-                            label = if (hasPlant) "Plant ✓" else "Plant",
-                            onClick = { controller.addFriend(FriendKind.PLANT) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                // Every kind the player does not own yet, two per row.
+                val missing = FriendKind.entries.filter { kind ->
+                    kind != FriendKind.DIPPY && state.friends.none { it.kind == kind }
+                }
+                missing.chunked(2).forEach { pair ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pair.forEach { kind ->
+                            Box(Modifier.weight(1f)) {
+                                GlassChip(
+                                    label = kind.short,
+                                    onClick = { controller.addFriend(kind) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                        if (pair.size == 1) Box(Modifier.weight(1f)) {}
                     }
-                    Box(Modifier.weight(1f)) {
-                        GlassChip(
-                            label = if (hasCat) "Cat ✓" else "Cat",
-                            onClick = { controller.addFriend(FriendKind.CAT) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
+                    Spacer(Modifier.height(8.dp))
                 }
             }
         }

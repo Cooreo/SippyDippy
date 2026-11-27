@@ -264,11 +264,7 @@ class SippyController(
             repository.edit { state ->
                 if (state.friends.size >= Friend.MAX_FRIENDS) return@edit state
                 if (state.friends.any { it.kind == kind }) return@edit state
-                val name = when (kind) {
-                    FriendKind.PLANT -> "Sprout"
-                    FriendKind.CAT -> "Mochi"
-                    FriendKind.DIPPY -> "Dippy"
-                }
+                val name = FriendNameRules.defaultNameFor(kind)
                 state.copy(
                     friends = state.friends + Friend(
                         id = UUID.randomUUID().toString(),

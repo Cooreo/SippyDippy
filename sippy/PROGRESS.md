@@ -971,3 +971,32 @@ When a swipe brings the transient bars up, they are overlays by design and do no
 re-dispatch insets, so the top row keeps its position under a translucent bar for
 the duration of the swipe. Everything else in A1 (immersive hide, navigation
 insets on the sheets, Settings clearance, the floating pill) is unaffected.
+
+## B3 — four new friends, and cosmetic art (round 7)
+
+**Design decision: cosmetics are worn as a badge, not warped onto the mascot.**
+The friend art and the item art were generated separately, so an item cannot be
+mapped onto a mascot's silhouette without hand-tuned anchors per pose — and a
+3072 px AI cut-out is not a skeleton. Every friend therefore shows at most one
+equipped cosmetic as a small glass badge in its corner, drawn from the same
+256 px art the shop uses. It reads at 48 dp (the pinned slot) and at 88 dp (the
+Friends list), it never clips, and it keeps working when a friend's mood art
+changes. Warping onto the body is possible later, but only with hand-drawn
+anchors, which is an art task, not a code task.
+
+**Scale rules:** Dippy is the default and is always present; the player may hold
+five friends at once (`Friend.MAX_FRIENDS`), so Dippy plus any four of the six
+optional kinds. `FriendKind` grew from three to seven values (`KOI`, `OTTER`,
+`TURTLE`, `AXOLOTL`), each with a `short` label for the Add-a-friend chips, a
+default name (`Koi`, `Pebble`, `Shelly`, `Axy`) that passes `FriendNameRules`,
+and art in `res/drawable`. `FriendKindTest` pins the counts, the distinct
+labels, the distinct-and-valid default names and the five-friend cap.
+
+Adding friends is now a grid of every kind the player does not own, two per row,
+instead of two hard-coded chips — with seven kinds the old row could not hold
+them. Same copy, same glass chips.
+
+**Art list, sizes and rejections:** `sippy/android/ART_CREDITS.md` — nine shipped
+files (four friends, four hats, one scarf), three rejected attempts and the
+pipeline (magenta field → border-seeded chroma key → de-fringe → WebP 88).
+Largest file 35 KB; friends 512 px, items 256 px.

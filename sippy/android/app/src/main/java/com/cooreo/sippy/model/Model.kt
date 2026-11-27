@@ -54,7 +54,27 @@ data class Settings(
 }
 
 @Serializable
-enum class FriendKind { DIPPY, PLANT, CAT }
+enum class FriendKind {
+    DIPPY,
+    PLANT,
+    CAT,
+    KOI,
+    OTTER,
+    TURTLE,
+    AXOLOTL;
+
+    /** Short label for the Add-a-friend chips. */
+    val short: String
+        get() = when (this) {
+            DIPPY -> "Dippy"
+            PLANT -> "Plant"
+            CAT -> "Cat"
+            KOI -> "Koi"
+            OTTER -> "Otter"
+            TURTLE -> "Turtle"
+            AXOLOTL -> "Axolotl"
+        }
+}
 
 @Serializable
 data class Friend(
