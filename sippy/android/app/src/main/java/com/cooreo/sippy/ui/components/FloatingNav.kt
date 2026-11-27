@@ -2,12 +2,16 @@ package com.cooreo.sippy.ui.components
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -24,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,14 +37,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -96,6 +104,8 @@ fun FloatingNav(
     onLog: () -> Unit,
     modifier: Modifier = Modifier,
     animate: Boolean = true,
+    /** Where the + button ended up, so the Log sheet can grow out of it (B7). */
+    onLogBounds: (Rect) -> Unit = {},
 ) {
     val c = LocalSippyColors.current
     val shape = RoundedCornerShape(Dimens.pill)
@@ -212,7 +222,7 @@ fun FloatingNav(
                     NavItem(NavTarget.HOME, current, lens, onSelect)
                     NavItem(NavTarget.DRINKS, current, lens, onSelect)
                     Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        LogButton(onLog)
+                        LogButton(onLog, onLogBounds)
                     }
                     NavItem(NavTarget.FRIENDS, current, lens, onSelect)
                     NavItem(NavTarget.SETTINGS, current, lens, onSelect)
@@ -278,14 +288,34 @@ private fun RowScope.NavItem(
 }
 
 @Composable
-private fun LogButton(onLog: () -> Unit) {
+private fun LogButton(onLog: () -> Unit, onBounds: (Rect) -> Unit) {
     val c = LocalSippyColors.current
+    // B7: the press is a squash and a ripple from wherever the finger landed; the
+    // ripple is the platform's own, so it is bounded to the circle and free.
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val squash by animateFloatAsState(
+        targetValue = if (pressed) 0.90f else 1f,
+        animationSpec = spring(dampingRatio = 0.34f, stiffness = 900f),
+        label = "logSquash",
+    )
     Box(
         modifier = Modifier
             .size(56.dp)
+            .onGloballyPositioned { onBounds(it.boundsInRoot()) }
+            .graphicsLayer {
+                scaleX = 1f + (1f - squash) * 0.85f
+                scaleY = squash
+            }
             .clip(CircleShape)
             .background(c.accent)
-            .clickable(role = Role.Button, onClick = onLog)
+            .indication(interaction, ripple())
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Button,
+                onClick = onLog,
+            )
             .semantics { contentDescription = "Log a drink" },
         contentAlignment = Alignment.Center,
     ) {
