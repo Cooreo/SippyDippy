@@ -35,7 +35,7 @@ export function AssetsPage() {
         <h1 style={{ fontSize: "clamp(28px, 4vw, 44px)", letterSpacing: "-0.02em" }}>
           Asset pack — contact sheet
         </h1>
-        <p style={{ color: "var(--text-3)", maxWidth: "70ch" }}>
+        <p style={{ color: "var(--text-2)", maxWidth: "70ch" }}>
           {ASSETS.length} generated assets · {kb(total)} transferred total ·
           style: glossy translucent water-droplet, Sippy Blue #2E7CF6 with
           violet accents, soft studio lighting, subtle rim light. Mascots
@@ -86,13 +86,13 @@ export function AssetsPage() {
           ))}
         </div>
         {PENDING_ASSETS.length > 0 && (
-          <p style={{ marginTop: 16, fontSize: 13, color: "var(--text-3)" }}>
+          <p style={{ marginTop: 16, fontSize: 13, color: "var(--text-2)" }}>
             Pending (source image not generated yet — the affected sections
             fall back to the backdrop gradients):{" "}
             <code>{PENDING_ASSETS.join(", ")}</code>
           </p>
         )}
-        <p style={{ marginTop: 16, fontSize: 13, color: "var(--text-3)" }}>
+        <p style={{ marginTop: 16, fontSize: 13, color: "var(--text-2)" }}>
           Source PNGs: <code>sippy/site/.assets-src/</code> (gitignored) ·
           rebuild: <code>python3 tooling/build-assets.py</code> · credits:{" "}
           <code>sippy/CREDITS.md</code>

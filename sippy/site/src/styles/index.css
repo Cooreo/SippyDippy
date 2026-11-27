@@ -395,7 +395,7 @@ section[id] {
 }
 .gnav-theme {
   display: inline-flex;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .pill-cta {
   background: #ffffff;
@@ -458,7 +458,7 @@ section[id] {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--text-3);
+  color: var(--text-2);
   padding-left: 8px;
 }
 .gfield-shell {
@@ -478,7 +478,7 @@ section[id] {
   min-width: 0;
 }
 .gfield-input::placeholder {
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .gfield-shell:focus-within {
   box-shadow:
@@ -504,7 +504,7 @@ section[id] {
 }
 /* Glow on the active lyric line (reference 5) */
 .lyric {
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 15px;
   transition: color var(--t-base) ease;
 }
@@ -587,7 +587,7 @@ section[id] {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .fx-pill {
   border: none;
@@ -733,11 +733,11 @@ section[id] {
   flex-wrap: wrap;
 }
 .home-hint {
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 14px;
 }
 .home-foot {
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: var(--fs-caption);
   padding-top: 32px;
 }
@@ -823,6 +823,16 @@ section[id] {
     padding var(--t-base) cubic-bezier(0.3, 0, 0.1, 1),
     box-shadow var(--t-base) ease;
 }
+:root:not(.dark) .page-nav .gnav {
+  background: rgba(255, 255, 255, 0.78);
+}
+:root:not(.dark) .page-nav .gnav-link {
+  color: #24314a;
+}
+:root:not(.dark) .page-nav .gnav-link:hover,
+:root:not(.dark) .page-nav .gnav-link-active {
+  color: #0c1424;
+}
 /* reference 3: the pill compresses once the page has scrolled */
 .gnav-scrolled {
   padding: 7px 8px 7px 16px;
@@ -865,6 +875,22 @@ section[id] {
   align-items: center;
   padding: 120px 0 56px;
 }
+/* In light mode, extend a soft feathered dark cushion across the hero's
+   white/pale text zone so .hero-title and .hero .lead maintain ≥6.5:1 even
+   at the lower mobile hero where .backdrop-scrim fades out. */
+:root:not(.dark) .hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(6, 12, 26, 0.24) 0%,
+    rgba(6, 12, 26, 0.62) 55%,
+    rgba(6, 12, 26, 0) 100%
+  );
+}
 .hero-inner {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -892,12 +918,15 @@ section[id] {
 .hero-word {
   display: inline-block;
 }
-.lead {
+.hero .lead {
   margin: 0 0 34px;
   max-width: 44ch;
   font-size: clamp(16px, 1.3vw, 19px);
   line-height: 1.6;
-  color: #9fb0cc;
+  color: #c4d3ec;
+}
+:root:not(.dark) .hero .lead {
+  color: #eef3ff;
 }
 .hero-cta {
   display: flex;
@@ -939,6 +968,7 @@ section[id] {
   height: 100%;
   border-radius: 50%;
   overflow: hidden;
+  overflow: clip;
   background:
     radial-gradient(
       circle at 32% 26%,
@@ -998,6 +1028,7 @@ section[id] {
   inset: 0;
   border-radius: 50%;
   overflow: hidden;
+  overflow: clip;
 }
 /* Slightly wider horizontally (-8%..108%) so gentle slosh rotation never
    exposes side gaps inside the circular clip. */
@@ -1007,6 +1038,8 @@ section[id] {
   bottom: -10%;
   left: -8%;
   right: -8%;
+  overflow: hidden;
+  overflow: clip;
   transform: translateY(100%);
   transform-origin: 50% 12%;
   will-change: transform;
@@ -1104,6 +1137,7 @@ section[id] {
   inset: 0;
   border-radius: 50%;
   overflow: hidden;
+  overflow: clip;
   mix-blend-mode: screen;
   pointer-events: none;
 }
@@ -1217,6 +1251,7 @@ section[id] {
   inset: 0;
   border-radius: 50%;
   overflow: hidden;
+  overflow: clip;
   pointer-events: none;
 }
 .hr-shimmer-band {
@@ -1345,7 +1380,7 @@ section[id] {
   margin: 0 0 40px;
   max-width: 56ch;
   font-size: 15.5px;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 
 /* — Features bento — */
@@ -1374,6 +1409,7 @@ section[id] {
 .bento-inner {
   position: relative;
   overflow: hidden;
+  overflow: clip;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -1446,14 +1482,17 @@ section[id] {
   border-radius: var(--r-pill);
   font-size: 12.5px;
   font-weight: 700;
-  color: var(--text-3);
+  color: var(--text-2);
   background: color-mix(in srgb, var(--text-1) 8%, transparent);
   box-shadow: inset 0 0 0 1px var(--glass-rim-mid);
 }
 .milestone-done {
-  color: var(--accent-bright);
+  color: #1648b8;
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.dark .milestone-done {
+  color: #8ec0ff;
 }
 
 /* — Showcase: "Three things Sippy does best." (Phase 3 round 3).
@@ -1715,6 +1754,7 @@ section[id] {
   height: 8px;
   border-radius: var(--r-pill);
   overflow: hidden;
+  overflow: clip;
   background: color-mix(in srgb, var(--text-1) 12%, transparent);
 }
 .sc-goal-bar-fill {
@@ -1828,13 +1868,13 @@ section[id] {
 .download-meta {
   margin: 0;
   font-size: 14px;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .download-sha {
   margin: 10px 0 0;
   font-size: 12px;
   word-break: break-all;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .download-btn {
   display: inline-block;
@@ -1848,13 +1888,14 @@ section[id] {
   align-items: flex-start;
 }
 .download-disabled .pill-cta:disabled {
-  opacity: 0.55;
+  background: color-mix(in srgb, var(--text-1) 8%, transparent);
+  color: var(--text-2);
   cursor: not-allowed;
-  box-shadow: none;
+  box-shadow: inset 0 0 0 1px var(--glass-rim-mid);
 }
 .download-disabled span {
   font-size: 13.5px;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .install-steps {
   margin: 32px 0 0;
@@ -1893,7 +1934,7 @@ section[id] {
 .download-note {
   margin: 20px 0 0;
   font-size: 13px;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 
 /* — FAQ (Phase 3 fix D): neutral glass tint, accent only on the open
@@ -2025,7 +2066,7 @@ section[id] {
   margin: 0;
   max-width: 60ch;
   font-size: 13.5px;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .footer-links {
   display: flex;
@@ -2124,7 +2165,7 @@ section[id] {
 /* brighter rim on hover — an opacity overlay (never an animated shadow) */
 .cta-rim {
   position: absolute;
-  inset: -1px;
+  inset: 0;
   border-radius: inherit;
   pointer-events: none;
   opacity: 0;
@@ -2533,7 +2574,7 @@ section[id] {
 }
 .asset-meta span {
   font-size: 12.5px;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .asset-usage {
   color: var(--text-2) !important;
@@ -2577,7 +2618,7 @@ html.debug-outline [data-overflow-hint] {
     gap: 16px;
   }
   .hero-buddy {
-    right: -6px;
+    right: 0;
     bottom: 1%;
     width: 64px;
   }
