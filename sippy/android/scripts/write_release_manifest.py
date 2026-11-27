@@ -3,7 +3,11 @@
 
 Called by .github/workflows/release.yml after `gh release create` succeeded.
 The manifest is the contract the in-app updater reads:
-  versionCode, versionName, apkUrl, sha256, sizeBytes, minSdk, releasedAt, notes
+  versionCode, versionName, apkUrl, sha256, sizeBytes, minSdk, releasedAt, notes,
+  certSha256
+`certSha256` is written only by a real publish (this script only runs in the
+tags-only publish job). CI compares the built APK's certificate with it before
+anything is released, so a second key can never ship — trust on first use.
 Unknown fields are ignored by older builds; every field has a default.
 """
 
@@ -17,8 +21,15 @@ import pathlib
 REPOSITORY = "Cooreo/SippyDippy"
 
 
-def build_manifest(tag: str, name: str, code: int, sha: str, size: int, apk: str) -> dict:
-    return {
+def normalise_cert(value: str) -> str:
+    """Lowercase hex, no colons — the form apksigner and CI use."""
+    return "".join(c for c in value.lower() if c in "0123456789abcdef")
+
+
+def build_manifest(
+    tag: str, name: str, code: int, sha: str, size: int, apk: str, cert: str = ""
+) -> dict:
+    manifest = {
         "versionCode": code,
         "versionName": name,
         "apkUrl": f"https://github.com/{REPOSITORY}/releases/download/{tag}/{apk}",
@@ -30,6 +41,10 @@ def build_manifest(tag: str, name: str, code: int, sha: str, size: int, apk: str
         ),
         "notes": [f"Sippy {name}", "Signed release built by GitHub Actions"],
     }
+    cert = normalise_cert(cert)
+    if cert:
+        manifest["certSha256"] = cert
+    return manifest
 
 
 def main() -> int:
@@ -41,10 +56,11 @@ def main() -> int:
     parser.add_argument("--sha", required=True)
     parser.add_argument("--size", type=int, required=True)
     parser.add_argument("--apk", required=True)
+    parser.add_argument("--cert-sha256", default="")
     args = parser.parse_args()
 
     manifest = build_manifest(
-        args.tag, args.name, args.code, args.sha, args.size, args.apk
+        args.tag, args.name, args.code, args.sha, args.size, args.apk, args.cert_sha256
     )
     root = pathlib.Path(args.dir) / "releases"
     root.mkdir(parents=True, exist_ok=True)

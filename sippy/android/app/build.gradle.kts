@@ -23,18 +23,25 @@ val sippyVersionCode = versionProps.getProperty("versionCode").trim().toInt()
 val sippyVersionName = versionProps.getProperty("versionName").trim()
 
 // ---------------------------------------------------------------------------
-// Signing — environment only. Never a keystore in the repo, never the debug
-// key for a release build.
+// Signing — the release key lives in the repository, committed on purpose:
+//   sippy/android/signing/sippy-release.jks
+//   sippy/android/signing/signing.properties   (storeFile/storePassword/keyAlias/keyPassword)
+// The key is public by design (see signing/README.md) and can never be reused
+// for anything else. A release build without both files FAILS; there is no
+// environment-variable path and no debug-key fallback.
 // ---------------------------------------------------------------------------
-val signingKeys = listOf(
-    "ANDROID_KEYSTORE_PATH",
-    "ANDROID_KEYSTORE_PASSWORD",
-    "ANDROID_KEY_ALIAS",
-    "ANDROID_KEY_PASSWORD",
-)
-val signingEnv = signingKeys.associateWith { System.getenv(it) }
-val missingSigningKeys = signingKeys.filter { signingEnv[it].isNullOrBlank() }
-val signingComplete = missingSigningKeys.isEmpty()
+val signingDir = rootProject.file("signing")
+val keystoreFile = signingDir.resolve("sippy-release.jks")
+val signingPropertiesFile = signingDir.resolve("signing.properties")
+val missingSigningFiles = listOf(keystoreFile, signingPropertiesFile).filterNot { it.isFile }
+val signingProperties = Properties().apply {
+    if (signingPropertiesFile.isFile) {
+        signingPropertiesFile.inputStream().use { load(it) }
+    }
+}
+fun signingValue(key: String): String? =
+    signingProperties.getProperty(key)?.trim()?.takeIf { it.isNotEmpty() }
+val keystorePath = signingDir.resolve(signingValue("storeFile") ?: keystoreFile.name)
 
 android {
     namespace = "com.cooreo.sippy"
@@ -54,11 +61,11 @@ android {
 
     signingConfigs {
         create("release") {
-            if (signingComplete) {
-                storeFile = file(signingEnv.getValue("ANDROID_KEYSTORE_PATH")!!)
-                storePassword = signingEnv.getValue("ANDROID_KEYSTORE_PASSWORD")
-                keyAlias = signingEnv.getValue("ANDROID_KEY_ALIAS")
-                keyPassword = signingEnv.getValue("ANDROID_KEY_PASSWORD")
+            if (missingSigningFiles.isEmpty()) {
+                storeFile = keystorePath
+                storePassword = signingValue("storePassword")
+                keyAlias = signingValue("keyAlias")
+                keyPassword = signingValue("keyPassword")
                 // v1: APK only (no AAB), so JAR signing stays on for old devices.
                 enableV1Signing = true
                 enableV2Signing = true
@@ -122,19 +129,39 @@ kotlin {
     }
 }
 
-// A release build without the four signing secrets must FAIL, never silently
-// produce an unsigned or debug-signed APK.
+// A release build must FAIL when the committed key material is missing or
+// incomplete, never silently produce an unsigned or debug-signed APK.
 gradle.taskGraph.whenReady {
     val releaseWorkRequested = allTasks.any { task ->
         val n = task.name.lowercase(Locale.ROOT)
         n.contains("release") && (n.startsWith("assemble") || n.startsWith("bundle") || n.startsWith("package"))
     }
-    if (releaseWorkRequested && !signingComplete) {
+    if (!releaseWorkRequested) return@whenReady
+
+    if (missingSigningFiles.isNotEmpty()) {
         throw GradleException(
-            "Release signing is not configured. Missing environment variable(s): " +
-                missingSigningKeys.joinToString(", ") +
-                ". Set all of ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, " +
-                "ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD (see sippy/android/BUILD.md).",
+            "Release signing is not configured. Missing file(s): " +
+                missingSigningFiles.joinToString(", ") { it.relativeTo(rootDir).path } +
+                ". Both sippy/android/signing/sippy-release.jks and " +
+                "sippy/android/signing/signing.properties are committed on purpose " +
+                "(see sippy/android/signing/README.md).",
+        )
+    }
+
+    val blankKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+        .filter { signingValue(it) == null }
+    if (blankKeys.isNotEmpty()) {
+        throw GradleException(
+            "signing.properties is incomplete. Missing value(s): " +
+                blankKeys.joinToString(", ") +
+                " (sippy/android/signing/signing.properties).",
+        )
+    }
+    if (!keystorePath.isFile) {
+        throw GradleException(
+            "Release signing is not configured. signing.properties points at " +
+                "storeFile=" + signingValue("storeFile") +
+                " but " + keystorePath.relativeTo(rootDir).path + " does not exist.",
         )
     }
 }

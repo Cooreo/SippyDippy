@@ -126,7 +126,7 @@ The "backdrop" is **three stacked systems, not one layer**:
 ## Addition: publish to GitHub Pages — DONE, awaiting approval
 
 ### Done
-- `.github/workflows/deploy.yml` (repo root): triggers **push to main** + **workflow_dispatch**; permissions **contents:read, pages:write, id-token:write**; build job = checkout → setup-node (Node 22, npm cache) → configure-pages → `npm ci` → `VITE_BASE="/${GITHUB_REPOSITORY##*/}/" npm run build` → upload-pages-artifact (`sippy/site/dist`); deploy job = deploy-pages. Every action pinned to the **commit SHA of its version tag** (stronger than tag pinning; tags annotated in comments). No secrets/tokens/keystores anywhere in the workflow or repo (keystore path gitignored).
+- `.github/workflows/deploy.yml` (repo root): triggers **push to main** + **workflow_dispatch**; permissions **contents:read, pages:write, id-token:write**; build job = checkout → setup-node (Node 22, npm cache) → configure-pages → `npm ci` → `VITE_BASE="/${GITHUB_REPOSITORY##*/}/" npm run build` → upload-pages-artifact (`sippy/site/dist`); deploy job = deploy-pages. Every action pinned to the **commit SHA of its version tag** (stronger than tag pinning; tags annotated in comments). No secrets or credentials in the workflow (the Android release key is a separate, deliberately public file — see `sippy/android/signing/README.md`).
 - Base path: CI derives from `GITHUB_REPOSITORY` (user's spec); local default `/` via `sippy/site/.env`. Both verified (below).
 - `sippy/site/README.md`: **Live site** section (https://Cooreo.github.io/SippyDippy/) + **Troubleshooting** (failed deploy; blank page = wrong base; JS-string-literal asset note).
 
@@ -509,7 +509,7 @@ All above AA (4.5:1), headline above AAA.
 ## ANDROID v1.0.0 — Sippy the app (2026-11-27, round 6)
 
 Status: **built, committed, CI green on this branch. No tag created** — v1.0.0 is
-yours to tag once you have added the signing secrets and seen a green dry run.
+yours to tag once the committed signing key is in place and a dry run is green.
 
 ### What was built
 
@@ -582,34 +582,51 @@ manifest parsing with unknown fields, version comparison, URL prefix policy, che
 limit and snooze, corrupt/unknown-schema recovery, SHA-256 matching, mood rules, and a
 BuildConfig smoke test.
 
-`release.yml` (tags `v*`, plus `workflow_dispatch` as a no-publish dry run):
-- **Build signed APK** — tag must equal `v` + versionName; versionCode must be strictly
-  higher than `releases/latest.json`; unit tests; keystore decoded from
-  `ANDROID_KEYSTORE_BASE64` into `$RUNNER_TEMP` with a message naming any missing secret;
-  `assembleRelease`; then `aapt2 dump badging` proves package/versionCode/versionName and
-  `apksigner verify --print-certs` proves the certificate SHA-256 matches
-  `sippy/android/signing/expected-cert-sha256.txt`; APK renamed `sippy-<version>.apk`,
-  SHA-256 + size emitted as outputs.
+`release.yml` (pushes to `main`, plus `workflow_dispatch` as a no-publish dry run; a
+manual run can tick `publish`):
+- **Check for a new version** — the only place the release decision is made: a push builds
+  and publishes **only** when `version.properties` carries a `versionCode` newer than
+  `releases/latest.json`; a manual run always builds and publishes only when asked; a
+  publish is refused unless the ref is `main`. Nine scenarios (newer, equal, older,
+  dry run, forced publish, forced publish when not newer, side branch, malformed version)
+  were run against the real step script locally.
+- **Build signed APK** — the committed signing files
+  (`signing/sippy-release.jks` + `signing/signing.properties`) must exist, and the step
+  names whichever is missing; unit tests; `assembleRelease`; then `aapt2 dump badging`
+  proves package/versionCode/versionName and `apksigner verify --print-certs` applies
+  trust-on-first-use to the certificate — compared with `certSha256` in
+  `releases/latest.json` when present (mismatch fails with both values), pinned on the
+  real first publish; APK renamed `sippy-<version>.apk`, SHA-256 + size + certificate
+  emitted as outputs.
 - **Emulator smoke test** — KVM setup, API 34 x86_64 google_apis, install, grant
   POST_NOTIFICATIONS, `monkey` launch, 20 s wait, fails on missing pid or
   `Process: com.cooreo.sippy` in `logcat -b crash`, screenshot + crash buffers uploaded
   always; when a previous release exists it installs that first, then `adb install -r` and
   relaunches (upgrade-until-uninstall).
-- **Publish release** (tags only) — `gh release create` with the APK, download URL verified
-  with a 200 check, then `releases/vX.Y.Z.json` + `releases/latest.json` committed to
-  `main` as `github-actions[bot]` (`release: vX.Y.Z [skip ci]`, rebase before push, hard
-  fail if the push fails).
+- **Publish release** — `gh release create v<versionName>` (the pipeline makes the tag; an
+  existing tag at another commit is refused), notes taken from the commits since the
+  previous release tag with pipeline bookkeeping filtered out, download URL verified with a
+  200 check, then `releases/vX.Y.Z.json` + `releases/latest.json` committed to `main` as
+  `github-actions[bot]` (`release: vX.Y.Z [skip ci]`, rebase before push, hard fail if the
+  push fails), then `deploy.yml` is dispatched because a `GITHUB_TOKEN` push starts no
+  workflows.
 
 ### Release steps (yours to run)
 
-1. One-time: create the keystore, add the four secrets, fill
-   `sippy/android/signing/expected-cert-sha256.txt` — exact commands in
-   `sippy/android/BUILD.md` §"One-time repository setup".
-2. Merge this branch to `main`, then run **Android release** with *Run workflow*
-   (`workflow_dispatch`) on `main`: it builds, verifies and smoke-tests, and publishes
-   nothing. This is the dry run.
-3. If it is green: bump `version.properties` if needed, then `git tag v1.0.0 && git push
-   origin v1.0.0`. The tag must match versionName or the build job stops at the first guard.
+1. One-time: create the keystore with `keytool` and commit
+   `sippy/android/signing/sippy-release.jks` + `signing.properties` (the key is public
+   by design — never reuse it; see `sippy/android/signing/README.md`). Exact commands in
+   `sippy/android/BUILD.md` §"Release signing". There are no GitHub secrets.
+2. Run **Android release** with *Run workflow* (`workflow_dispatch`) on `main` — that is
+   the dry run: it builds, verifies and smoke-tests, and publishes nothing.
+
+   Order matters: commit the key **before** merging, because merging this branch to `main`
+   with `versionCode=1` against a placeholder manifest is itself a release trigger (the
+   first automatic publish). Without the key that run stops at "Check committed signing
+   material" and publishes nothing.
+3. Then everything else is one line: bump `versionCode`/`versionName` in
+   `sippy/android/version.properties`, commit, push to `main`. The pipeline tags, publishes,
+   rewrites the manifest and redeploys the site by itself. No manual tags.
 
 ### Known limitations
 
@@ -623,8 +640,8 @@ BuildConfig smoke test.
 - Frosted tier (API < 31) and Reduce effects drop the lens and blur — glass becomes tint +
   rim. That is intended, and is the fallback the SPEC asks for.
 - A signature change in a future keystore requires one uninstall (data loss), which the
-  updater explains up front. The certificate check in CI exists to make that never happen
-  by accident.
+  updater explains up front. The trust-on-first-use check in CI makes that impossible to
+  do by accident: the first publish pins `certSha256`, later builds must match it.
 - 30 drinks with hydration factors informed by literature but **not individually
   verified against primary sources**; they are estimates and are labelled as such in the
   code (`DrinkTable`).
@@ -633,10 +650,11 @@ BuildConfig smoke test.
 
 ### Unverified — needs your eyes (no device or emulator in this sandbox)
 
-- The release workflow has not executed yet: it needs the signing secrets, which only you
-  can add, and its first real run is the dry run in step 2 above. Its shell blocks were
-  checked with `bash -n`, its YAML parses, and every action is pinned to a commit SHA that
-  exists (verified through the GitHub API).
+- The release workflow has not executed yet: its first real run is the dry run in step 2
+  above, and it needs the committed key material (`signing/sippy-release.jks` +
+  `signing/signing.properties`) to build a signed APK. Its shell blocks were checked with
+  `bash -n`, its YAML parses, and every action is pinned to a commit SHA that exists
+  (verified through the GitHub API).
 - The look of the lens tier on a real device (refraction strength, rim highlight) — the
   numbers are taste, the structure is what the brief asked for.
 - TalkBack reading order and the 48dp targets were built in but not audited on hardware.

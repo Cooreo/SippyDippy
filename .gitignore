@@ -1,8 +1,12 @@
 # ---- secrets & local machine state (never committed) ----
+# Every keystore except the one release key, which is committed on purpose:
+# it is public by design and only ever signs Sippy releases (signing/README.md).
 *.jks
+!sippy/android/signing/sippy-release.jks
 *.keystore
 *.b64
 keystore.properties
+!sippy/android/signing/signing.properties
 local.properties
 .env*
 # the website's committed default base path is the one exception

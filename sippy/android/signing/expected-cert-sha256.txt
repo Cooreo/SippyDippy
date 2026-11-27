@@ -1,5 +1,0 @@
-# Certificate SHA-256 of the Sippy release signing key.
-# Replace this line with the lowercase, colon-free hex value printed by the
-# first signed build ("APK cert SHA-256: …"). CI fails until it matches, so a
-# regenerated key can never ship silently.
-PLACEHOLDER-REPLACE-ME

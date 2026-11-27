@@ -1,7 +1,16 @@
 # Sippy Android — signed release pipeline.
 #
-#   tag vX.Y.Z            -> build, smoke-test on an emulator, publish a GitHub Release
-#   workflow_dispatch     -> dry run: build + smoke test, publish NOTHING
+#   push to main          -> if version.properties carries a versionCode newer than the
+#                            one in releases/latest.json: build, smoke-test on an
+#                            emulator, publish a GitHub Release, rewrite the manifest and
+#                            redeploy the site. A push that does not bump the version is a
+#                            no-op (the build jobs are skipped, not failed).
+#   workflow_dispatch     -> dry run: build + smoke test, publish NOTHING. Tick "publish"
+#                            to release an already-bumped version by hand.
+#
+# Releasing is one step: bump versionCode/versionName in sippy/android/version.properties,
+# commit and push to main. The pipeline creates the v<versionName> tag and the GitHub
+# Release itself; nobody tags by hand.
 #
 # Actions pinned to full commit SHAs (verified against the tags 2026-11-27):
 #   actions/checkout@v4                11d5960a326750d5838078e36cf38b85af677262
@@ -14,8 +23,13 @@ name: Android release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish a GitHub Release (only allowed when version.properties is newer)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -25,8 +39,94 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  check:
+    name: Check for a new version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      run_build: ${{ steps.decide.outputs.run_build }}
+      publish: ${{ steps.decide.outputs.publish }}
+      version_name: ${{ steps.decide.outputs.version_name }}
+      version_code: ${{ steps.decide.outputs.version_code }}
+      published_code: ${{ steps.decide.outputs.published_code }}
+      tag: ${{ steps.decide.outputs.tag }}
+    defaults:
+      run:
+        working-directory: sippy/android
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # The release decision lives here and nowhere else: a push builds and
+      # publishes only when version.properties is ahead of releases/latest.json.
+      # A manual run always builds, and publishes only when asked to.
+      - name: Decide what this run does
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          ON_MAIN: ${{ github.ref == 'refs/heads/main' }}
+          WANT_PUBLISH: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          code="$(grep -E '^versionCode' version.properties | cut -d= -f2 | tr -d ' ')"
+          name="$(grep -E '^versionName' version.properties | cut -d= -f2 | tr -d ' ')"
+          case "$code" in
+            ''|*[!0-9]*) echo "::error::sippy/android/version.properties has no numeric versionCode."; exit 1 ;;
+          esac
+          if [ -z "$name" ]; then
+            echo "::error::sippy/android/version.properties has no versionName."
+            exit 1
+          fi
+
+          published=0
+          if [ -f ../../releases/latest.json ]; then
+            published="$(python3 -c "import json; print(int(json.load(open('../../releases/latest.json')).get('versionCode', 0) or 0))")"
+          fi
+
+          newer=false
+          if [ "$code" -gt "$published" ]; then
+            newer=true
+          fi
+
+          run_build=false
+          publish=false
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            run_build=true
+            if [ "$WANT_PUBLISH" = "true" ]; then
+              if [ "$newer" != "true" ]; then
+                echo "::error::versionCode $code is not newer than the published $published — bump sippy/android/version.properties first."
+                exit 1
+              fi
+              publish=true
+            fi
+          else
+            if [ "$newer" = "true" ]; then
+              run_build=true
+              publish=true
+            else
+              echo "releases/latest.json already publishes versionCode $published — nothing to build. Bump sippy/android/version.properties to release."
+            fi
+          fi
+
+          if [ "$publish" = "true" ] && [ "$ON_MAIN" != "true" ]; then
+            echo "::error::Refusing to publish from ${GITHUB_REF:-an unknown ref} — releases are published from main only."
+            exit 1
+          fi
+
+          echo "version.properties: v$name ($code) · published: versionCode $published · newer: $newer · build: $run_build · publish: $publish"
+          {
+            echo "run_build=$run_build"
+            echo "publish=$publish"
+            echo "version_code=$code"
+            echo "version_name=$name"
+            echo "published_code=$published"
+            echo "tag=v$name"
+          } >> "$GITHUB_OUTPUT"
+
   build:
     name: Build signed APK
+    needs: check
+    if: needs.check.outputs.run_build == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     outputs:
@@ -34,6 +134,7 @@ jobs:
       version_code: ${{ steps.version.outputs.version_code }}
       apk_name: ${{ steps.package.outputs.apk_name }}
       sha256: ${{ steps.package.outputs.sha256 }}
+      cert_sha256: ${{ steps.package.outputs.cert_sha256 }}
       size: ${{ steps.package.outputs.size }}
       tag: ${{ steps.version.outputs.tag }}
     defaults:
@@ -64,63 +165,22 @@ jobs:
           echo "tag=v$name" >> "$GITHUB_OUTPUT"
           echo "version.properties says v$name ($code)"
 
-      # Guard 3 (update-until-uninstall): a tag must match version.properties,
-      # and its versionCode must be strictly higher than the published one.
-      - name: Guard — tag matches version.properties
-        if: github.ref_type == 'tag'
-        run: |
-          expected="${{ steps.version.outputs.tag }}"
-          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match version.properties ($expected). Bump version.properties or retag."
-            exit 1
-          fi
-
-      - name: Guard — versionCode is newer than the published release
-        run: |
-          local_code="${{ steps.version.outputs.version_code }}"
-          latest="../../releases/latest.json"
-          if [ ! -f "$latest" ]; then
-            echo "No releases/latest.json yet — first release."
-            exit 0
-          fi
-          remote_code="$(python3 -c "import json,sys; print(json.load(open('$latest')).get('versionCode', 0))")"
-          echo "local=$local_code remote=$remote_code"
-          if [ "$local_code" -le "$remote_code" ]; then
-            echo "::error::versionCode $local_code is not greater than the published $remote_code. Bump version.properties."
-            exit 1
-          fi
-
       - name: Unit tests
         run: ./gradlew --no-daemon --stacktrace testDebugUnitTest
 
-      - name: Decode signing keystore
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      # The release key is committed on purpose (public by design). Fail early,
+      # naming the file, if either half of the pair is missing.
+      - name: Check committed signing material
         run: |
-          missing=""
-          [ -z "$ANDROID_KEYSTORE_BASE64" ] && missing="$missing ANDROID_KEYSTORE_BASE64"
-          [ -z "$KEYSTORE_PASSWORD" ] && missing="$missing ANDROID_KEYSTORE_PASSWORD"
-          [ -z "$KEY_ALIAS" ] && missing="$missing ANDROID_KEY_ALIAS"
-          [ -z "$KEY_PASSWORD" ] && missing="$missing ANDROID_KEY_PASSWORD"
-          if [ -n "$missing" ]; then
-            echo "::error::Missing signing secret(s):$missing. Add them in Settings → Secrets → Actions (see sippy/android/BUILD.md)."
-            exit 1
-          fi
-          keystore="$RUNNER_TEMP/sippy-release.jks"
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$keystore"
-          if [ ! -s "$keystore" ]; then
-            echo "::error::ANDROID_KEYSTORE_BASE64 did not decode to a keystore file."
-            exit 1
-          fi
-          {
-            echo "ANDROID_KEYSTORE_PATH=$keystore"
-            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
-            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
-            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
-          } >> "$GITHUB_ENV"
+          missing=0
+          for f in signing/sippy-release.jks signing/signing.properties; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Missing release signing file: sippy/android/$f"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          echo "signing material present: sippy/android/signing/sippy-release.jks, sippy/android/signing/signing.properties"
 
       - name: Assemble release
         run: ./gradlew --no-daemon --stacktrace assembleRelease
@@ -158,20 +218,33 @@ jobs:
             exit 1
           fi
 
+          # Trust on first use: the APK's own certificate is the truth. If
+          # releases/latest.json already pins a certificate, this build must
+          # match it — otherwise an update would install as a different app.
           cert="$("$apksigner" verify --print-certs "dist/$apk_name" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr 'A-F' 'a-f' | tr -d ': ')"
-          expected="$(tr -d ' \n\r' < signing/expected-cert-sha256.txt | tr 'A-F' 'a-f')"
-          if printf '%s' "$expected" | grep -q 'PLACEHOLDER'; then
-            echo "::error::sippy/android/signing/expected-cert-sha256.txt still holds the placeholder. Put the release certificate's SHA-256 there (lowercase hex, no colons) and commit it."
+          if [ -z "$cert" ]; then
+            echo "::error::The APK has no signer certificate — refuses to publish an unsigned build."
             exit 1
           fi
-          if [ "$cert" != "$expected" ]; then
-            echo "::error::Signing certificate mismatch. APK=$cert expected=$expected — installs would fail with an update conflict."
+          latest="../../releases/latest.json"
+          pinned=""
+          if [ -f "$latest" ]; then
+            pinned="$(python3 -c "import json; print(json.load(open('$latest')).get('certSha256','') or '')" | tr 'A-F' 'a-f' | tr -d ': ')"
+          fi
+          if [ -n "$pinned" ] && [ "$pinned" != "$cert" ]; then
+            echo "::error::Signing certificate mismatch: this APK is signed with $cert, releases/latest.json pins $pinned. Publishing would break every existing install — aborting."
             exit 1
+          fi
+          if [ -n "$pinned" ]; then
+            echo "certificate matches the published manifest ($cert)"
+          else
+            echo "first publish — this certificate will be pinned in releases/latest.json ($cert)"
           fi
           echo "package $package_name · versionName $version_name · versionCode $version_code · cert $cert"
 
           sha256="$(sha256sum "dist/$apk_name" | cut -d' ' -f1)"
           size="$(stat -c %s "dist/$apk_name")"
+          echo "cert_sha256=$cert" >> "$GITHUB_OUTPUT"
           echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
           echo "size=$size" >> "$GITHUB_OUTPUT"
           echo "apk_name=$apk_name" >> "$GITHUB_OUTPUT"
@@ -286,17 +359,18 @@ jobs:
 
   publish:
     name: Publish release
-    needs: [build, smoke]
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [check, build, smoke]
+    if: needs.check.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      contents: write   # release + releases/*.json commit
+      contents: write   # release, tag + releases/*.json commit
       actions: write    # re-deploy the website so it picks up the new manifest
     steps:
-      - name: Checkout (for the tag message)
+      - name: Checkout main with history and tags (for the release notes)
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Download APK
@@ -305,40 +379,60 @@ jobs:
           name: sippy-apk
           path: dist
 
-      - name: Check the tag is not published yet
+      - name: Check the version is not published yet
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.check.outputs.tag }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::Release $GITHUB_REF_NAME already exists."
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $TAG already exists — bump sippy/android/version.properties instead of republishing."
             exit 1
           fi
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            if [ "$(git rev-list -n1 "$TAG")" != "$(git rev-parse HEAD)" ]; then
+              echo "::error::Tag $TAG already exists at a different commit — delete that tag or bump versionName."
+              exit 1
+            fi
+            echo "tag $TAG already exists at this commit — reusing it"
+          fi
+          echo "$TAG is not published yet"
 
       - name: Create the GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.check.outputs.tag }}
+          VERSION_NAME: ${{ needs.check.outputs.version_name }}
+          SHA256: ${{ needs.build.outputs.sha256 }}
         run: |
           notes_file="$RUNNER_TEMP/notes.md"
-          message="$(git tag -l --format='%(contents:body)' "$GITHUB_REF_NAME" | sed '/^[[:space:]]*$/d' | head -40)"
+          # No hand-written tag message any more: the notes are the commits since
+          # the previous release tag, with pipeline bookkeeping filtered out.
+          previous="$(git tag --sort=-v:refname --list 'v*' | head -1 || true)"
+          body=""
+          if [ -n "$previous" ]; then
+            body="$(git log --pretty='- %s' "$previous..HEAD" | grep -v -E '^- (release|ci|build|chore|docs)(\(|:| )' | head -20 || true)"
+          fi
           {
-            if [ -n "$message" ]; then
-              printf '%s\n\n' "$message"
+            if [ -n "$body" ]; then
+              printf '%s\n\n' "$body"
             else
-              printf 'Release %s\n\n' "$GITHUB_REF_NAME"
+              printf 'Sippy %s\n\n' "$VERSION_NAME"
             fi
-            printf 'SHA-256: \`%s\`\n\nSigned APK built by GitHub Actions. Android will ask you to confirm the install.\n' \
-              "${{ needs.build.outputs.sha256 }}"
+            printf 'SHA-256: \`%s\`\n\nSigned APK built by GitHub Actions. Android will ask you to confirm the install.\n' "$SHA256"
           } > "$notes_file"
           cat "$notes_file"
           apk="$(ls dist/*.apk | head -1)"
-          gh release create "$GITHUB_REF_NAME" "$apk" \
+          gh release create "$TAG" "$apk" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Sippy ${{ needs.build.outputs.version_name }}" \
+            --title "Sippy $VERSION_NAME" \
             --notes-file "$notes_file"
 
       - name: Verify the download URL
+        env:
+          TAG: ${{ needs.check.outputs.tag }}
+          APK_NAME: ${{ needs.build.outputs.apk_name }}
         run: |
-          url="https://github.com/${{ github.repository }}/releases/download/$GITHUB_REF_NAME/${{ needs.build.outputs.apk_name }}"
+          url="https://github.com/${{ github.repository }}/releases/download/$TAG/$APK_NAME"
           for i in 1 2 3 4 5; do
             code="$(curl -sL -o /dev/null -w '%{http_code}' "$url")"
             echo "attempt $i: $code"
@@ -351,6 +445,7 @@ jobs:
       - name: Update releases/*.json on main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.check.outputs.tag }}
         run: |
           set -e
           git config --global user.name "github-actions[bot]"
@@ -359,14 +454,15 @@ jobs:
           cd repo
           python3 sippy/android/scripts/write_release_manifest.py \
             --dir . \
-            --tag "$GITHUB_REF_NAME" \
-            --name "${{ needs.build.outputs.version_name }}" \
-            --code "${{ needs.build.outputs.version_code }}" \
+            --tag "$TAG" \
+            --name "${{ needs.check.outputs.version_name }}" \
+            --code "${{ needs.check.outputs.version_code }}" \
             --sha "${{ needs.build.outputs.sha256 }}" \
             --size "${{ needs.build.outputs.size }}" \
-            --apk "${{ needs.build.outputs.apk_name }}"
+            --apk "${{ needs.build.outputs.apk_name }}" \
+            --cert-sha256 "${{ needs.build.outputs.cert_sha256 }}"
           git add releases
-          git commit -m "release: $GITHUB_REF_NAME [skip ci]"
+          git commit -m "release: $TAG [skip ci]"
           git pull --rebase origin main
           if ! git push origin HEAD:main; then
             echo "::error::Could not push releases/*.json to main. The release exists but latest.json was not updated."

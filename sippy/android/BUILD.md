@@ -2,36 +2,18 @@
 
 ## Toolchain (pinned in `gradle/libs.versions.toml`)
 
-| What | Version | Notes |
+| What | Version | Note |
 |---|---|---|
-| Gradle | 9.9.2 (wrapper) | `./gradlew` — the wrapper jar is committed, as always |
-| AGP | 9.5.2 | requires JDK 21 |
-| Kotlin | 2.4.21 (compose & serialization compiler plugins) | AGP 9 compiles Kotlin itself: the `org.jetbrains.kotlin.android` plugin must **not** be applied — AGP 9 rejects it |
-| compileSdk / targetSdk | 37 | Kyant0 `backdrop` requires compileSdk 37 |
-| buildTools | 37.0.0 | |
-| minSdk | 26 | |
+| Gradle | 9.9.2 (wrapper) | `./gradlew` — the wrapper jar is committed |
+| AGP | 9.5.2 | JDK 21; AGP 9 compiles Kotlin itself, so `org.jetbrains.kotlin.android` must **not** be applied |
+| Kotlin | 2.4.21 | Compose + serialization compiler plugins only |
+| compileSdk / targetSdk / buildTools | 37 / 37 / 37.0.0 | Kyant0 `backdrop` requires compileSdk 37 |
+| minSdk | 26 | Android 8.0 |
 
-Every pin below was resolved against `dl.google.com` / Maven Central on
-2026-11-27 (the versions originally guessed from the reference repos — material3
-1.9.0, datastore 1.1.7, work 2.10.5 — do not exist and were replaced):
-
-| Artifact | Version | Source |
-|---|---|---|
-| `androidx.compose.ui:ui` (+ foundation, runtime, material-ripple) | 1.12.1 | google() |
-| `androidx.compose.material3:material3` | 1.5.0 | google() |
-| `androidx.activity:activity-compose` | 1.13.0 | google() |
-| `androidx.core:core-ktx` | 1.19.1 | google() |
-| `androidx.lifecycle:*` | 2.11.1 | google() |
-| `androidx.datastore:datastore-preferences` | 1.3.0 | google() |
-| `androidx.work:work-runtime-ktx` | 2.12.0 | google() |
-| `org.jetbrains.kotlinx:kotlinx-serialization-json` | 1.9.0 | Central |
-| `org.jetbrains.kotlinx:kotlinx-coroutines-android` | 1.10.2 | Central |
-| `io.github.kyant0:backdrop` | 2.0.1 | Central |
-| `io.github.kyant0:shapes` | 1.2.1 | Central |
-
-The Android SDK platform is installed as `android-37.0` / `android-37.1` /
-`android-37.2` on current runner images; `compileSdk = 37` resolves to the
-base 37 platform, and AGP downloads it if the image is older.
+Verified dependency pins (2026-11-27): compose 1.12.1 · material3 1.5.0 ·
+activity-compose 1.13.0 · core-ktx 1.19.1 · lifecycle 2.11.1 · datastore 1.3.0 ·
+work 2.12.0 · kotlinx-serialization-json 1.9.0 · coroutines 1.10.2 ·
+`io.github.kyant0:backdrop` 2.0.1 · `io.github.kyant0:shapes` 1.2.1.
 
 ## Commands
 
@@ -39,44 +21,86 @@ base 37 platform, and AGP downloads it if the image is older.
 cd sippy/android
 ./gradlew testDebugUnitTest     # pure-JVM tests (no device, no emulator)
 ./gradlew assembleDebug         # debug APK → app/build/outputs/apk/debug/
+./gradlew assembleRelease       # signed release APK (needs the committed key)
 ```
 
-A **release** build reads its signing material from the environment only:
+## Release signing — the key is committed
+
+The release key lives in this repository, in `sippy/android/signing/`:
+
+- `sippy-release.jks` — the keystore
+- `signing.properties` — four lines:
+
+  ```properties
+  storeFile=sippy-release.jks
+  storePassword=<password>
+  keyAlias=sippy
+  keyPassword=<password>
+  ```
+
+`app/build.gradle.kts` reads that file, and only that file. There is no
+environment-variable path and **no fallback to the debug key**: if either file
+is missing, every release task fails and names the missing file.
+
+### Creating the key (once, ever)
 
 ```bash
-export ANDROID_KEYSTORE_PATH=/absolute/path/sippy-release.jks
-export ANDROID_KEYSTORE_PASSWORD=…
-export ANDROID_KEY_ALIAS=sippy
-export ANDROID_KEY_PASSWORD=…
-./gradlew assembleRelease
+cd sippy/android/signing
+keytool -genkeypair -v -keystore sippy-release.jks -alias sippy \
+  -keyalg RSA -keysize 4096 -validity 10000
+# then write signing.properties (four lines, see above)
 ```
 
-If any of the four is missing, any release task fails on purpose with a message
-naming the missing variables. There is no debug-key fallback for release.
+### Committing it
 
-## One-time repository setup (before the first dry run)
+```bash
+git add sippy/android/signing/sippy-release.jks sippy/android/signing/signing.properties
+git commit -m "android: commit the release signing key (public by design)"
+```
 
-1. Create the keystore (once, ever — it is the app's identity):
-   ```bash
-   keytool -genkeypair -v -keystore sippy-release.jks -alias sippy \
-     -keyalg RSA -keysize 4096 -validity 10000 \
-     -storetype JKS
-   ```
-2. Add the four repository secrets: `ANDROID_KEYSTORE_BASE64`
-   (`base64 -w0 sippy-release.jks`), `ANDROID_KEYSTORE_PASSWORD`,
-   `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
-3. Fill `sippy/android/signing/expected-cert-sha256.txt` with the certificate
-   SHA-256, lowercase hex, no colons:
-   ```bash
-   keytool -list -v -keystore sippy-release.jks -alias sippy \
-     | grep -i 'SHA256:' | head -1 \
-     | sed 's/.*SHA256: //' | tr -d ':' | tr 'A-F' 'a-f'
-   ```
-   Commit that one line. `release.yml` compares it with the certificate of the
-   APK it just built and fails by design while the file still holds
-   `PLACEHOLDER-REPLACE-ME` — the check exists so an APK signed with a second
-   key can never reach a release (it would install as a different app or fail
-   with an update conflict).
-4. Nothing else. `ci.yml` needs no secrets; `release.yml` is a dry run on
-   `workflow_dispatch` (build + emulator smoke test, publishes nothing) and
-   publishes only for `v*` tags.
+`.gitignore` ignores every other `*.jks` / `*.keystore` and `local.properties`;
+these two paths are explicitly un-ignored.
+
+### Warning — read before you touch the key
+
+The key is **public by design**: it is committed, it cannot be kept secret once
+pushed, and it is only ever allowed to sign Sippy releases. Anyone holding it can
+build an APK that Android would treat as an update to Sippy, so never reuse it for
+another app, another project or a fork.
+
+**It also cannot be made private later without breaking updates.** Android only
+installs an update signed with the same certificate as the installed app. Swap
+the key and every existing install has to be uninstalled first, losing local
+data. To make that hard to do by accident, CI enforces trust on first use: the
+first publish writes the certificate's SHA-256 into `releases/latest.json` as
+`certSha256`, and every later build compares the APK's certificate against it
+and fails with both values if they differ.
+
+## What CI does
+
+- `ci.yml` — every push and PR: `testDebugUnitTest` + `assembleDebug`. No
+  signing material needed, no secrets, uploads nothing.
+- `release.yml` — pushes to `main`, plus `workflow_dispatch` as a dry run. It
+  compares `version.properties` with `releases/latest.json` first: if the
+  `versionCode` is not newer, the build jobs are skipped and nothing is
+  published. Otherwise it checks the committed signing files exist, runs the
+  tests, builds and signs the APK, verifies package/versions/certificate with
+  `aapt2` + `apksigner`, smoke-tests it on an API 34 emulator (boot + crash
+  buffer + in-place upgrade), then publishes the GitHub Release and rewrites
+  `releases/latest.json`.
+
+## Releasing
+
+One step, no tags to remember:
+
+1. Bump `versionCode` (and `versionName` with it) in
+   `sippy/android/version.properties` — e.g. `2` / `1.1.0`.
+2. Commit and push to `main`.
+
+The pipeline makes the `v1.1.0` tag and the release, uploads `sippy-1.1.0.apk`,
+rewrites `releases/latest.json` (versionCode, SHA-256, `certSha256`) and
+redeploys the site. Installed phones offer the update on their next check — the
+app compares `versionCode`. A push that does not bump the version builds nothing.
+
+To rebuild without publishing, run **Android release** → *Run workflow*: a manual
+run always builds and smoke-tests, and publishes only if you tick `publish`.
