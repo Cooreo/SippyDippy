@@ -44,6 +44,13 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 @Serializable
 enum class AccentId { BLUE, TEAL, VIOLET, CORAL }
 
+/**
+ * How much of the startup animation to play (round 8, B8). Off skips straight to
+ * the app; Short keeps the arrival but cuts the flight.
+ */
+@Serializable
+enum class StartupAnimation { FULL, SHORT, OFF }
+
 @Serializable
 data class Settings(
     val theme: ThemeMode = ThemeMode.SYSTEM,
@@ -55,6 +62,10 @@ data class Settings(
     val reduceEffects: Boolean = false,
     /** Round 8, B10: the three haptics, on by default. */
     val hapticsEnabled: Boolean = true,
+    /** Round 8, B8: Full by default. */
+    val startupAnimation: StartupAnimation = StartupAnimation.FULL,
+    /** Index of the vignette shown last start; -1 before the first. */
+    val lastIntroVignette: Int = -1,
     val developerUnlocked: Boolean = false,
     /** Optional; when blank the Home greeting says "Good morning" alone. */
     val displayName: String = "",

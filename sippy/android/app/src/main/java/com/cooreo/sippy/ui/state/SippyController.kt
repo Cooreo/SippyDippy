@@ -269,6 +269,12 @@ class SippyController(
 
     fun setHaptics(enabled: Boolean) = update { it.copy(hapticsEnabled = enabled) }
 
+    fun setStartupAnimation(mode: com.cooreo.sippy.model.StartupAnimation) =
+        update { it.copy(startupAnimation = mode) }
+
+    /** Remembers which vignette played, so the next start is never the same one. */
+    fun rememberIntroVignette(index: Int) = update { it.copy(lastIntroVignette = index) }
+
     fun setDeveloperUnlocked(unlocked: Boolean) = update { it.copy(developerUnlocked = unlocked) }
 
     fun setRemindersEnabled(enabled: Boolean) = update { it.copy(remindersEnabled = enabled) }

@@ -181,6 +181,10 @@ dependencies {
     implementation(libs.compose.material.ripple)
     debugImplementation(libs.compose.ui.tooling)
 
+    // B8: the only way to paint the very first frame in the backdrop's own colour
+    // on API 26+, instead of the platform's default.
+    implementation(libs.androidx.core.splashscreen)
+
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.work.runtime.ktx)
 

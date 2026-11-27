@@ -10,4 +10,13 @@
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
     </style>
+
+    <!-- Round 8, B8: the platform splash, in the backdrop's dark blue, with the
+         droplet mark. postSplashScreenTheme hands over to Theme.Sippy and the
+         Compose intro starts from this exact colour. -->
+    <style name="Theme.Sippy.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/sippy_splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.Sippy</item>
+    </style>
 </resources>

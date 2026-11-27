@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The droplet mark, centred in the splash's icon area. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#5FD3F3"
+        android:pathData="M54,26 C66,42 70,50 70,57 A16,16 0 0,1 38,57 C38,50 42,42 54,26 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.55"
+        android:pathData="M48,50 A5,6 0 1,0 48,62 A5,6 0 1,0 48,50 Z" />
+</vector>

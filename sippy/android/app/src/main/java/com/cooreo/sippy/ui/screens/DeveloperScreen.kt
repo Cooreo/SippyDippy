@@ -19,15 +19,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cooreo.sippy.domain.friends.Mood
+import com.cooreo.sippy.domain.intro.Vignette
 import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.ui.glass.GlassButton
 import com.cooreo.sippy.ui.glass.GlassCard
+import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.glass.GlassDiagnostics
 import com.cooreo.sippy.ui.glass.LocalBackdrop
 import com.cooreo.sippy.ui.glass.LocalGlassTier
-import com.cooreo.sippy.ui.system.rememberFrameStats
-import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.state.SippyController
+import com.cooreo.sippy.ui.system.rememberFrameStats
 import com.cooreo.sippy.ui.theme.LocalSippyColors
 
 /**
@@ -40,6 +41,9 @@ fun DeveloperScreen(
     controller: SippyController,
     onClose: () -> Unit,
     diagnostics: GlassDiagnostics,
+    /** B8: replay the intro, or replay one specific vignette. */
+    onReplayIntro: () -> Unit = {},
+    onPickVignette: (Vignette?) -> Unit = {},
 ) {
     val c = LocalSippyColors.current
     // The tier supplied at the root plus the live presence of the backdrop
@@ -161,6 +165,45 @@ fun DeveloperScreen(
                         color = c.text3,
                         fontSize = 11.sp,
                     )
+                }
+            }
+            item {
+                // B8: replay the intro without restarting the app.
+                GlassCard {
+                    Text(
+                        "Startup animation",
+                        color = c.text1,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Currently ${state.settings.startupAnimation.name.lowercase()}. " +
+                            "Replaying keeps the hand-off into Home, so nothing goes black.",
+                        color = c.text3,
+                        fontSize = 11.sp,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    GlassButton(
+                        label = "Replay intro",
+                        onClick = onReplayIntro,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        GlassChip(
+                            label = "Random",
+                            selected = false,
+                            onClick = { onPickVignette(null) },
+                        )
+                        Vignette.ALL.forEach { vignette ->
+                            GlassChip(
+                                label = vignette.name.lowercase().replaceFirstChar { it.uppercase() },
+                                selected = false,
+                                onClick = { onPickVignette(vignette) },
+                            )
+                        }
+                    }
                 }
             }
             item {

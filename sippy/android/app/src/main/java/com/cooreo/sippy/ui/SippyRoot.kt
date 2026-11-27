@@ -38,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,6 +64,7 @@ import com.cooreo.sippy.data.AppGraph
 import com.cooreo.sippy.domain.drinks.DrinkCategory
 import com.cooreo.sippy.domain.drinks.DrinkTable
 import com.cooreo.sippy.domain.friends.MoodRules
+import com.cooreo.sippy.domain.intro.Vignette
 import com.cooreo.sippy.domain.points.PointsRules
 import com.cooreo.sippy.domain.water.WaterMath
 import com.cooreo.sippy.model.Friend
@@ -81,6 +83,7 @@ import com.cooreo.sippy.ui.glass.LocalBackdropTint
 import com.cooreo.sippy.ui.glass.LocalGlassBoost
 import com.cooreo.sippy.ui.glass.LocalGlassTier
 import com.cooreo.sippy.ui.glass.SippyBackdropHost
+import com.cooreo.sippy.ui.intro.StartupIntro
 import com.cooreo.sippy.ui.screens.DeveloperScreen
 import com.cooreo.sippy.ui.screens.DrinksScreen
 import com.cooreo.sippy.ui.screens.FriendsScreen
@@ -107,6 +110,7 @@ import com.cooreo.sippy.ui.theme.LocalSippyColors
 import com.cooreo.sippy.ui.theme.SippyTheme
 import com.cooreo.sippy.ui.theme.accentFor
 import com.cooreo.sippy.util.Dates
+import kotlin.random.Random
 import kotlinx.coroutines.delay
 
 private enum class Tab { HOME, DRINKS, FRIENDS, SETTINGS }
@@ -140,7 +144,11 @@ private data class ToastMessage(
  * callbacks.
  */
 @Composable
-fun SippyRoot(graph: AppGraph) {
+fun SippyRoot(
+    graph: AppGraph,
+    /** False on a warm start: the intro only plays on a cold one (B8). */
+    showIntro: Boolean = true,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val controller = remember(graph) {
@@ -211,6 +219,7 @@ fun SippyRoot(graph: AppGraph) {
                                 controller = controller,
                                 animate = animate,
                                 diagnostics = diagnostics,
+                                showIntro = showIntro,
                             )
                         }
                     }
@@ -246,6 +255,7 @@ private fun AppScaffold(
     controller: SippyController,
     animate: Boolean,
     diagnostics: GlassDiagnostics,
+    showIntro: Boolean = false,
 ) {
     var tab by remember { mutableStateOf(Tab.HOME) }
     val haptics = rememberHaptics(enabled = state.settings.hapticsEnabled)
@@ -264,6 +274,18 @@ private fun AppScaffold(
     var logFlowOpen by remember { mutableStateOf(false) }
     var logButtonRect by remember { mutableStateOf(Rect.Zero) }
     var logFly by remember { mutableStateOf<LogFlyData?>(null) }
+    // B8: the intro plays once per cold start, over Home, and its vignette is
+    // derived (not stored in composition state) so a late settings read still
+    // picks a different vignette from last time.
+    var introVisible by remember { mutableStateOf(showIntro) }
+    var introToken by remember { mutableIntStateOf(0) }
+    var forcedVignette by remember { mutableStateOf<Vignette?>(null) }
+    val introVignette = remember(forcedVignette, state.settings.lastIntroVignette, introToken) {
+        forcedVignette ?: Vignette.pick(
+            seed = Random.nextInt(10_000),
+            lastIndex = state.settings.lastIntroVignette,
+        )
+    }
     var showCustomVolume by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<LogEntry?>(null) }
     var celebrationAt by remember { mutableStateOf(0L) }
@@ -525,6 +547,22 @@ private fun AppScaffold(
         )
     }
 
+    // B8: drawn over everything, including the bar and the sheets. Fading it out
+    // is what reveals Home, so the hand-off can never flash black.
+    if (introVisible) {
+        key(introToken) {
+            StartupIntro(
+                state = state,
+                vignette = introVignette,
+                animate = animate,
+                onFinished = {
+                    introVisible = false
+                    controller.rememberIntroVignette(introVignette.ordinal)
+                },
+            )
+        }
+    }
+
     dressing?.let { friend ->
         // Keep the sheet alive across renames and equips: resolve the latest copy.
         val live = state.friends.firstOrNull { it.id == friend.id }
@@ -552,6 +590,16 @@ private fun AppScaffold(
             controller = controller,
             onClose = { showDeveloper = false },
             diagnostics = diagnostics,
+            onReplayIntro = {
+                forcedVignette = null
+                introToken += 1
+                introVisible = true
+            },
+            onPickVignette = { vignette ->
+                forcedVignette = vignette
+                introToken += 1
+                introVisible = true
+            },
         )
     }
 }
