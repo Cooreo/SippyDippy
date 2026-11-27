@@ -38,6 +38,12 @@ data class Settings(
     val reminderTimes: List<String> = listOf("09:00", "13:00", "17:00", "21:00"),
     val reduceEffects: Boolean = false,
     val developerUnlocked: Boolean = false,
+    /** Optional; when blank the Home greeting says "Good morning" alone. */
+    val displayName: String = "",
+    /** Onboarding gate. False on a fresh install, so the app opens on page 1. */
+    val onboardingComplete: Boolean = false,
+    /** Last onboarding page shown, so a mid-onboarding kill reopens there. */
+    val onboardingPage: Int = 0,
 ) {
     companion object {
         const val MAX_REMINDERS = 4

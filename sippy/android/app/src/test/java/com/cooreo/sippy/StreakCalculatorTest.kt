@@ -35,6 +35,17 @@ class StreakCalculatorTest {
     }
 
     @Test
+    fun todaysEntryIsWhatKeepsTheStreakAlive() {
+        val log = listOf(sip(10, 2000), sip(11, 2000), sip(12, 1000))
+        // Today's goal is not met yet: yesterday's run of two is still standing.
+        assertEquals(2, StreakCalculator.currentStreak(log, 2000, todayEpoch = 12))
+        // The sip that crosses the goal adds today to the run.
+        val met = log + sip(12, 1000)
+        assertEquals(3, StreakCalculator.currentStreak(met, 2000, todayEpoch = 12))
+        assertEquals(3, StreakCalculator.bestStreak(met, 2000))
+    }
+
+    @Test
     fun aMissedDayBreaksTheRun() {
         val log = listOf(sip(8, 2000), sip(9, 2000), sip(11, 2000), sip(12, 2000))
         assertEquals(2, StreakCalculator.currentStreak(log, 2000, todayEpoch = 12))

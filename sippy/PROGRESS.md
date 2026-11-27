@@ -721,3 +721,135 @@ bundle contains both the staged path and the releases prefix.
 **Still honest on purpose:** with no release published yet, the card shows
 "No signed build is published yet". It turns into the real download button with
 the first `v*` tag — no site change needed.
+
+## VISUAL REBUILD — ONBOARDING + HOME (2026-11-27)
+
+Two commits on `arena/3dda615e-sippydippy`, pushed separately as asked:
+
+| Commit | What | CI (`ci.yml`) |
+| --- | --- | --- |
+| `2ff89f6` | Onboarding | run `46049575462` — **success** (JVM unit tests · Assemble debug APK) |
+| `d9643a3` | Home (Today) + Drinks tab + floating nav | run `46050428516` — **success** (JVM unit tests · Assemble debug APK) |
+
+The screenshot was treated as a layout reference only. Colours, glass, type and
+backdrop come from the website: dark underwater scene, Sippy Blue `#2E7CF6`,
+Inter instanced from the site's own variable font into `res/font`, the existing
+`GlassSurface` tiers. No food, calories, kcal, recipes or scanning anywhere.
+
+### Onboarding (`2ff89f6`)
+
+- Three pages in a `HorizontalPager`, one centred composition each: "Every sip
+  counts." over the backdrop, "Set your goal." (glass slider 750–3000, default
+  2000, step 50, presets 1500/2000/2500), "Friends who notice." (Dippy / plant /
+  cat, name 1–20 characters).
+- Skip sits top-right on pages 1–2, the last page's button is "Start sipping".
+  No notification permission is requested here — reminders stay off until
+  Settings.
+- State: `Settings.onboardingComplete`, `Settings.onboardingPage`, goal and the
+  first friend, all persisted in DataStore. A kill mid-flow reopens the same
+  page (`Onboarding.restorePage` clamps a stored page into range). Dots are
+  tappable 48dp targets; swiping works; Reduce effects makes page changes
+  instant.
+- Pure rules: `domain/onboarding/Onboarding.kt`, `domain/friends/FriendNameRules.kt`
+  (1–20 code points, whitespace collapsed, cut on a code-point boundary so no
+  lone surrogate can be stored).
+
+### Home (Today) (`d9643a3`)
+
+- **The orb is the site's water orb**, not a segmented arc: one disc, gradient
+  well, two sine wave layers shifted by the animation phase (translation only),
+  at most eight bubbles moving by translation + opacity, rim highlight, splash
+  ring at goal. Under Reduce effects it is a static fill at the current
+  percentage — no loop, no waves, no bubbles, no splash.
+- Header: date chip, "Good morning[, name]" (`displayName`, now editable in
+  Settings › Your name), streak badge with a drawn flame and the day count,
+  bell that lands on Settings › Reminders.
+- Quick adds 250/330/500 log water; "Custom…" opens a sheet whose confirm stays
+  disabled until `VolumeRules.parse` succeeds (50–2000 ml, whole numbers only).
+- Entry cards are drinks: drawn icon per drink family, name, volume, time,
+  counted ml and the entry's share of the goal in accent. Tap opens the editor —
+  change the volume (hydration and streak recomputed) or delete (with a
+  confirm step).
+- `Event.Logged` fires for the entry just written, so the toast's **Undo**
+  deletes exactly that entry, never "the last one".
+- Empty state: sleepy Dippy + "Log your first sip". Friend strip below the list,
+  horizontally scrollable so five friends fit 360dp, tap shows the current mood
+  line (mood stays derived, never stored).
+- Bottom bar is a floating glass pill: Home, Drinks, centre Log in Sippy Blue,
+  Friends, Settings. It applies `navigationBarsPadding()`, every icon is 56dp,
+  and each screen reserves its height + inset as content padding.
+- New Drinks tab lists the single drink table as glass rows.
+- `TodayScreen` and `WaterRing` are gone; nothing references them.
+
+### Accessibility and layout, measured not assumed
+
+- Contrast was computed against the real composite of glass over the darkest and
+  the lightest backdrop, not against the raw token. That moved the tertiary tone
+  in **both** themes: dark `#74819E` → `#90A0BE` (worst case 5.3:1) and light
+  `#6C7A97` → `#5D6B88` (5.1:1). Every caption is now AA at 11–12sp.
+- The dark theme is the shipped look. The site's light theme is not final, but
+  since Sippy has had a light setting since v1.0.0 it was kept and brought to AA
+  rather than removed — say the word and it goes.
+- White on the Log button's Sippy Blue is 3.9:1: it is an icon (3:1 for
+  non-text), and white on the 82%-accent primary button used by onboarding and
+  the sheets is 5.2:1.
+- 48dp minimum on chips, cards, dots, nav items, the bell and the toast action;
+  360dp and 412dp layouts were reasoned through in the layout code (ellipsis on
+  long drink names, scrolling friend strip, weighted quick-add chips) but not
+  photographed.
+
+### Tests added in `d9643a3`
+
+`VolumeRulesTest` (presets valid, inclusive 50/2000 bounds, every rejection
+case, clamp) · `HomeRulesTest` (greeting with and without a name, all four mood
+branches, every mood has a line) · `DrinkGroupsTest` (the icon table and the
+drink table stay in step) · `StreakCalculatorTest.todaysEntryIsWhatKeepsTheStreakAlive`
+(the sip that crosses today's goal is what adds today to the run).
+
+### Needs a phone check (CI has never launched the app)
+
+1. The orb at 0 %, mid-glass and goal reached — wave amplitude and splash feel.
+2. Reduce effects on the device: the orb should be a flat fill and onboarding
+   pages should snap.
+3. The floating nav over the list, with gesture nav on and off (it should sit
+   above the pill, never under it), and the toast above the nav.
+4. Editing an entry's volume, then deleting it: the orb, streak badge and
+   "to go" line should all follow.
+5. TalkBack pass: orb description ("x of y millilitres, n percent"), drink rows,
+   nav items, the toast's Undo.
+
+### Still open
+
+- The emulator smoke job stays advisory (`continue-on-error`) — it has never
+  passed on a hosted runner, so nothing visual is proven by CI.
+- Calorie/food work remains out of scope; nothing in this round touches it.
+
+## RELEASE 1.1.0 — onboarding + rebuilt Home (prepared 2026-11-27)
+
+The site and the APK still said **v1.0.0** because `release.yml` only runs on a push
+to `main` and only builds when `version.properties` carries a `versionCode` newer
+than `releases/latest.json`. Nothing on the site hardcodes the version: the
+download card renders the manifest (`releases/latest.json`), which is what still
+said 1.0.0. So the fix is the normal ship ritual, not a site edit.
+
+- `sippy/android/version.properties` → **versionCode 2, versionName 1.1.0**.
+  Merging the branch to `main` makes `release.yml` see 2 > 1: it builds, signs,
+  smoke-tests, publishes the GitHub Release `v1.1.0` with
+  `sippy-1.1.0.apk`, rewrites `releases/latest.json`, and asks for a site deploy.
+  From that moment the site shows `v1.1.0 · <size> · <sha>` and the in-app updater
+  offers versionCode 2 to every 1.0.0 install.
+- `sippy/site/src/lib/download.ts` — the blank `APP_DOWNLOAD` fallback was still
+  labelled `v1.0.0` / `sippy-v1.0.0.apk`; it now reads `v1.1.0` /
+  `sippy-1.1.0.apk` (which is the real asset naming the pipeline uses). The URL is
+  still blank, so the card stays disabled until a manifest exists — the fallback
+  is a placeholder, never a claim.
+- `SmokeTest` used to assert `VERSION_NAME.startsWith("1.0.0")`, so the bump
+  turned CI red on the release commit (run `46051039666`). The assertion now
+  checks the semver *shape* the debug suffix allows, so a version bump can never
+  fail the build again; the bump itself was correct.
+- Verified in this sandbox before pushing: site `tsc --noEmit` clean,
+  `vitest run` **14 files / 89 tests** pass. The Android side is unchanged apart
+  from the version file, so the green runs on `2ff89f6`, `d9643a3` and `74a86b1`
+  still describe the code being released.
+- **Not yet published:** the release exists only after the PR is merged. Until
+  then both the site and the APK honestly say 1.0.0.

@@ -6,11 +6,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.cooreo.sippy.data.SippyRepository
 import com.cooreo.sippy.domain.drinks.Drink
+import com.cooreo.sippy.domain.drinks.DrinkTable
+import com.cooreo.sippy.domain.friends.FriendNameRules
 import com.cooreo.sippy.domain.friends.Mood
+import com.cooreo.sippy.domain.onboarding.Onboarding
 import com.cooreo.sippy.domain.streak.StreakCalculator
 import com.cooreo.sippy.domain.updates.UpdateDecision
 import com.cooreo.sippy.domain.updates.UpdateManifest
 import com.cooreo.sippy.domain.updates.UpdatePolicy
+import com.cooreo.sippy.domain.water.VolumeRules
 import com.cooreo.sippy.domain.water.WaterMath
 import com.cooreo.sippy.model.AccentId
 import com.cooreo.sippy.model.Friend
@@ -43,6 +47,9 @@ class SippyController(
         data object Celebration : Event
         data class Milestone(val days: Int) : Event
         data class Info(val text: String) : Event
+
+        /** A drink was logged; the UI offers undo for exactly this entry. */
+        data class Logged(val entryId: String, val drinkName: String, val volumeMl: Int) : Event
     }
 
     private val _events = MutableSharedFlow<Event>(extraBufferCapacity = 8)
@@ -86,6 +93,7 @@ class SippyController(
             }
             val after = repository.state.value
             val hydratedAfter = WaterMath.hydratedMl(after.log.filter { it.dayEpoch == today })
+            _events.tryEmit(Event.Logged(entry.id, drink.name, volumeMl))
             if (!WaterMath.goalMet(hydratedBefore, goalBefore) &&
                 WaterMath.goalMet(hydratedAfter, after.settings.goalMl)
             ) {
@@ -103,6 +111,23 @@ class SippyController(
             repository.edit { state ->
                 val last = state.log.maxByOrNull { it.atEpochMs } ?: return@edit state
                 withStreak(state, state.log - last, today)
+            }
+        }
+    }
+
+    /** Re-quantifies one entry; hydration is recomputed from the drink table. */
+    fun updateEntryVolume(id: String, volumeMl: Int) {
+        if (!VolumeRules.isValid(volumeMl)) return
+        scope.launch {
+            val today = Dates.todayEpochDay()
+            repository.edit { state ->
+                val target = state.log.firstOrNull { it.id == id } ?: return@edit state
+                val drink = DrinkTable.byId(target.drinkId)
+                val edited = target.copy(
+                    volumeMl = volumeMl,
+                    hydratedMl = WaterMath.hydrate(volumeMl, drink.hydrationFactor),
+                )
+                withStreak(state, state.log.map { if (it.id == id) edited else it }, today)
             }
         }
     }
@@ -162,6 +187,59 @@ class SippyController(
         }
     }
 
+    // ----------------------------------------------------------- onboarding
+
+    /** Remembers the visible page so a kill mid-onboarding reopens there. */
+    fun setOnboardingPage(page: Int) {
+        val clamped = Onboarding.clampPage(page)
+        scope.launch {
+            repository.edit { state ->
+                if (state.settings.onboardingPage == clamped) {
+                    state
+                } else {
+                    state.copy(settings = state.settings.copy(onboardingPage = clamped))
+                }
+            }
+        }
+    }
+
+    fun completeOnboarding() {
+        scope.launch {
+            repository.edit { state ->
+                state.copy(
+                    settings = state.settings.copy(
+                        onboardingComplete = true,
+                        onboardingPage = Onboarding.PAGE_WELCOME,
+                    ),
+                )
+            }
+        }
+    }
+
+    /** Onboarding page 3: exactly one friend, chosen kind, validated name. */
+    fun chooseFirstFriend(kind: FriendKind, rawName: String) {
+        val name = FriendNameRules.sanitize(rawName)
+            .ifBlank { FriendNameRules.defaultNameFor(kind) }
+        scope.launch {
+            repository.edit { state ->
+                state.copy(
+                    friends = listOf(
+                        Friend(
+                            id = kind.name.lowercase(),
+                            kind = kind,
+                            name = name,
+                            grownAtStreak = StreakCalculator.growthFor(state.streak.currentDays),
+                            addedAtEpochDay = Dates.todayEpochDay(),
+                        ),
+                    ),
+                )
+            }
+        }
+    }
+
+    /** Optional name used by the Home greeting; blank means "Good morning". */
+    fun setDisplayName(raw: String) = update { it.copy(displayName = raw.trim().take(24)) }
+
     // -------------------------------------------------------------- friends
 
     fun addFriend(kind: FriendKind) {
@@ -188,8 +266,8 @@ class SippyController(
     }
 
     fun renameFriend(id: String, name: String) {
-        val clean = name.trim().take(20)
-        if (clean.isEmpty()) return
+        if (!FriendNameRules.isValid(name)) return
+        val clean = FriendNameRules.sanitize(name)
         scope.launch {
             repository.edit { state ->
                 state.copy(friends = state.friends.map { if (it.id == id) it.copy(name = clean) else it })

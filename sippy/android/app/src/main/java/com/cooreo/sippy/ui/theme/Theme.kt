@@ -62,7 +62,7 @@ val DarkColors = SippyColors(
     bg2 = Color(0xFF111A2E),
     text1 = Color(0xFFF4F7FF),
     text2 = Color(0xFFA9B4CE),
-    text3 = Color(0xFF74819E),
+    text3 = Color(0xFF90A0BE),
     accent = Color(0xFF2E7CF6),
     accentBright = Color(0xFF5B9BFF),
     accentDeep = Color(0xFF1D5FE0),
@@ -83,7 +83,7 @@ val LightColors = SippyColors(
     bg2 = Color(0xFFE1E9F8),
     text1 = Color(0xFF0C1424),
     text2 = Color(0xFF43506B),
-    text3 = Color(0xFF6C7A97),
+    text3 = Color(0xFF5D6B88),
     accent = Color(0xFF2E7CF6),
     accentBright = Color(0xFF1D5FE0),
     accentDeep = Color(0xFF1749B8),
@@ -144,6 +144,6 @@ fun SippyTheme(
         )
     }
     CompositionLocalProvider(LocalSippyColors provides colors) {
-        MaterialTheme(colorScheme = scheme, content = content)
+        MaterialTheme(colorScheme = scheme, typography = SippyTypography, content = content)
     }
 }
