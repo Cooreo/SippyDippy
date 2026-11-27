@@ -2,12 +2,12 @@ package com.cooreo.sippy.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
@@ -42,19 +42,18 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.cooreo.sippy.domain.drinks.DrinkCategory
+import com.cooreo.sippy.ui.theme.DrinkTints
 import com.cooreo.sippy.domain.drinks.DrinkTable
 import com.cooreo.sippy.domain.friends.Mood
 import com.cooreo.sippy.domain.friends.MoodRules
-import com.cooreo.sippy.domain.friends.PinRules
 import com.cooreo.sippy.domain.layout.OrbLayout
+import com.cooreo.sippy.domain.friends.PinRules
 import com.cooreo.sippy.domain.shop.ItemSlot
 import com.cooreo.sippy.domain.shop.ShopItem
 import com.cooreo.sippy.domain.shop.ShopRules
@@ -66,23 +65,21 @@ import com.cooreo.sippy.model.LogEntry
 import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.ui.components.DrinkIcon
 import com.cooreo.sippy.ui.components.FriendAvatar
-import com.cooreo.sippy.ui.components.OrbAnchor
 import com.cooreo.sippy.ui.components.ShareBar
 import com.cooreo.sippy.ui.components.WaterOrb
+import com.cooreo.sippy.ui.system.rememberHaptics
 import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.glass.GlassSurface
-import com.cooreo.sippy.ui.system.rememberHaptics
 import com.cooreo.sippy.ui.theme.Dimens
-import com.cooreo.sippy.ui.theme.DrinkTints
 import com.cooreo.sippy.ui.theme.LocalSippyColors
 import com.cooreo.sippy.ui.theme.SippyType
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 private val timeFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
@@ -329,8 +326,6 @@ private fun OrbBlock(
                     diameter = diameter,
                     onGoalReached = onGoalReached,
                     modifier = Modifier
-                        // B7: the droplet flies into this rectangle.
-                        .onGloballyPositioned { OrbAnchor.bounds = it.boundsInRoot() }
                         .clip(RoundedCornerShape(Dimens.pill))
                         .clickable(onClick = onOrbTap)
                         .semantics {
