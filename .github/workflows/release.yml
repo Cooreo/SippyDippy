@@ -296,8 +296,13 @@ jobs:
   smoke:
     name: Emulator smoke test
     needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # The emulator stack is the one part of this pipeline that depends on the
+    # runner image rather than on our code: 22.04 is the image the emulator
+    # action is known-good on, and the SDK pieces are installed explicitly
+    # below so a missing "emulator" binary can never surface as a bare
+    # "exit code 127" again.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -329,13 +334,36 @@ jobs:
           fi
           ls -l smoke/old
 
+      # Everything here is reported as an annotation: the job log is not
+      # reachable from every client, annotations always are.
+      - name: Prepare the emulator
+        run: |
+          sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          echo "::warning::sdk root: ${sdk:-unset}"
+          echo "::warning::kvm: $(ls -l /dev/kvm 2>&1 | head -1)"
+          echo "::warning::cpu/mem: $(nproc) cores, $(free -m | awk '/Mem:/{print $2}') MB"
+          sdkmanager="$(command -v sdkmanager || find "$sdk" -name sdkmanager -type f 2>/dev/null | head -1 || true)"
+          echo "::warning::sdkmanager: ${sdkmanager:-missing}"
+          if [ -z "$sdkmanager" ]; then
+            echo "::error::sdkmanager not found under $sdk — cannot prepare the emulator"
+            exit 1
+          fi
+          yes | "$sdkmanager" --licenses >/dev/null 2>&1 || true
+          if ! "$sdkmanager" --install "platform-tools" "emulator" "system-images;android-34;google_apis;x86_64" > "$RUNNER_TEMP/sdk.log" 2>&1; then
+            echo "::error::sdkmanager could not install the emulator packages: $(tail -5 "$RUNNER_TEMP/sdk.log" | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "::warning::emulator: $(ls -l "$sdk/emulator/emulator" 2>&1 | head -1)"
+          echo "::warning::adb: $(ls -l "$sdk/platform-tools/adb" 2>&1 | head -1)"
+          printf '%s\n' "$sdk/platform-tools" "$sdk/emulator" >> "$GITHUB_PATH"
+
       - name: Run emulator smoke test
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
           target: google_apis
           arch: x86_64
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          emulator-boot-timeout: 900
           disable-animations: true
           script: |
             set -e
