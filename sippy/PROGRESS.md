@@ -1152,9 +1152,10 @@ first automatic ship — so there is something to revert to if 1.2.0 misbehaves.
 in-app updater all point at `versionCode 3`). Round 7 shipped: immersive bars,
 the glass diagnosis row, the Settings layout pass, the dated log, two pinned
 friends, four new friends with cosmetics, points + ledger + shop, and the motion
-pass. Round 8 is a two-round job: **Round 1 (this one) fixes and layout; Round 2
-is look and motion and only starts on the owner's word.** The sketch and the
-screenshots for Round 1 did not arrive, so A5 was built from its written
+pass. Round 8 is a two-round job. **Round 1** (fixes and layout) shipped; **Round 2**
+(look and motion) is in progress: B1, B2, B3, B4 part 1, B5, B6, B9 and B10 are
+pushed and green, while **B4's icons, B7, B8 and B11 are still open**. The sketch
+and the screenshots for Round 1 did not arrive, so A5 was built from its written
 description, which is now the layout authority for Home.
 
 **Evidence note:** the host can never read the Gradle log (blocked blob host) and
@@ -1238,3 +1239,66 @@ keep happening until the log is readable, which is worth fixing before Round 2.
 numbers, the speech bubble timing, the nested-glass look of the log card. The
 round-8 sketch and screenshots never reached the sandbox, so the written
 description was the authority for A5. All of it needs a phone check.
+
+---
+
+## Round 8, Round 2 — look and motion (in progress)
+
+| item | commit | CI on that commit |
+| --- | --- | --- |
+| B1 exaggerated glass + live-tier report | `f085eea` | failed (imports) |
+| B2 backdrop art, shafts, bubbles, tab tints | `72cc0e2` | failed (imports) |
+| B3 three glass levels | `28f45e9` | failed (imports) |
+| B4 part 1 — type scale, rhythm, share bar | `b7c45b0` | failed (imports) |
+| B5 the orb becomes the star | `1fd686f` | failed (imports) |
+| fix — `glassBoost` setter | `bfb26a4` | failed (imports) |
+| fix — the four missing imports + forgotten-import check | `7e96e92` | failed (unit test) |
+| fix — `soup` is a legitimate OTHER drink | `cd0e42e` | **green** |
+| B10 haptics switch, frame counter, tab tick | `e73ce8b` | **green** |
+| B9 friends that talk, grow, breathe and flinch | `d013ad0` → `980cab2` | failed → **green** |
+| B6 one liquid lens | `fee2a1f` | **green** |
+
+**Honest note on the red runs.** Six commits in a row were red, and none of them
+was a design problem: they were four missing imports (`StrokeCap` is in
+`ui.graphics` and not `graphics.drawscope`; `setValue` for a `MutableIntState`;
+`animateFloat` is an `animation.core` extension on `InfiniteTransition`) and one
+wrong test expectation (`soup` was unmapped, so a legitimate row fell into OTHER).
+The owner supplied the Gradle log twice; because the sandbox cannot read it, each
+round trip cost a push and a three-minute build. The local check now also looks
+for **forgotten extension imports** (`.animateFloat`, `.setValue`, `.drawBehind`,
+`.graphicsLayer` …), which is the exact class that produced all four, and it runs
+before every commit.
+
+**What the round has added, in the owner's terms:**
+
+- **B1** `LocalGlassBoost` (1x, or 2.4x from Developer options) multiplies both the
+  blur radius and the lens parameters; `GlassLevel.LIVE` is still one blur + one
+  runtime shader, so exaggerating glass does not add surfaces.
+- **B2** one generated backdrop (`res/drawable-nodpi/backdrop.webp`, 1080x2400,
+  under 250 KB) plus two 40s light-shaft layers and twelve bubbles drifting up —
+  transform and alpha only, paused under Reduce effects and off-screen.
+- **B3** `GlassLevel.LIVE/CHEAP/CHIP` with `LocalGlassLevel`, and `DrinkTints`
+  keyed off `DrinkCategory` (26 drink ids → 10 families).
+- **B5** the orb: two wave layers at different speeds, eight rising bubbles, a
+  specular arc, an inner glow that grows with the level, a reflection oval under
+  the glass, gravity tilt through `rememberGravityTilt` (low-pass filtered, sensor
+  registered only while the screen is visible), a splash ring where the water lands,
+  a ten-droplet burst at the goal, a shimmer above 100%, and the pinned friends
+  dancing for 1.6s when the goal is reached.
+- **B6** one lens travelling the five-slot bar, spring + velocity stretch (1.25x /
+  0.9x cap), magnified glyph and label, drag-to-slide with a snap on release,
+  sliding behind the Log button. Maths in `domain/nav/NavLens.kt`, seven tests.
+- **B9** 56 distinct mood lines (eight per species, picked by friend id), growth
+  scale + halo from the streak, a 6.8s bob-and-hop idle, tap squash with eight
+  sparkles, and pin buttons that read "Pin left" / "Pin right" / "Unpin".
+- **B10** `Settings.hapticsEnabled` (on by default, backward compatible), a tab
+  tick, the log thud and goal pattern already wired, and a Developer-options frame
+  card (fps, worst frame, frames counted) measured only while it is on screen.
+
+**Still open, in the order it should be finished:** B4's ten drink icons (the
+generator caps at ten images per turn and the backdrop took one; the prompt must
+forbid a badge or plate and any pink liquid), B7's button-to-sheet container
+transform, B8's splash screen and four vignettes (`androidx.core:core-splashscreen`
+is the one new dependency, reason: it is the only way to paint the first frame in
+the backdrop's own colour), and B11's sensor parallax if everything above lands.
+**Nothing visual in this round has been seen on a device.**
