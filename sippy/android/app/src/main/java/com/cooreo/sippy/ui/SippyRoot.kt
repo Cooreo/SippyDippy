@@ -338,11 +338,11 @@ private fun AppScaffold(
                     ringOverride = controller.ringOverride,
                     bottomPadding = navSpace,
                     onQuickAdd = { ml -> controller.addDrink(water, ml) },
-                    onCustomAdd = { showCustomVolume = true },
                     onOpenFriends = { tab = Tab.FRIENDS },
-                    onOpenReminders = {
-                        tab = Tab.SETTINGS
-                        remindersPrompt += 1
+                    // A5: the points chip opens the Shop, which lives under Friends.
+                    onOpenShop = {
+                        tab = Tab.FRIENDS
+                        showShop = true
                     },
                     onEditEntry = { editing = it },
                     onFriendTap = { friend -> toast = moodToast(friend, state, goalMet, todayEntries) },
@@ -423,6 +423,10 @@ private fun AppScaffold(
             onPick = { drink, volume ->
                 controller.addDrink(drink, volume)
                 showAddDrink = false
+            },
+            onCustom = {
+                showAddDrink = false
+                showCustomVolume = true
             },
         )
     }

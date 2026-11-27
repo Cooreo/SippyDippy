@@ -76,6 +76,8 @@ internal fun SheetScrim(
 fun AddDrinkSheet(
     onDismiss: () -> Unit,
     onPick: (Drink, Int) -> Unit,
+    /** A5: "Custom" lives in this sheet instead of under the Home pills. */
+    onCustom: (() -> Unit)? = null,
 ) {
     val c = LocalSippyColors.current
     var selected by remember { mutableStateOf(DrinkTable.drinks.first()) }
@@ -153,6 +155,14 @@ fun AddDrinkSheet(
                     },
                     modifier = Modifier.fillMaxWidth(),
                 )
+                if (onCustom != null) {
+                    Spacer(Modifier.height(4.dp))
+                    GlassChip(
+                        label = "Custom…",
+                        onClick = onCustom,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
             }
         }
