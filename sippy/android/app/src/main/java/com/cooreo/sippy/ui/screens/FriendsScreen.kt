@@ -1,5 +1,6 @@
 package com.cooreo.sippy.ui.screens
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,6 +45,7 @@ fun FriendsScreen(
     hydratedMl: Int,
     goalMl: Int,
     animate: Boolean,
+    onTogglePin: (String) -> Unit,
     bottomPadding: androidx.compose.ui.unit.Dp = 24.dp,
 ) {
     val c = LocalSippyColors.current
@@ -75,6 +78,7 @@ fun FriendsScreen(
             )
             FriendCard(
                 friend = friend,
+                onTogglePin = { onTogglePin(friend.id) },
                 mood = mood,
                 animate = animate,
                 isRenaming = renaming == friend.id,
@@ -130,6 +134,7 @@ fun FriendsScreen(
 @Composable
 private fun FriendCard(
     friend: Friend,
+    onTogglePin: () -> Unit,
     mood: Mood,
     animate: Boolean,
     isRenaming: Boolean,
@@ -141,14 +146,24 @@ private fun FriendCard(
     val c = LocalSippyColors.current
     GlassCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            FriendImage(
-                kind = friend.kind,
-                mood = mood,
-                growthStreak = friend.grownAtStreak,
-                size = 88,
-                animate = animate,
-                modifier = Modifier.size(88.dp),
-            )
+            // Long-press the friend to pin or unpin it; the Pin chip below is
+            // the same action with a TalkBack label (B2).
+            Box(
+                modifier = Modifier
+                    .size(88.dp)
+                    .pointerInput(friend.id, friend.pinned) {
+                        detectTapGestures(onLongPress = { onTogglePin() })
+                    },
+            ) {
+                FriendImage(
+                    kind = friend.kind,
+                    mood = mood,
+                    growthStreak = friend.grownAtStreak,
+                    size = 88,
+                    animate = animate,
+                    modifier = Modifier.size(88.dp),
+                )
+            }
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
                 if (isRenaming) {
                     OutlinedTextField(
@@ -168,7 +183,23 @@ private fun FriendCard(
                         fontSize = 12.sp,
                     )
                     Spacer(Modifier.height(6.dp))
-                    GlassChip(label = "Rename", onClick = onStartRename, modifier = Modifier.fillMaxWidth())
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(Modifier.weight(1f)) {
+                            GlassChip(
+                                label = "Rename",
+                                onClick = onStartRename,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        Box(Modifier.weight(1f)) {
+                            GlassChip(
+                                label = if (friend.pinned) "Unpin" else "Pin",
+                                selected = friend.pinned,
+                                onClick = onTogglePin,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
                 }
             }
         }

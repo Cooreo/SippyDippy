@@ -9,6 +9,7 @@ import com.cooreo.sippy.domain.drinks.Drink
 import com.cooreo.sippy.domain.drinks.DrinkTable
 import com.cooreo.sippy.domain.friends.FriendNameRules
 import com.cooreo.sippy.domain.friends.Mood
+import com.cooreo.sippy.domain.friends.PinRules
 import com.cooreo.sippy.domain.onboarding.Onboarding
 import com.cooreo.sippy.domain.streak.StreakCalculator
 import com.cooreo.sippy.domain.updates.UpdateDecision
@@ -241,6 +242,22 @@ class SippyController(
     fun setDisplayName(raw: String) = update { it.copy(displayName = raw.trim().take(24)) }
 
     // -------------------------------------------------------------- friends
+
+    /**
+     * Pin or unpin a friend for one of the two slots beside the orb (B2).
+     * A third pin is refused with a message instead of silently doing nothing.
+     */
+    fun togglePin(friendId: String) {
+        val current = repository.state.value
+        val target = current.friends.firstOrNull { it.id == friendId } ?: return
+        if (!target.pinned && !PinRules.canPin(current.friends, friendId)) {
+            _events.tryEmit(Event.Info("Two friends can sit by the orb — unpin one first."))
+            return
+        }
+        scope.launch {
+            repository.edit { state -> state.copy(friends = PinRules.toggle(state.friends, friendId)) }
+        }
+    }
 
     fun addFriend(kind: FriendKind) {
         scope.launch {

@@ -287,6 +287,7 @@ private fun AppScaffold(
                     hydratedMl = hydrated,
                     goalMl = goal,
                     animate = animate,
+                    onTogglePin = { id -> controller.togglePin(id) },
                     bottomPadding = navSpace,
                 )
                 Tab.SETTINGS -> SettingsScreen(

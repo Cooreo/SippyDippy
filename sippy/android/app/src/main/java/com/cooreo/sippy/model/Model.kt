@@ -63,6 +63,8 @@ data class Friend(
     val name: String,
     /** Streak milestone the friend has grown to (0, 3, 7, 14, 30, 100). */
     val grownAtStreak: Int = 0,
+    /** Sits in one of the two slots beside the water orb (B2). Max two. */
+    val pinned: Boolean = false,
     val addedAtEpochDay: Long = 0L,
 ) {
     companion object {
