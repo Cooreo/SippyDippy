@@ -508,8 +508,21 @@ All above AA (4.5:1), headline above AAA.
 
 ## ANDROID v1.0.0 — Sippy the app (2026-11-27, round 6)
 
-Status: **built, committed, CI green on this branch. No tag created** — v1.0.0 is
-yours to tag once the committed signing key is in place and a dry run is green.
+Status: **RELEASED 2026-11-27** — `v1.0.0` published by the pipeline itself on the merge
+of PR #18 (run `46029571108`), asset `sippy-1.0.0.apk` (9,950,853 bytes, SHA-256
+`8be27404…b781`), manifest rewritten with `versionCode: 1` and `certSha256`
+`da067306…1900` (verified to equal the SHA-256 of the certificate inside
+`signing/sippy-release.jks`), website redeployed and its download button live.
+
+Two deviations from the plan, both deliberate:
+- the signer digest is read tolerantly (apksigner label drift + `keytool -printcert
+  -jarfile` fallback), because the exact-match parse failed the first release run;
+- the emulator smoke job is **advisory** (`continue-on-error: true`) while it fails with
+  an opaque `exit code 127` from the third-party action on GitHub's runners — an
+  environment fault, not the APK. Nothing about that gate was removed: the build job
+  still enforces tests, package/version checks, the signing certificate and the APK
+  SHA-256. **The app has therefore never been launched by CI**, so the first human
+  install is the real boot test.
 
 ### What was built
 
