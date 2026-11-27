@@ -114,4 +114,11 @@ npx lighthouse https://4173-<your-sandbox>.e2b.app/ \
 - **Mobile** Lighthouse pass.
 
 ### Push status (honest)
-- Everything committed to this session's branch `arena/cdf76885-sippydippy` and pushed to origin. **I cannot push to `main` from this session** (Arena ties the session to its branch) — a PR to `main` is open for one-click merge; the workflow fires on that push to main. Alternatively run the workflow manually (Actions → run workflow → branch `arena/cdf76885-sippydippy`) to test the full pipeline pre-merge.
+- Everything committed to this session's branch `arena/cdf76885-sippydippy` and pushed to origin. **I cannot push to `main` from this session** (Arena ties the session to its branch) — PR #1 to `main` opened.
+
+### Deploy (executed 2026-11-27 after user enabled Pages)
+- User enabled Pages (source: GitHub Actions — verified via API: `build_type: "workflow"`, `html_url: https://cooreo.github.io/SippyDippy/`) and merged **PR #1** (merge commit `d35f36b…` on main).
+- **Run 45915456833 attempt 1: FAILURE** — `Setup Pages` step failed (Pages just enabled, backend race); log download blocked from sandbox (results-receiver host not on the allowlist).
+- **Rerun (`gh run rerun 45915456833 --failed`): SUCCESS** — build job ✓ (checkout, setup-node, configure-pages, npm ci, build, upload-pages-artifact), deploy job ✓ "Deploy to GitHub Pages in 11s". Only annotation: Node 20 deprecation notice on the pinned action versions (informational; actions forced onto Node 24 runners).
+- Deployment record created on `github-pages` environment (id 8098539720) — status still propagating at time of writing.
+- Live URL not curl-able from this sandbox (`cooreo.github.io` not on the outbound allowlist — curl exit 35): **final "open in browser" check is the user's**.
