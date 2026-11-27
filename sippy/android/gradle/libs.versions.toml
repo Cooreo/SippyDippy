@@ -3,7 +3,7 @@
 #     see sippy/android/BUILD.md for the fallback if CI rejects one.
 [versions]
 agp = "9.5.2"
-kotlin = "2.4.21"
+kotlin = "2.4.21"          # KGP for the compose/serialization compiler plugins (AGP 9 compiles Kotlin itself)
 
 composeUi = "1.12.1"            # androidx.compose.ui / foundation / runtime
 composeMaterial3 = "1.9.0"      # ⚠
@@ -46,6 +46,5 @@ junit = { module = "junit:junit", version.ref = "junit" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

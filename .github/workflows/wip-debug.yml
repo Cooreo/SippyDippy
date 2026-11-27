@@ -12,6 +12,47 @@ permissions:
   contents: read
 
 jobs:
+  survey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Installed SDK packages
+        shell: bash
+        run: |
+          set +e
+          echo "sdk root: ${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          plats="$(ls -1 "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/platforms" 2>/dev/null | tr '\n' ' ')"
+          bt="$(ls -1 "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/build-tools" 2>/dev/null | tr '\n' ' ')"
+          echo "::error title=platforms:: ${plats}"
+          echo "::error title=build-tools:: ${bt}"
+      - name: Google maven versions
+        shell: bash
+        run: |
+          set +e
+          base=https://dl.google.com/dl/android/maven2
+          for a in com/android/tools/build/gradle androidx/compose/material3/material3 androidx/compose/ui/ui androidx/activity/activity-compose; do
+            v="$(curl -sf --max-time 25 "$base/$a/maven-metadata.xml" | grep -o '<version>[^<]*</version>' | sed 's/<[^>]*>//g' | tail -n 12 | tr '\n' ' ')"
+            echo "::error title=google:${a##*/}:: ${v:-FETCH-FAILED}"
+          done
+      - name: Google maven versions 2
+        shell: bash
+        run: |
+          set +e
+          base=https://dl.google.com/dl/android/maven2
+          for a in androidx/core/core-ktx androidx/lifecycle/lifecycle-runtime-compose androidx/datastore/datastore-preferences androidx/work/work-runtime-ktx androidx/compose/material3/material3-android; do
+            v="$(curl -sf --max-time 25 "$base/$a/maven-metadata.xml" | grep -o '<version>[^<]*</version>' | sed 's/<[^>]*>//g' | tail -n 12 | tr '\n' ' ')"
+            echo "::error title=google2:${a##*/}:: ${v:-FETCH-FAILED}"
+          done
+      - name: Maven Central versions
+        shell: bash
+        run: |
+          set +e
+          base=https://repo1.maven.org/maven2
+          for a in org/jetbrains/kotlin/kotlin-gradle-plugin org/jetbrains/kotlinx/kotlinx-serialization-json org/jetbrains/kotlinx/kotlinx-coroutines-android io/github/kyant0/backdrop io/github/kyant0/shapes; do
+            v="$(curl -sf --max-time 25 "$base/$a/maven-metadata.xml" | grep -o '<version>[^<]*</version>' | sed 's/<[^>]*>//g' | tail -n 12 | tr '\n' ' ')"
+            echo "::error title=central:${a##*/}:: ${v:-FETCH-FAILED}"
+          done
+
   diag:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -33,7 +74,7 @@ jobs:
           code=$?
           echo "gradle exit=$code"
           if [ $code -ne 0 ]; then
-            msg="$( { grep -a -m 40 -E "^e: " gradle.log; echo '--- what went wrong ---'; sed -n '/What went wrong/,$p' gradle.log | head -50; echo '--- first errors ---'; grep -a -m 20 -E "error:|Could not (find|resolve|GET|HEAD)|No matching|not found|Unresolved" gradle.log | head -20; } | head -120 )"
+            msg="$( { grep -a -m 40 -E "^e: " gradle.log; echo '--- what went wrong ---'; sed -n '/What went wrong/,$p' gradle.log | head -60; echo '--- first errors ---'; grep -a -m 20 -E "error:|Could not (find|resolve|GET|HEAD)|No matching|not found|Unresolved|Failed to" gradle.log | head -20; } | head -160 )"
             enc="${msg//'%'/'%25'}"
             enc="${enc//$'\r'/}"
             enc="${enc//$'\n'/'%0A'}"

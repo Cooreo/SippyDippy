@@ -1,9 +1,11 @@
 import java.util.Properties
 import java.util.Locale
 
+// AGP 9 compiles Kotlin itself (built-in Kotlin): the org.jetbrains.kotlin.android
+// plugin must NOT be applied — AGP rejects it outright. Only the compiler
+// plugins (Compose, serialization) are applied here.
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
