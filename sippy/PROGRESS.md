@@ -648,3 +648,43 @@ BuildConfig smoke test.
 2. Turn R8 + `shrinkResources` back on once the app has a crash-free release behind it.
 3. Consider per-day hydration factors review with a real nutrition source before any
    marketing claim about accuracy.
+
+## DOWNLOAD BUTTON — live from `releases/latest.json` (2026-11-27)
+
+The download card is no longer gated by a hand-edited constant. It now reads the
+same manifest the app's updater reads and enables itself the moment a signed
+release exists.
+
+- **`src/lib/release.ts`** — `parseReleaseManifest` accepts a manifest only when it
+  is a real, verifiable APK: `versionCode > 0`, non-empty `versionName`, an https
+  `apkUrl` under `https://github.com/Cooreo/SippyDippy/releases/download/`,
+  a 64-char hex `sha256` and `sizeBytes > 0`. Anything else → `null`, and the card
+  stays honestly disabled (the seeded `versionCode: 0` placeholder is rejected).
+  `useRelease()` fetches once per page load, 5 s abort, and tries two sources:
+  the same-origin `/releases/latest.json` staged by the deploy workflow, then
+  `raw.githubusercontent.com/Cooreo/SippyDippy/main/releases/latest.json`.
+- **`src/sections/Download.tsx`** — three states: checking (`.download-disabled`
+  with "Checking for the latest signed build…"), not published ("No signed build
+  is published yet…"), and live (`Download sippy-1.0.0.apk (9 MB)` linking to the
+  release asset, with the full SHA-256 under the heading). Version, file name,
+  size and hash all come from the manifest — nothing is typed twice.
+- **`src/lib/download.ts`** — `downloadConfigFromManifest()` maps a published
+  manifest onto the existing `getDownloadState()` gate, so there is still exactly
+  one place that decides "enabled".
+- **`deploy.yml`** — new `Stage release manifest` step copies `releases/latest.json`
+  into `sippy/site/public/releases/` before the build (the staged path is
+  gitignored).
+- **`release.yml`** — after publishing and pushing the manifest, the publish job
+  asks for a website deploy (`gh workflow run deploy.yml`), because a push made
+  with `GITHUB_TOKEN` does not trigger other workflows. Best effort: if that call
+  fails, the raw-manifest fallback still shows the new version.
+
+Gates on this branch: `tsc --noEmit` 0 · `vitest run` **14 files / 89 tests**
+(14 new release-manifest tests) · `eslint .` 0 errors / 11 pre-existing warnings ·
+`VITE_BASE=/SippyDippy/ vite build` clean. Verified locally: with a sample
+manifest staged, `dist/releases/latest.json` is emitted and served `200`, and the
+bundle contains both the staged path and the releases prefix.
+
+**Still honest on purpose:** with no release published yet, the card shows
+"No signed build is published yet". It turns into the real download button with
+the first `v*` tag — no site change needed.

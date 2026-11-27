@@ -291,7 +291,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      contents: write
+      contents: write   # release + releases/*.json commit
+      actions: write    # re-deploy the website so it picks up the new manifest
     steps:
       - name: Checkout (for the tag message)
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -370,4 +371,18 @@ jobs:
           if ! git push origin HEAD:main; then
             echo "::error::Could not push releases/*.json to main. The release exists but latest.json was not updated."
             exit 1
+          fi
+
+      # A push made with GITHUB_TOKEN does not trigger other workflows, so the
+      # website deploy is asked explicitly. Best effort: the site also falls
+      # back to reading releases/latest.json straight from main, so a failure
+      # here delays the staged copy but never breaks the download button.
+      - name: Re-deploy the website
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh workflow run deploy.yml --repo "$GITHUB_REPOSITORY" --ref main; then
+            echo "requested a website deploy"
+          else
+            echo "::warning::Could not request the website deploy; the site will use the raw manifest from main instead."
           fi

@@ -1,13 +1,18 @@
 import { GlassCard } from "../components/glass/GlassCard";
+import { downloadConfigFromManifest, getDownloadState } from "../lib/download";
+import { useRelease } from "../lib/release";
 import { asset } from "../lib/router";
-import { getDownloadState } from "../lib/download";
 
 /**
  * Download (Phase 3 fix D) — one left edge: head, button, note and steps
  * all align to the card's single padding edge. Steps are an <ol> with
  * numbered glass chips 1–4. Card and FAQ share the same centered 760px
- * container. Honest gating: the button stays disabled until the real APK
- * URL + size + SHA-256 exist in lib/download.ts (Phase 6).
+ * container.
+ *
+ * The button is driven by `releases/latest.json` (see lib/release.ts), so it
+ * goes live with the first signed release and always matches the APK the
+ * updater will offer. Remaining honest states: "checking", and "nothing
+ * published yet" — the card never promises a file that is not there.
  */
 const STEPS = [
   <><b>Allow</b> installs from this source (Settings &gt; Security &gt; Install unknown apps)</>,
@@ -17,7 +22,11 @@ const STEPS = [
 ];
 
 export function Download() {
-  const d = getDownloadState();
+  const release = useRelease();
+  const d = getDownloadState(
+    release.manifest ? downloadConfigFromManifest(release.manifest) : undefined,
+  );
+  const checking = release.status === "loading";
 
   return (
     <section id="download" className="download">
@@ -40,7 +49,7 @@ export function Download() {
                 Get Sippy for Android
               </h2>
               <p className="download-meta">
-                {d.version} · {d.enabled ? d.sizeLabel : "size appears with the build"} ·
+                {d.enabled ? `${d.version} · ${d.sizeLabel} · ` : ""}
                 Android 8.0+ (looks best on 13+)
               </p>
               {d.enabled && (
@@ -56,13 +65,14 @@ export function Download() {
               {`Download ${d.fileName} (${d.sizeLabel})`}
             </a>
           ) : (
-            <div className="download-disabled" role="status">
+            <div className="download-disabled" role="status" aria-live="polite">
               <button type="button" className="pill-cta" disabled>
                 Download APK
               </button>
               <span>
-                The APK ships after the app’s build phases — this button
-                activates with the real file, size and SHA-256.
+                {checking
+                  ? "Checking for the latest signed build…"
+                  : "No signed build is published yet. This button activates the moment the first release lands — the link, size and SHA-256 come straight from the release manifest."}
               </span>
             </div>
           )}
