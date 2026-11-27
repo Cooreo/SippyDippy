@@ -11,16 +11,16 @@ const USAGE: Record<string, string> = {
   "dippy-happy": "Hero (floating by the phone) · Friends bento card",
   "dippy-dancing": "Streaks & reminders bento card (goal reached)",
   "dippy-sleepy": "Your goal bento card (thirsty, needs a sip)",
-  "dippy-waving": "Download card head (greeting you)",
-  "friend-plant-sprout": "Showcase friends art · pet/plant growth stage 1",
+  "dippy-waving": "Download card head · intro: Dippy pops from the hole edge",
+  "friend-plant-sprout": "Showcase friends art · phone friends row · plant stage 1",
   "friend-plant-bloom": "Your look bento card · plant growth stage 2",
-  "friend-pet-cub": "Developer options bento card · pet growth stage 1",
+  "friend-pet-cub": "Developer options bento card · phone friends row · pet stage 1",
   "friend-pet-adult": "Pet growth stage 2 (contact sheet review)",
   "droplet-sprite": "Ambient droplets (≤12 on the page) · Drinks bento card",
-  "ripple-ring": "Footer ambient ripple · intro impact texture",
-  "bg-features": "Features section art (feathered 200px+ edges)",
-  "bg-showcase": "Showcase section art (feathered 200px+ edges)",
-  "bg-download": "Download section art (feathered 200px+ edges)",
+  "ripple-ring": "Footer ambient ripple",
+  "bg-features": "Reserved — section art disabled in round 2 (sections have no backgrounds)",
+  "bg-showcase": "Reserved — section art disabled in round 2 (sections have no backgrounds)",
+  "bg-download": "Reserved — section art disabled in round 2 (sections have no backgrounds)",
 };
 
 function kb(bytes: number): string {

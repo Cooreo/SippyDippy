@@ -1,166 +1,331 @@
 /**
- * PhoneMock — the website's "app screenshots". Built from the REAL Sippy
- * glass components (GlassTabBar, GlassChip, Dippy) — no images, per brief.
- * Always rendered in dark tokens (the hero look), whatever the page theme.
+ * PhoneMock — the LIVE phone recreation (hero + showcase).
  *
- * Root-cause fix B: the frame is a true 9:19.5 box (container-type: size in
- * CSS); every inner size is a container unit, the goal is a cqw-sized SVG
- * ring (no fixed-px LiquidProgress that could outgrow its card), and the
- * tab bar is flex-pinned to the bottom — the screen is always fully filled
- * and nothing can overflow or clip at any rendered width.
+ * Built from the real app components (GlassChip, GlassTabBar, WaterRing,
+ * Dippy) inside the real device frame (PhoneDevice) — no screenshots, no
+ * images of the app (brief R2-1). Sizes are container units (cqw) so
+ * nothing can clip at any render size.
+ *
+ * Home screen layout, top to bottom: status bar → greeting + streak →
+ * the big water ring (ml in the centre) → Dippy + mood bubble → quick-add
+ * chips → friends card → liquid tab bar pinned to the bottom (home bar
+ * inset below it).
+ *
+ * ~7 s demo loop (hero only): the pointer drifts to the Water chip, taps
+ * it (ring ripple from the tap point), the ring fills 1,240 → 1,490 ml
+ * with a counting number, Dippy's expression changes — then it resets.
+ * Pauses when offscreen (IntersectionObserver); reduced motion renders a
+ * static filled frame with no pointer, ripple or counting.
  */
-import { GlassTabBar } from "./glass/GlassTabBar";
+import { useEffect, useRef, useState } from "react";
 import { GlassChip } from "./glass/GlassChip";
+import { GlassTabBar } from "./glass/GlassTabBar";
+import {
+  IconDroplet,
+  IconFlame,
+  IconHome,
+  IconSparkle,
+  IconUsers,
+} from "./Icons";
 import { Dippy } from "./Dippy";
-import { IconDroplet, IconFlame, IconPlus } from "./Icons";
+import { asset } from "../lib/router";
+import { PhoneDevice } from "./app/PhoneDevice";
+import { WaterRing } from "./app/WaterRing";
 
-export type PhoneMockVariant = "home" | "add" | "friends";
+/* demo-loop timeline (ms) */
+const BASE = 1240;
+const TAPPED = 1490;
+const GOAL = 2000;
 
-/** 62% of a 45-radius circle (2πr ≈ 282.7) */
-const RING_C = 282.74;
-const RING_PCT = 0.62;
+const T_POINT = 2000;
+const T_TAP = 3400;
+const T_FILL = 3600;
+const T_HOLD = 5100;
+const T_RESET = 6400;
+const T_END = 7000;
 
-function WaterRing() {
-  return (
-    <div className="pm-ring">
-      <svg viewBox="0 0 100 100" aria-hidden="true">
-        <circle className="pm-ring-track" cx="50" cy="50" r="45" />
-        <circle
-          className="pm-ring-fill"
-          cx="50"
-          cy="50"
-          r="45"
-          strokeDasharray={`${RING_C * RING_PCT} ${RING_C}`}
-        />
-      </svg>
-      <div className="pm-ring-center">
-        <span className="pm-ring-ml">1240</span>
-        <span className="pm-ring-sub">of 2000 ml</span>
-      </div>
-    </div>
-  );
+interface Ripple {
+  id: number;
+  x: number;
+  y: number;
 }
+
+function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(
+    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  useEffect(() => {
+    const m = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const on = () => setReduced(m.matches);
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, []);
+  return reduced;
+}
+
+const easeOut = (x: number) => 1 - (1 - x) ** 3;
 
 const TABS = [
-  { id: "home", label: "Home" },
-  { id: "drinks", label: "Drinks" },
-  { id: "friends", label: "Friends" },
+  { id: "home", name: "Home", icon: <IconHome width="13" height="13" /> },
+  { id: "friends", name: "Friends", icon: <IconUsers width="13" height="13" /> },
+  { id: "more", name: "More", icon: <IconSparkle width="13" height="13" /> },
 ];
 
-function HomeScreen() {
-  return (
-    <div className="pm-screen-inner">
-      <div className="pm-card">
-        <div className="pm-head">
-          <span>Good morning</span>
-          <span className="pm-streak">
-            <IconFlame width={13} height={13} /> 12
-          </span>
-        </div>
-        <WaterRing />
-      </div>
-      <div className="pm-card pm-buddy">
-        <Dippy mood="happy" size={30} />
-        <span className="pm-bubble">One more sip and I’m golden.</span>
-      </div>
-      <div className="pm-chips">
-        <GlassChip size="sm" tone="neutral">
-          Water
-        </GlassChip>
-        <GlassChip size="sm" tone="neutral">
-          Oolong
-        </GlassChip>
-        <GlassChip size="sm" tone="neutral">
-          Latte
-        </GlassChip>
-      </div>
-      <div className="pm-tabbar">
-        <GlassTabBar size="sm" defaultValue="home" items={TABS} />
-      </div>
-    </div>
-  );
-}
+export type PhoneMockVariant = "home" | "add" | "friends" | "water";
 
-const ADD_ROWS: { name: string; ml: string }[] = [
-  { name: "Iced oolong", ml: "400 ml" },
-  { name: "Water", ml: "250 ml" },
-  { name: "Oat latte", ml: "240 ml" },
-  { name: "Kombucha", ml: "330 ml" },
-];
-
-function AddScreen() {
-  return (
-    <div className="pm-screen-inner">
-      <div className="pm-title">Add a drink</div>
-      <div className="pm-search">
-        <IconDroplet width={13} height={13} />
-        <span>Water, teas, coffees, milks…</span>
-      </div>
-      {ADD_ROWS.map((r) => (
-        <div className="pm-row" key={r.name}>
-          <span className="pm-row-name">{r.name}</span>
-          <span className="pm-row-ml">{r.ml}</span>
-          <GlassChip size="sm" tone="success">
-            Add
-          </GlassChip>
-        </div>
-      ))}
-      <div className="pm-tabbar">
-        <GlassTabBar size="sm" value="drinks" items={TABS} />
-      </div>
-    </div>
-  );
-}
-
-function FriendsScreen() {
-  return (
-    <div className="pm-screen-inner">
-      <div className="pm-title">Your friends</div>
-      <div className="pm-card pm-card-friend">
-        <Dippy mood="happy" size={40} />
-        <div>
-          <b>Dippy</b>
-          <span className="pm-row-ml">droplet · streak 12 days</span>
-        </div>
-      </div>
-      <div className="pm-card pm-card-friend">
-        <Dippy mood="idle" size={40} />
-        <div>
-          <b>Fern</b>
-          <span className="pm-row-ml">plant · watered today</span>
-        </div>
-      </div>
-      <div className="pm-card pm-card-addfriend">
-        <IconPlus width={16} height={16} />
-        <span>Add a friend — pet or plant</span>
-      </div>
-      <div className="pm-tabbar">
-        <GlassTabBar size="sm" value="friends" items={TABS} />
-      </div>
-    </div>
-  );
-}
-
-export function PhoneMock({
-  variant,
-  className,
-}: {
-  variant: PhoneMockVariant;
+export interface PhoneMockProps {
+  /** "home" plays the demo loop (hero) · the rest are static showcase
+   * variants of the same screens (same components, same no-image rule). */
+  variant?: PhoneMockVariant;
   className?: string;
-}) {
+}
+
+export function PhoneMock({ variant = "home", className }: PhoneMockProps) {
+  const reduced = useReducedMotion();
+  const loop = variant === "home" && !reduced;
+
+  const [ml, setMl] = useState(variant === "water" ? TAPPED : BASE);
+  const [tapped, setTapped] = useState(variant === "water");
+  const [tab, setTab] = useState("home");
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+  const [ripples, setRipples] = useState<Ripple[]>([]);
+
+  const contentRef = useRef<HTMLDivElement>(null);
+  const running = useRef(true);
+  const rafRef = useRef(0);
+  const rippleSeq = useRef(0);
+
+  /* pause when offscreen */
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        running.current = entries[0].isIntersecting;
+      },
+      { threshold: 0.2 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  /* the ~7 s loop (hero home variant only) */
+  useEffect(() => {
+    if (!loop) return;
+
+    const content = contentRef.current;
+    const target = content?.querySelector<HTMLElement>('[data-chip="water"]');
+    let t0 = 0;
+    let targetPos = { x: 40, y: 120 };
+
+    const frame = (now: number) => {
+      if (!t0) t0 = now;
+      const t = now - t0;
+      if (!running.current) {
+        rafRef.current = requestAnimationFrame(frame);
+        return;
+      }
+
+      // pointer drift: idle → water chip
+      if (t < T_TAP) {
+        if (target && content) {
+          const r = target.getBoundingClientRect();
+          const c = content.getBoundingClientRect();
+          targetPos = {
+            x: r.left - c.left + r.width / 2,
+            y: r.top - c.top + r.height / 2,
+          };
+        }
+        if (t > T_POINT) {
+          const k = easeOut(Math.min(1, (t - T_POINT) / (T_TAP - T_POINT)));
+          setPointer({ x: 26 + (targetPos.x - 26) * k, y: 34 + (targetPos.y - 34) * k });
+        } else {
+          setPointer({ x: 26, y: 34 });
+        }
+      }
+
+      // tap → ripple from the pointer position + chip press
+      if (t >= T_TAP && t < T_TAP + 30) {
+        setTapped(true);
+        const id = ++rippleSeq.current;
+        const p = targetPos;
+        setRipples((rs) => [...rs, { id, x: p.x, y: p.y }]);
+        window.setTimeout(
+          () => setRipples((rs) => rs.filter((q) => q.id !== id)),
+          700,
+        );
+      }
+
+      // ring fill with counting number
+      if (t >= T_FILL && t < T_HOLD) {
+        const k = easeOut(Math.min(1, (t - T_FILL) / (T_HOLD - T_FILL)));
+        setMl(Math.round(BASE + (TAPPED - BASE) * k));
+      }
+
+      // reset
+      if (t >= T_RESET && t < T_RESET + 40) {
+        setTapped(false);
+        setMl(BASE);
+      }
+      if (t >= T_END) t0 = now - 400; // small breath, then loop
+
+      rafRef.current = requestAnimationFrame(frame);
+    };
+
+    rafRef.current = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [loop]);
+
+  const friendsTab = variant === "friends";
+  const addTab = variant === "add";
+  const ringMl = friendsTab ? 1560 : ml;
+
   return (
-    <div
-      className={`phone${className ? ` ${className}` : ""}`}
-      aria-label={`Sippy app screen: ${variant}`}
-      role="img"
-    >
-      <div className="phone-notch" />
-      <div className="pm-status">9:41</div>
-      <div className="phone-screen dark">
-        {variant === "home" && <HomeScreen />}
-        {variant === "add" && <AddScreen />}
-        {variant === "friends" && <FriendsScreen />}
+    <PhoneDevice className={className}>
+      <div ref={contentRef} className="pm-screen-content">
+        <div className="pm-screen-inner">
+          {/* greeting + streak */}
+          <div className="pm-head">
+            <span>Good morning, Alex</span>
+            <span className="pm-streak">
+              <IconFlame width="11" height="11" />
+              4d streak
+            </span>
+          </div>
+
+          {/* the big water ring */}
+          <WaterRing
+            fraction={ringMl / GOAL}
+            centre={ringMl.toLocaleString("en-US")}
+            sub="of 2,000 ml"
+          />
+
+          {addTab ? (
+            /* add screen: the drink picker */
+            <>
+              <div className="pm-search">
+                <IconDroplet width="10" height="10" />
+                Search 24+ drinks
+              </div>
+              <div className="pm-card">
+                {[
+                  { name: "Water", ml: "+250 ml" },
+                  { name: "Green tea", ml: "+200 ml" },
+                  { name: "Orange juice", ml: "+250 ml" },
+                  { name: "Coconut water", ml: "+300 ml" },
+                ].map((d) => (
+                  <div key={d.name} className="pm-row pm-card-friend">
+                    <span className="pm-row-name">
+                      <IconDroplet width="10" height="10" style={{ verticalAlign: "-0.2cqw" }} />{" "}
+                      {d.name}
+                    </span>
+                    <span className="pm-row-ml">{d.ml}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : friendsTab ? (
+            /* friends screen: the friends card with rows */
+            <div className="pm-card">
+              <div className="pm-head">
+                <span>Friends</span>
+                <span className="pm-friend-more">See all</span>
+              </div>
+              <div className="pm-row pm-card-friend">
+                <img className="pm-friend-img" src={asset("assets/friend-plant-bloom.webp")} alt="Fern" />
+                <span className="pm-row-name">Fern</span>
+                <span className="pm-row-ml">1,720 ml</span>
+              </div>
+              <div className="pm-row pm-card-friend">
+                <img className="pm-friend-img" src={asset("assets/friend-pet-adult.webp")} alt="Mochi" />
+                <span className="pm-row-name">Mochi</span>
+                <span className="pm-row-ml">1,910 ml</span>
+              </div>
+              <div className="pm-row pm-card-friend">
+                <img className="pm-friend-img" src={asset("assets/friend-plant-sprout.webp")} alt="Basil" />
+                <span className="pm-row-name">Basil</span>
+                <span className="pm-row-ml">980 ml</span>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Dippy + mood bubble — the expression changes on tap */}
+              <div className="pm-buddy">
+                <Dippy
+                  mood={tapped ? "excited" : "happy"}
+                  className="pm-dippy"
+                  style={{ width: "15cqw", height: "auto" }}
+                />
+                <span className="pm-bubble" style={{ width: "19cqw" }}>
+                  {tapped ? "Nice! +250 ml logged." : "Time for a sip?"}
+                </span>
+              </div>
+
+              {/* quick-add chips — Water is the demo-loop target */}
+              <div className="pm-chips">
+                <span className={`pm-chip-wrap${tapped ? " pm-chip-pressed" : ""}`}>
+                  <GlassChip data-chip="water" size="sm">
+                    <IconDroplet width="11" height="11" />
+                    Water
+                  </GlassChip>
+                </span>
+                <GlassChip size="sm">
+                  <IconDroplet width="11" height="11" />
+                  Tea
+                </GlassChip>
+                <GlassChip size="sm">
+                  <IconDroplet width="11" height="11" />
+                  Juice
+                </GlassChip>
+              </div>
+
+              {/* small friends row */}
+              <div className="pm-card">
+                <div className="pm-friends-row">
+                  <span className="pm-friend">
+                    <img className="pm-friend-img" src={asset("assets/friend-plant-sprout.webp")} alt="" />
+                    Fern
+                  </span>
+                  <span className="pm-friend">
+                    <img className="pm-friend-img" src={asset("assets/friend-pet-cub.webp")} alt="" />
+                    Mochi
+                  </span>
+                  <span className="pm-friend-more">See all</span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* liquid tab bar pinned at the bottom */}
+          <div className="pm-tabbar">
+            <GlassTabBar
+              size="sm"
+              flow="slide"
+              items={TABS.map((t) => ({ id: t.id, icon: t.icon, label: t.name }))}
+              value={friendsTab ? "friends" : tab}
+              onChange={setTab}
+            />
+          </div>
+        </div>
+
+        {/* demo-loop pointer + tap ripple (transform/opacity only) */}
+        {loop && pointer && (
+          <div
+            className="pm-pointer"
+            style={{ transform: `translate(${pointer.x}px, ${pointer.y}px)` }}
+            aria-hidden="true"
+          />
+        )}
+        {loop &&
+          ripples.map((r) => (
+            <span
+              key={r.id}
+              className="pm-tap-ripple"
+              style={{ left: r.x, top: r.y }}
+              aria-hidden="true"
+            />
+          ))}
       </div>
-    </div>
+    </PhoneDevice>
   );
 }

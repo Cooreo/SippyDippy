@@ -13,7 +13,6 @@ import {
   type PanInfo,
 } from "motion/react";
 import { PhoneMock, type PhoneMockVariant } from "../components/PhoneMock";
-import { SectionArt } from "../components/SectionArt";
 import { asset } from "../lib/router";
 
 const SCREENS: {
@@ -192,8 +191,7 @@ export function Showcase() {
 
   return (
     <section id="showcase" className="showcase">
-      <SectionArt name="bg-showcase" />
-      {/* friends art flanking the phones (behind them, feathered by CSS) */}
+      {/* friends art flanking the phones (alpha-keyed, feathered by the art) */}
       <img
         className="showcase-friend showcase-friend-l"
         src={asset("assets/friend-plant-sprout.webp")}

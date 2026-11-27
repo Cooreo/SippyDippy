@@ -434,7 +434,11 @@ export function GalleryPage() {
         >
           <GlassNav
             links={["Features", "Showcase", "Download"]}
-            ctaLabel="Get Sippy"
+            cta={
+              <button type="button" className="pill-cta pressable">
+                Get Sippy
+              </button>
+            }
           />
           <GlassCard style={{ maxWidth: 520 }}>
             <b style={{ fontFamily: "var(--ff-display)" }}>

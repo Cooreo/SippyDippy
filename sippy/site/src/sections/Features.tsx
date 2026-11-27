@@ -1,5 +1,4 @@
 import { BentoCard } from "../components/BentoCard";
-import { SectionArt } from "../components/SectionArt";
 import {
   IconDroplet,
   IconFlame,
@@ -25,7 +24,6 @@ const STREAK_MILESTONES = [
 export function Features() {
   return (
     <section id="features" className="features">
-      <SectionArt name="bg-features" />
       <h2>Built around how you actually drink.</h2>
       <p className="hint">
         Not just a water counter. Sippy counts the full pour — tea, coffee,

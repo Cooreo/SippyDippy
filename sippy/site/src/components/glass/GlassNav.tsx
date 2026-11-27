@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { LiquidSwitch } from "fluidkit";
 import { useTheme } from "../../lib/theme";
@@ -14,8 +14,11 @@ export interface GlassNavProps {
   links?: string[];
   /** Page sections: enables scroll-spy + the sliding liquid lens (reference 4). */
   sections?: GlassNavSection[];
-  ctaLabel?: string;
-  onCtaClick?: () => void;
+  /**
+   * Shared CTA node (round 2: the CtaButton, compact size). When omitted,
+   * the built-in pill-cta is rendered (gallery/legacy callers).
+   */
+  cta?: ReactNode;
   /** Entry animation delay in ms — the intro's "nav pill drops in" beat. */
   enterDelay?: number;
 }
@@ -28,8 +31,7 @@ export interface GlassNavProps {
 export function GlassNav({
   links,
   sections,
-  ctaLabel = "Get the APK",
-  onCtaClick,
+  cta,
   enterDelay = 0,
 }: GlassNavProps) {
   const { mode, toggle } = useTheme();
@@ -126,13 +128,12 @@ export function GlassNav({
         <span className="gnav-theme" aria-hidden="true">
           <IconMoon width={16} height={16} />
         </span>
-        <button
-          type="button"
-          className="pill-cta pressable"
-          onClick={onCtaClick}
-        >
-          {ctaLabel}
-        </button>
+        {cta ?? (
+          // APK label rule: never promise a download that doesn't exist
+          <button type="button" className="pill-cta pressable">
+            See install steps
+          </button>
+        )}
       </div>
     </motion.nav>
   );

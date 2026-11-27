@@ -54,10 +54,9 @@
   --glass-rim-mid: rgba(18, 42, 84, 0.1);
   --glass-rim-end: rgba(255, 255, 255, 0.55);
   --glass-inner: rgba(255, 255, 255, 0.6);
-  --glass-shadow:
-    0 1px 2px rgba(16, 32, 64, 0.1),
-    0 8px 24px rgba(16, 32, 64, 0.14),
-    0 28px 72px rgba(16, 32, 64, 0.16);
+  /* single soft neutral shadow — no bottom-weighted stack (R2-3: the 3-layer
+     bottom-heavy shadow read as a "gradient cut at the card edge") */
+  --glass-shadow: 0 10px 30px rgba(16, 32, 64, 0.12);
   --scrim: rgba(255, 255, 255, 0.5);
 
   /* shape */
@@ -110,10 +109,7 @@
   --glass-rim-mid: rgba(255, 255, 255, 0.05);
   --glass-rim-end: rgba(255, 255, 255, 0.18);
   --glass-inner: rgba(255, 255, 255, 0.1);
-  --glass-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.28),
-    0 8px 24px rgba(0, 0, 0, 0.38),
-    0 28px 72px rgba(0, 0, 0, 0.42);
+  --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   --scrim: rgba(0, 0, 0, 0.35);
 
   color-scheme: dark;
@@ -294,13 +290,44 @@ kbd {
 .glass-card {
   padding: 24px;
 }
+/* ONE soft specular, top-left, ≤10% alpha, fading to transparent well
+   before the card border (R2-3). Static — no cursor-following glow that
+   gets visibly cut at the edge. */
 .spec {
   position: absolute;
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
   z-index: 3;
-  opacity: 0.9;
+  background: radial-gradient(
+    120% 85% at 16% 0%,
+    rgba(255, 255, 255, 0.1),
+    transparent 55%
+  );
+}
+
+/* CTA landing feedback: one ~1.2 s rim flash (opacity only) */
+.rim-flash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 5;
+  box-shadow:
+    0 0 0 2px var(--accent-bright),
+    0 0 34px 6px var(--accent-glow);
+  animation: rimflash 1.2s ease-out forwards;
+}
+@keyframes rimflash {
+  0% { opacity: 0; }
+  12% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* in-page scroll targets clear the fixed nav pill */
+section[id] {
+  scroll-margin-top: 96px;
 }
 
 /* 9 — Press, focus */
@@ -740,11 +767,14 @@ kbd {
   height: 170%;
   max-height: 2200px;
   background-size: cover;
-  background-position: 50% 0;
+  /* the asset's own top rows are its brightest band (measured) — offset it
+     above the viewport so NO content edge sits at the top edge (R2-3);
+     the top mask ramp softens whatever remains there. */
+  background-position: 50% -16%;
   opacity: 0.55;
-  /* soft 400px ramp out — no hard edge (200px+ per brief) */
-  mask-image: linear-gradient(180deg, #000 0%, #000 45%, transparent 78%);
-  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 45%, transparent 78%);
+  /* soft ramps on BOTH ends — no background may end inside the viewport */
+  mask-image: linear-gradient(180deg, transparent 0%, #000 5%, #000 45%, transparent 82%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 5%, #000 45%, transparent 82%);
 }
 .dark .backdrop-caustics {
   opacity: 0.85;
@@ -775,14 +805,15 @@ kbd {
   min-height: 100dvh;
   overflow-x: clip;
 }
+/* Full-width fixed strip; the pill sits INSIDE .wrap (R2-4) so it shares
+   the exact same width + padding as the hero grid — same element, same
+   edges at every viewport, no duplicated width formula. */
 .page-nav {
   position: fixed;
   top: 16px;
-  left: 50%;
-  translate: -50% 0;
+  left: 0;
+  right: 0;
   z-index: 60;
-  /* same width as .wrap so nav and hero content share one grid */
-  width: min(1280px, calc(100% - 2 * clamp(20px, 5vw, 48px)));
 }
 .page-nav .gnav {
   transition:
@@ -868,20 +899,6 @@ kbd {
   gap: 16px;
   flex-wrap: wrap;
 }
-.hero-secondary {
-  padding: 13px 22px;
-  border-radius: var(--r-pill);
-  font-size: 14px;
-  font-weight: 600;
-  color: #f4f7ff;
-  text-decoration: none;
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
-  transition: background var(--t-quick) ease;
-}
-.hero-secondary:hover {
-  background: rgba(255, 255, 255, 0.14);
-}
 .hero-visual {
   position: relative;
   display: grid;
@@ -899,66 +916,94 @@ kbd {
   filter: blur(48px);
 }
 
-/* — Phone mockup (shared: hero + showcase). Always dark tokens (`.dark`).
-   Root-cause fix B: the frame is a true 9:19.5 box with
-   `container-type: size`; EVERY inner size is a container unit (cqw/cqh)
-   so nothing can overflow at any rendered width, and the tab bar is
-   flex-pinned to the bottom so the lower half is never empty. — */
-.phone {
+/* — Live phone (shared: hero + showcase). Round-2 rebuild (R2-1).
+   A real device is a DARK bezel holding a dark screen (a bright bezel
+   inverts figure/ground and reads as a "tube" around a mismatched
+   rectangle). Frame 9:19.5, `container-type: size`, every inner size a
+   container unit; screen radius = frame radius − bezel so the two rounded
+   rects can never drift. Always dark tokens (`.dark`). — */
+.device {
   position: relative;
   width: min(250px, 62vw);
   aspect-ratio: 9 / 19.5;
   container-type: size;
-  border-radius: 7cqw;
-  padding: 1.7cqw;
-  background: linear-gradient(
-    160deg,
-    rgba(255, 255, 255, 0.3),
-    rgba(255, 255, 255, 0.05) 34%,
-    rgba(255, 255, 255, 0.16)
-  );
+  border-radius: 8cqw;
+  padding: 2cqw;
+  background: linear-gradient(160deg, #2b3345, #12161f 38%, #1d2434 100%);
   box-shadow:
-    0 44px 90px rgba(0, 0, 0, 0.5),
-    inset 0 0 0 0.55cqw rgba(255, 255, 255, 0.32);
+    0 34px 70px rgba(0, 0, 0, 0.5),
+    0 4px 14px rgba(0, 0, 0, 0.4);
 }
-.phone-notch {
+/* subtle rim highlight on the frame edge */
+.device::before {
+  content: "";
   position: absolute;
-  top: 3.6cqw;
+  inset: 0.4cqw;
+  border-radius: calc(8cqw - 0.4cqw);
+  box-shadow: inset 0 0 0 0.45cqw rgba(255, 255, 255, 0.14);
+  pointer-events: none;
+  z-index: 3;
+}
+.device-screen {
+  position: relative;
+  height: 100%;
+  border-radius: 6cqw; /* = 8cqw frame radius − 2cqw bezel */
+  overflow: hidden;
+  background:
+    radial-gradient(130% 42% at 50% 0%, rgba(46, 124, 246, 0.13), transparent 62%),
+    #05070d;
+}
+/* dynamic island — inside the screen, not floating over the bezel */
+.device-island {
+  position: absolute;
+  top: 3.2cqw;
   left: 50%;
   translate: -50% 0;
-  width: 17cqw;
-  height: 4.4cqw;
-  border-radius: 2.2cqw;
+  width: 24cqw;
+  height: 5.4cqw;
+  border-radius: 2.7cqw;
   background: #000;
   z-index: 6;
 }
-.pm-status {
+.pm-statusbar {
   position: absolute;
   top: 3.4cqw;
-  right: 5.8cqw;
-  z-index: 5;
-  font-size: 2.1cqw;
-  font-weight: 600;
-  color: var(--text-3);
-}
-.phone-screen {
-  position: relative;
+  left: 5.5cqw;
+  right: 5.5cqw;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 5;
+  font-size: 2.5cqw;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.pm-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.2cqw;
+}
+.pm-homebar {
+  position: absolute;
+  bottom: 1.7cqw;
+  left: 50%;
+  translate: -50% 0;
+  width: 34cqw;
+  height: 1.1cqw;
+  border-radius: 1cqw;
+  background: rgba(255, 255, 255, 0.32);
+  z-index: 6;
+}
+.pm-screen-content {
+  position: relative;
   height: 100%;
-  border-radius: 5.4cqw;
-  overflow: hidden;
-  background:
-    radial-gradient(120% 50% at 80% 0%, rgba(46, 124, 246, 0.16), transparent 60%),
-    var(--bg-0);
 }
 .pm-screen-inner {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  gap: 2.6cqw;
-  padding: 10cqw 3.2cqw 3.2cqw;
+  height: 100%;
+  gap: 2.4cqw;
+  padding: 11cqw 3.4cqw 7.5cqw;
 }
 .pm-card {
   display: flex;
@@ -987,9 +1032,9 @@ kbd {
 /* large water ring with ml (SVG, sized in cqw) */
 .pm-ring {
   position: relative;
-  width: 34cqw;
+  width: 44cqw;
   aspect-ratio: 1;
-  margin: 1.5cqw auto;
+  margin: 2cqw auto;
 }
 .pm-ring svg {
   width: 100%;
@@ -1015,18 +1060,20 @@ kbd {
   text-align: center;
 }
 .pm-ring-ml {
-  font-size: 5.2cqw;
+  font-size: 6.4cqw;
   font-weight: 700;
   line-height: 1;
   color: var(--text-1);
+  font-variant-numeric: tabular-nums;
 }
 .pm-ring-sub {
-  margin-top: 1.2cqw;
-  font-size: 2.3cqw;
+  margin-top: 1.4cqw;
+  font-size: 2.4cqw;
   color: var(--text-3);
 }
 /* Dippy + mood bubble */
 .pm-buddy {
+  display: flex;
   flex-direction: row;
   align-items: center;
   gap: 2.6cqw;
@@ -1043,7 +1090,7 @@ kbd {
   padding: 2cqw 2.8cqw;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
-/* quick-add chips */
+/* quick-add chips (Water is the demo-loop target) */
 .pm-chips {
   display: flex;
   gap: 2cqw;
@@ -1054,10 +1101,82 @@ kbd {
   min-width: 0;
   justify-content: center;
 }
-/* tab bar pinned at the bottom, with inset */
+.pm-chip-wrap {
+  display: flex;
+  transition: transform 0.15s ease;
+}
+.pm-chip-pressed {
+  transform: scale(0.94);
+}
+/* small friends row */
+.pm-friends-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2.8cqw;
+  padding: 2.2cqw 3cqw;
+}
+.pm-friend {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.2cqw;
+  font-size: 2.1cqw;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.pm-friend-img {
+  width: 9cqw;
+  height: auto;
+}
+.pm-friend-more {
+  margin-left: auto;
+  font-size: 2.1cqw;
+  font-weight: 600;
+  color: var(--text-3);
+}
+/* tab bar pinned at the bottom, above the home-indicator inset */
 .pm-tabbar {
   margin-top: auto;
   padding: 0 0 0.8cqw;
+}
+/* demo-loop pointer + tap ripple (transform/opacity only) */
+.pm-pointer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 8;
+  width: 5.5cqw;
+  height: 5.5cqw;
+  margin: -2.75cqw 0 0 -2.75cqw;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 35% 30%,
+    rgba(255, 255, 255, 0.95),
+    rgba(91, 155, 255, 0.75) 55%,
+    rgba(46, 124, 246, 0.5)
+  );
+  box-shadow:
+    0 1.2cqw 2.6cqw rgba(0, 0, 0, 0.45),
+    inset 0 0 0 0.35cqw rgba(255, 255, 255, 0.5);
+  transition:
+    transform 0.9s cubic-bezier(0.35, 0.7, 0.3, 1),
+    opacity 0.35s ease;
+  pointer-events: none;
+}
+.pm-tap-ripple {
+  position: absolute;
+  z-index: 7;
+  width: 16cqw;
+  height: 16cqw;
+  margin: -8cqw 0 0 -8cqw;
+  border-radius: 50%;
+  border: 0.6cqw solid rgba(120, 175, 255, 0.75);
+  animation: pm-ripple 0.6s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes pm-ripple {
+  from { transform: scale(0.25); opacity: 0.9; }
+  to { transform: scale(1.6); opacity: 0; }
 }
 .pm-title {
   margin: 1cqw 1cqw 0;
@@ -1641,197 +1760,296 @@ kbd {
   color: var(--text-1);
 }
 
-/* — Cinematic intro overlay (root-cause fix E).
-   All positioned elements read the shared impact point published by
-   Intro.tsx as --impact-x / --impact-y (fallback: viewport centre).
-   Sequence: fall (250–800 ms) → squash + splash (800–1050) → ripples
-   (860–1800, 120 ms stagger, first reveals the logo) → draw (1210–2060)
-   → fill (1760–2100) → lift (1900–2500) → done (3600). — */
-.intro {
+/* — Shared CTA (round 2, R2-2). Hover/press via transform + opacity only;
+   hover styles gated to real hover devices so touch never sticks. — */
+.cta {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+.cta--lg {
+  font-size: 15.5px;
+}
+.cta--sm {
+  font-size: 13px;
+}
+/* hero primary: Sippy Blue glass, white label (AA on the dark hero) */
+.cta--primary {
+  background: linear-gradient(
+    180deg,
+    rgba(91, 155, 255, 0.5),
+    rgba(46, 124, 246, 0.38)
+  );
+  color: #fff;
+  border: 1px solid rgba(140, 180, 255, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 2px 16px rgba(29, 95, 224, 0.35);
+}
+/* ghost: transparent glass, rim only ("How it works") */
+.cta--ghost {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-1);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+/* brighter rim on hover — an opacity overlay (never an animated shadow) */
+.cta-rim {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+  box-shadow:
+    0 0 0 1px rgba(190, 214, 255, 0.75),
+    0 0 26px 4px var(--accent-glow);
+}
+.cta-arrow {
+  flex: none;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+/* the Glin shimmer span sweeps only on hover (hidden at rest) */
+.cta > span:not(.cta-label):not(.cta-arrow):not(.cta-ripple) {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .cta:hover {
+    transform: translateY(-2px);
+  }
+  .cta:hover .cta-rim {
+    opacity: 1;
+  }
+  .cta:hover > span:not(.cta-label):not(.cta-arrow):not(.cta-ripple) {
+    opacity: 1;
+  }
+  .cta:hover .cta-arrow {
+    transform: translateY(3px);
+  }
+  .cta:hover:active {
+    transform: translateY(-2px) scale(0.97);
+  }
+}
+.cta:active {
+  transform: scale(0.97);
+}
+.cta:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 3px;
+}
+/* press ripple — a ring from the pointer position (same shape as the
+   intro ripple); transform + opacity only */
+.cta-ripple {
+  position: absolute;
+  width: 150px;
+  height: 150px;
+  margin: -75px 0 0 -75px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(190, 214, 255, 0.8);
+  animation: cta-ripple 0.6s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes cta-ripple {
+  from {
+    transform: scale(0.2);
+    opacity: 0.8;
+  }
+  to {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+/* — Surface-break intro (round 2).
+   One WebGL canvas renders the whole underwater scene (deep gradient,
+   caustics from the SAME hero asset, light shafts, bubbles, 4 gooey
+   droplets + mark stroke-draw, surface ring with SCENE-ONLY refraction,
+   and the reveal as an alpha hole centred on the mark). Texture-missing
+   or no WebGL → the same timeline in .sb-scene (CSS gradients/blur/ring;
+   the hole is a transform-scaled 9999px-shadow circle). The page renders
+   underneath from t=0 (zero CLS); the ring never distorts the page
+   itself (that would require capturing the DOM). — */
+.sb {
   position: fixed;
   inset: 0;
   z-index: 100;
-  display: grid;
-  place-items: center;
-  background: #04060b;
+  overflow: hidden;
+  background: #020409;
   cursor: pointer;
-  --impact-x: 50%;
-  --impact-y: 50%;
-  animation: intro-out 0.6s ease 1.9s forwards;
 }
-.intro-leave {
-  opacity: 0 !important;
-  visibility: hidden !important;
-  pointer-events: none;
-  transition:
-    opacity 0.22s ease,
-    visibility 0.22s;
-}
-.intro-glow {
+.sb-canvas {
   position: absolute;
-  top: var(--impact-y);
-  left: var(--impact-x);
-  translate: -50% -50%;
-  width: 62vmin;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(46, 124, 246, 0.4), rgba(46, 124, 246, 0) 65%);
-  animation: intro-glow 3.6s ease-in-out infinite;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
 }
-/* the falling droplet — tip-first; its bottom-centre (the tip) sits on the
-   impact point at rest, so it starts above the viewport at the impact x */
-.intro-drop {
+/* CSS fallback world (mirrors the shader's phase timing) */
+.sb-scene {
   position: absolute;
-  top: var(--impact-y);
-  left: var(--impact-x);
-  width: 26px;
-  height: 36px;
-  translate: -50% -100%;
-  border-radius: 50% 50% 50% 50% / 64% 64% 36% 36%;
-  background: linear-gradient(180deg, #7db4ff 0%, #2e7cf6 70%, #1d5fe0 100%);
-  box-shadow: inset 0 0 6px rgba(255, 255, 255, 0.5);
-  transform-origin: 50% 100%;
+  inset: 0;
+}
+.sb-world {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+.sb-deep {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    #0a1c3f 0%,
+    #04102a 45%,
+    #020614 100%
+  );
+}
+/* the SAME asset + position as the hero backdrop (.backdrop-caustics) so
+   the reveal lands on the same image; opacity close to the hero's
+   (0.85 through the hero scrim) */
+.sb-caustics {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: 50% -16%;
+  opacity: 0.6;
+  mix-blend-mode: screen;
+}
+.sb-light {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(120, 180, 255, 0.5) 0%,
+    rgba(70, 130, 230, 0.18) 45%,
+    transparent 75%
+  );
   opacity: 0;
-  animation:
-    intro-drop-fall 550ms 250ms cubic-bezier(0.55, 0, 1, 0.45) forwards,
-    intro-drop-splat 300ms 780ms cubic-bezier(0.34, 1.2, 0.64, 1) forwards;
 }
-@keyframes intro-drop-fall {
-  0% {
-    transform: translate(0, calc(-55vh - 40px)) scaleY(1);
-    opacity: 1;
-  }
-  60% {
-    transform: translate(0, -18vh) scaleY(1.1);
-    opacity: 1;
-  }
-  100% {
-    transform: translate(0, 0) scaleY(1.18);
-    opacity: 1;
-  }
+.sb-shaft {
+  position: absolute;
+  top: -20%;
+  bottom: -10%;
+  width: 14%;
+  opacity: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(150, 200, 255, 0.28),
+    transparent
+  );
+  transform: skewX(-14deg);
 }
-@keyframes intro-drop-splat {
-  0% {
-    transform: translate(0, 0) scaleX(1) scaleY(1.18);
-    opacity: 1;
+.sb-bubble {
+  position: absolute;
+  bottom: -4%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 35% 30%,
+    rgba(255, 255, 255, 0.85),
+    rgba(170, 210, 255, 0.25) 60%,
+    transparent
+  );
+  animation: sb-bubble-rise linear infinite;
+}
+@keyframes sb-bubble-rise {
+  from {
+    transform: translateY(0);
+    opacity: 0;
   }
-  45% {
-    transform: translate(0, 3px) scaleX(1.35) scaleY(0.55);
-    opacity: 1;
+  12% {
+    opacity: 0.8;
   }
-  100% {
-    transform: translate(0, 5px) scaleX(1.7) scaleY(0.3);
+  to {
+    transform: translateY(-110vh);
     opacity: 0;
   }
 }
-/* the splash flash at the exact moment of impact */
-.intro-splash {
+/* the four gooey droplets (positions driven per-frame, transform only) */
+.sb-drop {
   position: absolute;
-  top: var(--impact-y);
-  left: var(--impact-x);
-  translate: -50% -50%;
-  width: 46px;
-  height: 18px;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(170, 205, 255, 0.85), rgba(170, 205, 255, 0) 70%);
-  transform: scale(0);
-  opacity: 0;
-  animation: intro-splash 260ms 800ms ease-out forwards;
-}
-@keyframes intro-splash {
-  0% {
-    transform: scale(0.2);
-    opacity: 0.9;
-  }
-  100% {
-    transform: scale(2.4);
-    opacity: 0;
-  }
-}
-/* concentric ripples — all centred on the shared impact point */
-.intro-ripple {
-  position: absolute;
-  top: var(--impact-y);
-  left: var(--impact-x);
-  translate: -50% -50%;
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  border: 1.5px solid rgba(150, 190, 255, 0.7);
-  box-shadow: 0 0 18px rgba(80, 140, 255, 0.25);
-  transform: scale(0.08);
-  opacity: 0;
-  animation: intro-ripple 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-@keyframes intro-ripple {
-  0% {
-    transform: scale(0.08);
-    opacity: 0.95;
-  }
-  100% {
-    transform: scale(3.6);
-    opacity: 0;
-  }
-}
-/* the logo — revealed by the first ripple, then draws itself */
-.intro-logo {
-  position: relative;
-  z-index: 2;
-  width: 88px;
-  height: 88px;
-  color: #7db4ff;
-  opacity: 0;
-  animation: intro-appear 450ms ease forwards; /* delay set inline: ripple 1 */
-}
-.intro-stroke {
-  stroke-dasharray: 100;
-  stroke-dashoffset: 100;
-  animation: intro-draw 0.85s cubic-bezier(0.3, 0, 0.1, 1) forwards; /* delay inline */
-}
-.intro-fill {
-  opacity: 0;
-  animation: intro-appear 0.5s ease forwards; /* delay inline */
-}
-.intro-skip-hint {
-  position: absolute;
-  bottom: 30px;
   left: 50%;
-  translate: -50% 0;
-  z-index: 2;
-  font-size: 12px;
-  letter-spacing: 0.05em;
-  color: rgba(255, 255, 255, 0.45);
+  top: 50%;
+  width: 34px;
+  height: 44px;
+  margin: -22px 0 0 -17px;
+  border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%;
+  background: linear-gradient(180deg, #7db4ff, #2e7cf6 70%, #1d5fe0);
+  box-shadow: inset 0 0 8px rgba(255, 255, 255, 0.55);
+  opacity: 0;
 }
-@keyframes intro-glow {
+/* surface-break ring (scale + opacity only) */
+.sb-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 60px;
+  height: 60px;
+  margin: -30px 0 0 -30px;
+  border-radius: 50%;
+  border: 2px solid rgba(190, 216, 255, 0.9);
+  box-shadow:
+    0 0 30px rgba(120, 180, 255, 0.5),
+    inset 0 0 18px rgba(120, 180, 255, 0.4);
+  opacity: 0;
+}
+/* the masked subtree (CSS-fallback scene): the reveal is a growing
+   circular hole in a per-frame mask on THIS element, so the page shows
+   through — the mark/Dippy live outside it and stay visible */
+.sb-masked {
+  position: absolute;
+  inset: 0;
+}
+/* DOM mark (crisp logo SVG) — FLIP source, centred on the viewport */
+.sb-mark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 132px;
+  height: 132px;
+  margin: -66px 0 0 -66px;
+  color: #7db4ff;
+  filter: drop-shadow(0 0 18px rgba(91, 155, 255, 0.55));
+  z-index: 3;
+}
+/* Dippy popping up from the hole edge (waving art), transform only */
+.sb-dippy {
+  position: absolute;
+  z-index: 3;
+  width: 74px;
+  height: auto;
+  opacity: 0;
+}
+@keyframes sb-dippy-bob {
   0%,
   100% {
-    transform: scale(0.9);
-    opacity: 0.5;
+    transform: translateY(0) rotate(-3deg);
   }
   50% {
-    transform: scale(1.18);
-    opacity: 0.9;
+    transform: translateY(-8px) rotate(3deg);
   }
 }
-@keyframes intro-draw {
-  to {
-    stroke-dashoffset: 0;
-  }
+/* reduced-motion: a ~350 ms logo crossfade, no rise/ring/shader */
+.sb-fade {
+  animation: sb-fade-in 0.35s ease both;
 }
-@keyframes intro-appear {
+@keyframes sb-fade-in {
+  from {
+    opacity: 0;
+  }
   to {
     opacity: 1;
   }
 }
-@keyframes intro-out {
-  to {
-    opacity: 0;
-    visibility: hidden;
-  }
-}
-/* reduced-motion fallback: simple fade, no beats */
+/* page-level reduced-motion fade (no intro rendered at all) */
 .fade-in {
-  animation: page-fade 0.5s ease both;
+  animation: page-fade 0.35s ease both;
 }
 @keyframes page-fade {
   from {
@@ -1841,36 +2059,39 @@ kbd {
     opacity: 1;
   }
 }
+/* screen-reader-only utility (carousel announcements etc.) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* while the intro covers the page, hero content is visually hidden but
+   stays focusable (opacity only — never display/visibility) */
+.page.intro-cover .hero-copy,
+.page.intro-cover .hero-visual {
+  opacity: 0;
+}
+/* the lift: a short fade (title words also rise/sharpen via .intro
+   removal) instead of a hard pop */
+.page .hero-copy,
+.page .hero-visual {
+  transition: opacity 0.3s ease;
+}
 
 /* — Richness pass: section art, mascots, ambient layer, contact sheet,
    debug outline — */
-.features,
-.showcase,
-.download {
-  position: relative;
-  overflow: clip;
-}
-/* feathered section art: fades to fully transparent before the section
-   edge (closest-side radial, 30%→100% band = 200px+ at real widths) */
-.section-art {
-  position: absolute;
-  inset: -60px -80px;
-  z-index: 0;
-  background-size: cover;
-  background-position: center;
-  opacity: 0.5;
-  mask-image: radial-gradient(closest-side, #000 30%, transparent 100%);
-  -webkit-mask-image: radial-gradient(closest-side, #000 30%, transparent 100%);
-  pointer-events: none;
-}
-.dark .section-art {
-  opacity: 0.7;
-}
-.features > *:not(.section-art),
-.showcase > *:not(.section-art),
-.download > *:not(.section-art) {
-  position: relative;
-  z-index: 1;
+/* Round-2 (R2-3): the per-section .section-art image layers are GONE —
+   sections have no backgrounds of their own (the ONE fixed backdrop behind
+   the page is the only background system). The old art rects were clipped
+   by `overflow: clip` into hard horizontal lines at every section top. */
+.showcase {
+  position: relative; /* positioning context for the friend art */
 }
 /* Dippy floating by the hero phone — idle bob, never over text */
 .hero-buddy {
@@ -1881,7 +2102,6 @@ kbd {
   width: 76px;
   height: auto;
   filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.35));
-  animation: buddy-bob 5.2s ease-in-out infinite;
 }
 @keyframes buddy-bob {
   0%,
