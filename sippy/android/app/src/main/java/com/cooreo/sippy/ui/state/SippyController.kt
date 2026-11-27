@@ -114,7 +114,10 @@ class SippyController(
                     pointsCarryMl = credit.carryMl,
                     ledger = ledger,
                 )
-                val log = (state.log + logged).takeLast(MAX_LOG_ENTRIES)
+                // A3: nothing is dropped. The log keeps every entry the player
+                // ever logged; the list is lazy, so size is a storage concern, not
+                // a UI one.
+                val log = state.log + logged
                 withStreak(credited, log, today)
             }
             val after = repository.state.value
@@ -166,18 +169,56 @@ class SippyController(
     }
 
     /** Re-quantifies one entry; hydration is recomputed from the drink table. */
-    fun updateEntryVolume(id: String, volumeMl: Int) {
+    fun updateEntryVolume(id: String, volumeMl: Int) = updateEntry(id, volumeMl, null)
+
+    /**
+     * Edits volume and/or the time of an entry (A3). Moving an entry across local
+     * midnight moves its day with it, so dayEpoch is recomputed, never copied.
+     */
+    fun updateEntry(id: String, volumeMl: Int, atEpochMs: Long?) {
         if (!VolumeRules.isValid(volumeMl)) return
         scope.launch {
             val today = Dates.todayEpochDay()
             repository.edit { state ->
                 val target = state.log.firstOrNull { it.id == id } ?: return@edit state
                 val drink = DrinkTable.byId(target.drinkId)
+                val whenMs = atEpochMs ?: target.atEpochMs
                 val edited = target.copy(
                     volumeMl = volumeMl,
                     hydratedMl = WaterMath.hydrate(volumeMl, drink.hydrationFactor),
+                    atEpochMs = whenMs,
+                    dayEpoch = Dates.dayOf(whenMs),
                 )
                 withStreak(state, state.log.map { if (it.id == id) edited else it }, today)
+            }
+        }
+    }
+
+    /** Puts a deleted entry back — the Undo half of swipe-to-delete (A3). */
+    fun restoreEntry(entry: LogEntry) {
+        scope.launch {
+            val today = Dates.todayEpochDay()
+            repository.edit { state ->
+                if (state.log.any { it.id == entry.id }) return@edit state
+                val log = (state.log + entry).sortedBy { it.atEpochMs }
+                val credited = if (entry.pointsEarned > 0) {
+                    state.copy(
+                        points = state.points + entry.pointsEarned,
+                        ledger = PointsRules.append(
+                            state.ledger,
+                            PointsEntry(
+                                id = "${entry.id}-undo",
+                                atEpochMs = System.currentTimeMillis(),
+                                delta = entry.pointsEarned,
+                                reason = "Undid a delete",
+                                balanceAfter = state.points + entry.pointsEarned,
+                            ),
+                        ),
+                    )
+                } else {
+                    state
+                }
+                withStreak(credited, log, today)
             }
         }
     }
@@ -520,7 +561,6 @@ class SippyController(
 
     companion object {
         /** Bounded log: a few hundred sips, oldest dropped first. */
-        const val MAX_LOG_ENTRIES = 400
 
         const val SIGNING_MISMATCH_MESSAGE =
             "This update is signed with a different key than the copy on your phone, so Android " +

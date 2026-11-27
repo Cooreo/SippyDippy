@@ -114,7 +114,7 @@ fun CustomVolumeSheet(
 fun EditEntrySheet(
     entry: LogEntry,
     goalMl: Int,
-    onSave: (Int) -> Unit,
+    onSave: (Int, Long) -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -122,10 +122,12 @@ fun EditEntrySheet(
     val drink = DrinkTable.byId(entry.drinkId)
     var text by remember(entry.id) { mutableStateOf(entry.volumeMl.toString()) }
     var confirmDelete by remember(entry.id) { mutableStateOf(false) }
+    // A3: the time is editable too, so a back-dated sip can be corrected.
+    var timeMs by remember(entry.id) { mutableStateOf(entry.atEpochMs) }
     val value = VolumeRules.parse(text)
     val error = if (text.isBlank()) null else VolumeRules.error(text)
     val shape = RoundedCornerShape(topStart = Dimens.card, topEnd = Dimens.card)
-    val time = Instant.ofEpochMilli(entry.atEpochMs)
+    val time = Instant.ofEpochMilli(timeMs)
         .atZone(ZoneId.systemDefault())
         .toLocalTime()
         .format(sheetTimeFormat)
@@ -175,17 +177,32 @@ fun EditEntrySheet(
                         }
                     }
                 }
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    GlassChip(label = "−15 min", onClick = { timeMs -= 15 * 60_000L })
+                    Text(
+                        text = "Time $time",
+                        style = SippyType.caption,
+                        color = c.text2,
+                        modifier = Modifier.weight(1f),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+                    GlassChip(label = "+15 min", onClick = { timeMs += 15 * 60_000L })
+                }
                 Spacer(Modifier.height(12.dp))
                 GlassButton(
                     label = if (value != null) "Save ${value} ml" else "Save",
-                    onClick = { value?.let(onSave) },
+                    onClick = { value?.let { onSave(it, timeMs) } },
                     enabled = value != null,
                     prominent = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (confirmDelete) {
                     Text(
-                        text = "Delete removes this drink from today's log.",
+                        text = "Delete removes this drink from the log.",
                         style = SippyType.caption,
                         color = c.text2,
                     )

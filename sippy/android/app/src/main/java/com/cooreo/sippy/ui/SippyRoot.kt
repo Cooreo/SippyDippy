@@ -312,6 +312,15 @@ private fun AppScaffold(
                         state = state,
                         bottomPadding = navSpace,
                         onBack = { showHistory = false },
+                        onEditEntry = { editing = it },
+                        onDeleteEntry = { entry ->
+                            controller.deleteEntry(entry.id)
+                            toast = ToastMessage(
+                                text = "Entry deleted",
+                                actionLabel = "Undo",
+                                onAction = { controller.restoreEntry(entry) },
+                            )
+                        },
                     )
                 } else HomeScreen(
                     state = state,
@@ -424,8 +433,8 @@ private fun AppScaffold(
         EditEntrySheet(
             entry = entry,
             goalMl = goal,
-            onSave = { ml ->
-                controller.updateEntryVolume(entry.id, ml)
+            onSave = { ml, atEpochMs ->
+                controller.updateEntry(entry.id, ml, atEpochMs)
                 editing = null
             },
             onDelete = {
