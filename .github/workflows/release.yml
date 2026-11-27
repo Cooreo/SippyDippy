@@ -356,25 +356,14 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git clone --depth 1 --branch main "https://x-access-token:$GH_TOKEN@github.com/${{ github.repository }}.git" repo
           cd repo
-          python3 - "$GITHUB_REF_NAME" "${{ needs.build.outputs.version_name }}" "${{ needs.build.outputs.version_code }}" "${{ needs.build.outputs.sha256 }}" "${{ needs.build.outputs.size }}" "${{ needs.build.outputs.apk_name }}" <<'PY'
-          import json, sys, datetime, pathlib
-          tag, name, code, sha, size, apk = sys.argv[1:7]
-          url = f"https://github.com/Cooreo/SippyDippy/releases/download/{tag}/{apk}"
-          manifest = {
-              "versionCode": int(code),
-              "versionName": name,
-              "apkUrl": url,
-              "sha256": sha,
-              "sizeBytes": int(size),
-              "minSdk": 26,
-              "releasedAt": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-              "notes": [f"Sippy {name}", "Signed release built by GitHub Actions"],
-          }
-          pathlib.Path("releases").mkdir(exist_ok=True)
-          for target in (f"releases/{tag}.json", "releases/latest.json"):
-              pathlib.Path(target).write_text(json.dumps(manifest, indent=2) + "\n")
-          print(json.dumps(manifest, indent=2))
-          PY
+          python3 sippy/android/scripts/write_release_manifest.py \
+            --dir . \
+            --tag "$GITHUB_REF_NAME" \
+            --name "${{ needs.build.outputs.version_name }}" \
+            --code "${{ needs.build.outputs.version_code }}" \
+            --sha "${{ needs.build.outputs.sha256 }}" \
+            --size "${{ needs.build.outputs.size }}" \
+            --apk "${{ needs.build.outputs.apk_name }}"
           git add releases
           git commit -m "release: $GITHUB_REF_NAME [skip ci]"
           git pull --rebase origin main
