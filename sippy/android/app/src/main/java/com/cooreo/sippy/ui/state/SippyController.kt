@@ -266,11 +266,13 @@ class SippyController(
         _events.tryEmit(Event.Celebration)
     }
 
-    fun setRingOverride(fraction: Float?) {
+    /** Developer preview of the ring (0..1), null returns to live data. */
+    fun previewRing(fraction: Float?) {
         ringOverride = fraction
     }
 
-    fun setMoodOverride(mood: Mood?) {
+    /** Developer mood override; null returns to the derived mood. */
+    fun previewMood(mood: Mood?) {
         moodOverride = mood
     }
 

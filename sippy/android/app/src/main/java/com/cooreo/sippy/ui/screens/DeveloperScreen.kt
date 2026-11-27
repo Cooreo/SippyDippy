@@ -63,14 +63,14 @@ fun DeveloperScreen(
                             Box(Modifier.weight(1f)) {
                                 GlassChip(
                                     label = mood.name.lowercase(),
-                                    onClick = { controller.setMoodOverride(mood) },
+                                    onClick = { controller.previewMood(mood) },
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
                         }
                     }
                     Spacer(Modifier.height(8.dp))
-                    GlassChip(label = "Clear mood override", onClick = { controller.setMoodOverride(null) })
+                    GlassChip(label = "Clear mood override", onClick = { controller.previewMood(null) })
                 }
             }
             item {
@@ -82,7 +82,7 @@ fun DeveloperScreen(
                             Box(Modifier.weight(1f)) {
                                 GlassChip(
                                     label = "${(value * 100).toInt()}%",
-                                    onClick = { controller.setRingOverride(value) },
+                                    onClick = { controller.previewRing(value) },
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -90,7 +90,7 @@ fun DeveloperScreen(
                         Box(Modifier.weight(1f)) {
                             GlassChip(
                                 label = "Live",
-                                onClick = { controller.setRingOverride(null) },
+                                onClick = { controller.previewRing(null) },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
