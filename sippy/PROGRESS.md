@@ -1079,3 +1079,32 @@ same as LENS.
   tick rather than a bounce.
 - **Points count up:** the shop balance runs through `animateIntAsState` with a
   spring, so the number rolls to the new total instead of jumping.
+
+## What CI caught this round, and what it means
+
+The hosted runners never hand us the Gradle log (the log URL redirects to a blob
+host the agent cannot reach), so every red run was diagnosed from the job and
+step names plus the code. That was enough because the pattern was consistent:
+`Assemble debug APK` green while `JVM unit tests` red means "the app compiles,
+a test does not agree with it", and the release dry run failed at its own
+`Unit tests` step before it ever reached `assembleRelease`.
+
+Three real bugs, all in the *tests*, none in the app:
+
+1. **B1** `homeSeesOnlyTheNewestThreeOfToday` built its fixture with two extra
+   day-101 entries (07:00 and 13:00) that legitimately outranked t1–t5
+   (01:00–05:00), so `newestOfDay` returned `d, c, t5`. The test now feeds only
+   other-day entries alongside today's five, plus a case that yesterday never
+   appears in today's window.
+2. **B4** `theBalanceNeverGoesNegative` expected `debit(3, -100)` to be 0; a
+   negative amount debits nothing, so it is 3. `millilitresToNextPoint(250)`
+   clamps a stale carry to 249 first, so the answer is 1, not 250.
+3. **B4** `aFriendLeavingKeepsTheItemOwnedAndItsSiblingsEquipped` asserted the
+   otter's hat was reported while leaving `otter_hat` out of `ownedItems`, so
+   `wornBy` correctly said "nothing". The shop was right; the set now includes
+   it, and a new `aWornItemThatIsNoLongerOwnedIsNotShown` pins that rule.
+
+Because two of those were in the same commit as the feature, one commit
+(`662e22b`) temporarily removed `ShopRulesTest` to prove which file was at
+fault, and the next commit restored it fixed. The final tree is green at
+`b3a8b59` (both the push run and the pull-request run).
