@@ -67,6 +67,7 @@ import com.cooreo.sippy.ui.screens.HistoryScreen
 import com.cooreo.sippy.ui.screens.HomeScreen
 import com.cooreo.sippy.ui.screens.OnboardingScreen
 import com.cooreo.sippy.ui.screens.SettingsScreen
+import com.cooreo.sippy.ui.screens.ShopScreen
 import com.cooreo.sippy.ui.screens.moodFor
 import com.cooreo.sippy.ui.screens.moodLine
 import com.cooreo.sippy.ui.sheets.AddDrinkSheet
@@ -199,6 +200,7 @@ private fun AppScaffold(
     var toast by remember { mutableStateOf<ToastMessage?>(null) }
     var remindersPrompt by remember { mutableIntStateOf(0) }
     var showHistory by remember { mutableStateOf(false) }
+    var showShop by remember { mutableStateOf(false) }
 
     val today = Dates.todayEpochDay()
     val todayEntries = remember(state.log, today) {
@@ -281,15 +283,26 @@ private fun AppScaffold(
                     bottomPadding = navSpace,
                     onLog = { drink -> controller.addDrink(drink, drink.defaultVolumeMl) },
                 )
-                Tab.FRIENDS -> FriendsScreen(
-                    state = state,
-                    controller = controller,
-                    hydratedMl = hydrated,
-                    goalMl = goal,
-                    animate = animate,
-                    onTogglePin = { id -> controller.togglePin(id) },
-                    bottomPadding = navSpace,
-                )
+                Tab.FRIENDS -> if (showShop) {
+                    ShopScreen(
+                        state = state,
+                        onBuy = { id -> controller.buyItem(id) },
+                        onEquip = { friendId, itemId -> controller.equipItem(friendId, itemId) },
+                        onBack = { showShop = false },
+                        bottomPadding = navSpace,
+                    )
+                } else {
+                    FriendsScreen(
+                        state = state,
+                        controller = controller,
+                        hydratedMl = hydrated,
+                        goalMl = goal,
+                        animate = animate,
+                        onTogglePin = { id -> controller.togglePin(id) },
+                        onOpenShop = { showShop = true },
+                        bottomPadding = navSpace,
+                    )
+                }
                 Tab.SETTINGS -> SettingsScreen(
                     state = state,
                     controller = controller,
@@ -311,6 +324,7 @@ private fun AppScaffold(
             onSelect = {
                 tab = it.toTab()
                 showHistory = false
+                showShop = false
             },
             onLog = { showAddDrink = true },
             modifier = Modifier.align(Alignment.BottomCenter),

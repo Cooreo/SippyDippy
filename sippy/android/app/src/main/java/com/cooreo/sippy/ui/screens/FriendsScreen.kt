@@ -29,10 +29,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cooreo.sippy.domain.friends.Mood
 import com.cooreo.sippy.domain.friends.MoodRules
+import com.cooreo.sippy.domain.shop.ShopItem
+import com.cooreo.sippy.domain.shop.ShopRules
 import com.cooreo.sippy.model.Friend
 import com.cooreo.sippy.model.FriendKind
 import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.ui.components.FriendImage
+import com.cooreo.sippy.ui.components.ItemBadge
 import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.state.SippyController
@@ -46,6 +49,7 @@ fun FriendsScreen(
     goalMl: Int,
     animate: Boolean,
     onTogglePin: (String) -> Unit,
+    onOpenShop: () -> Unit = {},
     bottomPadding: androidx.compose.ui.unit.Dp = 24.dp,
 ) {
     val c = LocalSippyColors.current
@@ -59,13 +63,16 @@ fun FriendsScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
-            Column {
-                Text("Friends", color = c.text1, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    text = "Dippy and up to four friends. They grow with your streak.",
-                    color = c.text2,
-                    fontSize = 13.sp,
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Friends", color = c.text1, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = "Dippy and up to four friends. They grow with your streak.",
+                        color = c.text2,
+                        fontSize = 13.sp,
+                    )
+                }
+                GlassChip(label = "Shop", onClick = onOpenShop)
             }
         }
         items(state.friends, key = { it.id }) { friend ->
@@ -79,6 +86,7 @@ fun FriendsScreen(
             FriendCard(
                 friend = friend,
                 onTogglePin = { onTogglePin(friend.id) },
+                worn = ShopRules.wornBy(state.equipped, state.ownedItems, friend.id),
                 mood = mood,
                 animate = animate,
                 isRenaming = renaming == friend.id,
@@ -136,6 +144,7 @@ fun FriendsScreen(
 private fun FriendCard(
     friend: Friend,
     onTogglePin: () -> Unit,
+    worn: ShopItem?,
     mood: Mood,
     animate: Boolean,
     isRenaming: Boolean,
@@ -164,6 +173,9 @@ private fun FriendCard(
                     animate = animate,
                     modifier = Modifier.size(88.dp),
                 )
+                if (worn != null) {
+                    ItemBadge(item = worn, modifier = Modifier.align(Alignment.BottomEnd), size = 32.dp)
+                }
             }
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
                 if (isRenaming) {

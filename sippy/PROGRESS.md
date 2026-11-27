@@ -1000,3 +1000,49 @@ them. Same copy, same glass chips.
 files (four friends, four hats, one scarf), three rejected attempts and the
 pipeline (magenta field → border-seeded chroma key → de-fringe → WebP 88).
 Largest file 35 KB; friends 512 px, items 256 px.
+
+## B4 — points, ledger and the shop (round 7)
+
+**Design decision: points are earned per entry, with the remainder carried, and
+every change is a ledger line.** `PointsRules.credit(balance, carry, countedMl)`
+is pure: 250 counted ml is one point, the remainder stays in `pointsCarryMl`, so
+200 + 100 ml earns a point and leaves 50 ml toward the next. `debit()` clamps at
+zero, and `append()` keeps the newest 500 lines. `LogEntry.pointsEarned` records
+what each entry earned, so deleting or undoing it takes back exactly that much —
+clamped, so the balance still never goes negative, and the ledger records the
+real delta (`+2`, `−2`) with the balance after it, so history and balance cannot
+disagree. Correcting a volume with the edit sheet does **not** claw points back:
+a downward edit is a small gift, an upward edit earns nothing, and neither can
+be farmed (delete reverses the credit). There is no real money and no ads in the
+app; points come from hydration only.
+
+**Proposed price table** (product decision, marked proposed — 1 point per 250 ml
+means a 2 L day is 8 points, so a hat is roughly four good days):
+
+| Item | Friend | Slot | Proposed price |
+| --- | --- | --- | --- |
+| Sailor hat | Koi | hat | 30 points |
+| Kelp scarf | Koi | outfit | 45 points |
+| Diving helmet | Otter | hat | 30 points |
+| Shell sun hat | Turtle | hat | 35 points |
+| Party crown | Axolotl | hat | 30 points |
+
+Only items whose art exists are listed, so the shop can never point at a missing
+drawable. Three planned outfits (otter, turtle, axolotl) were cut off by the
+image tool's per-turn cap; they will be added to the table when their art lands.
+
+**Ownership rules:** `ownedItems` is a set of item ids and `equipped` maps
+friendId → item id, so a friend leaving the list cannot delete what was bought,
+and each friend wears at most one cosmetic. `ShopRules.canEquip` also refuses a
+hat worn by the wrong kind. Tests: `PointsRulesTest` (earning per 250 ml, carry,
+never negative, ledger cap, distance to the next point) and `ShopRulesTest`
+(purchase deducts, short balance refused, double buy refused, unknown item,
+equip only owned and only of the right kind, one per friend, owned survives
+friend removal, table integrity).
+
+**Shop UI:** a full-screen state inside the Friends tab (the "Shop" chip in the
+Friends header), so the four-tab navigation is unchanged. It shows the balance
+and the carry, groups the items by friend with a 44 dp preview and a proposed
+price, and lists the last six ledger lines. A friend wears its cosmetic as a
+32 dp badge on its corner in the Friends list — see the B3 note for why items
+are badged rather than fitted onto the body.

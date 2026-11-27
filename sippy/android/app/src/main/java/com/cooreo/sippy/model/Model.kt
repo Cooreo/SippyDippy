@@ -20,6 +20,16 @@ data class StoredState(
     val log: List<LogEntry> = emptyList(),
     val streak: StreakState = StreakState(),
     val update: UpdateState = UpdateState(),
+    /** Spendable points (B4). Never negative. */
+    val points: Int = 0,
+    /** Counted millilitres not yet worth a full point — the partial carry-over. */
+    val pointsCarryMl: Int = 0,
+    /** Newest last, capped by PointsRules.LEDGER_LIMIT. */
+    val ledger: List<PointsEntry> = emptyList(),
+    /** Item ids the player owns. Keyed by item, so a friend leaving keeps them. */
+    val ownedItems: Set<String> = emptySet(),
+    /** friendId -> equipped item id. At most one cosmetic per friend. */
+    val equipped: Map<String, String> = emptyMap(),
 )
 
 @Serializable
@@ -106,6 +116,18 @@ data class LogEntry(
     /** Volume x hydration factor, frozen at log time. */
     val hydratedMl: Int,
     val sugary: Boolean,
+    /** Points this entry earned when it was logged (B4); reversed on removal. */
+    val pointsEarned: Int = 0,
+)
+
+/** One line of the points ledger. [delta] is negative for purchases. */
+@Serializable
+data class PointsEntry(
+    val id: String,
+    val atEpochMs: Long,
+    val delta: Int,
+    val reason: String,
+    val balanceAfter: Int,
 )
 
 @Serializable
