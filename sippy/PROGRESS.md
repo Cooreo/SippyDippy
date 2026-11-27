@@ -1295,10 +1295,32 @@ before every commit.
   tick, the log thud and goal pattern already wired, and a Developer-options frame
   card (fps, worst frame, frames counted) measured only while it is on screen.
 
-**Still open, in the order it should be finished:** B4's ten drink icons (the
-generator caps at ten images per turn and the backdrop took one; the prompt must
-forbid a badge or plate and any pink liquid), B7's button-to-sheet container
-transform, B8's splash screen and four vignettes (`androidx.core:core-splashscreen`
-is the one new dependency, reason: it is the only way to paint the first frame in
-the backdrop's own colour), and B11's sensor parallax if everything above lands.
+### Round 2, second pass
+
+| item | commit | CI on that commit |
+| --- | --- | --- |
+| B4 part 2 — seven painted drink icons | `60be618` | **green** |
+| B7 attempt — Log container transform, droplet flight | `bb8916a` → `255e3f3` → `7456913` | failed, failed, failed |
+| revert of B7 so the branch is not left broken | `a566116` | **green** |
+
+**B4 part 2 is done for seven of ten categories**: water, sparkling, tea, coffee,
+juice, milk and smoothie are painted (`res/drawable-nodpi/drink_*.webp`, 192px,
+5.7–9.2 KB). Soda, alcohol and other still fall back to the drawn droplet.
+`ART_CREDITS.md` records the two things that actually matter for regenerating
+these: a flat magenta field keys cleanly where "transparent" does not, and a
+translucent glass needs de-spilling (`min(R-G, B-G)` subtracted from red and blue)
+or every rim comes back pink.
+
+**B7 is written but not shipped.** The flow exists in full in `bb8916a` — the + button
+growing into the sheet as a container transform, bubbles rising with an 80ms
+stagger capped at six, the filling glass preview, the presets above the slider, the
+shrink-back, the droplet arcing into the orb through `OrbAnchor`, the floating
+"+330 ml"/"+1 pt" and the thud — but it did not compile three times in a row and
+the log is unreadable from here, so it was reverted rather than left broken. To
+resume: `git revert a566116` puts it back, then fix whatever the build says.
+
+**Still open:** the three missing drink icons, B7 (reverted, see above), B8's splash
+screen and four vignettes (`androidx.core:core-splashscreen` is the one new
+dependency, reason: it is the only way to paint the first frame in the backdrop's
+own colour), and B11's sensor parallax if everything above lands.
 **Nothing visual in this round has been seen on a device.**
