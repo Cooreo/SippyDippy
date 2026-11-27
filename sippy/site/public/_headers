@@ -1,0 +1,12 @@
+# GitHub Pages custom headers.
+#
+# One rule, deliberately: EVERY response revalidates (no-cache = use the
+# cache but always re-check). This is the structural fix for the
+# "two sites" bug — the bare URL serving a stale-cached index.html while
+# ?intro=1 (a different cache key) fetched the fresh build. With HTML
+# revalidated on every visit, a new deploy is visible immediately and
+# exactly one version of the site can ever be served. Cost: 304s for
+# unchanged hashed assets (no re-download).
+
+/*
+  Cache-Control: no-cache
