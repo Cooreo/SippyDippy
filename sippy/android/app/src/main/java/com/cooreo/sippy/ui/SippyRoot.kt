@@ -14,6 +14,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -163,10 +164,13 @@ fun SippyRoot(graph: AppGraph) {
         }
         CompositionLocalProvider(LocalGlassTier provides diagnostics.tier) {
             SippyBackdropHost {
-                // The backdrop stays full-bleed; the content is padded by the
-                // stable status-bar inset so the first row clears the clock even
-                // while the bars are hidden (A1).
-                Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                // A2: the bars are visible and transparent over the backdrop. A
+                // soft scrim sits behind the status icons so they stay legible on
+                // a bright caustic, and the content frame starts below the real
+                // status-bar inset (which also covers the display cutout).
+                Box(Modifier.fillMaxSize()) {
+                    StatusBarScrim()
+                    Box(Modifier.fillMaxSize().statusBarsPadding()) {
                     when {
                         !ready -> Splash()
                         // First run (or a kill mid-flow): onboarding owns the screen.
@@ -190,10 +194,30 @@ fun SippyRoot(graph: AppGraph) {
                             )
                         }
                     }
+                    }
                 }
             }
         }
     }
+}
+
+/**
+ * A subtle dark gradient behind the status-bar icons (round 8, A2). Drawn over
+ * the backdrop, under the content, and it takes no input.
+ */
+@Composable
+private fun StatusBarScrim() {
+    val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(top + 20.dp)
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color.Black.copy(alpha = 0.34f), Color.Transparent),
+                ),
+            ),
+    )
 }
 
 @Composable
@@ -226,7 +250,7 @@ private fun AppScaffold(
 
     // The floating pill plus the gesture inset, so nothing hides behind it.
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val navSpace = NavBarHeight + navInset + 12.dp
+    val navSpace = NavBarHeight + navInset + 16.dp
     // Settings ends on a full-height card, so it gets the pill + inset + a
     // margin of its own (A1) instead of the shared clearance.
     val settingsBottom = navSpace + 24.dp

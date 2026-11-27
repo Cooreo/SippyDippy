@@ -14,7 +14,7 @@ class MainActivity : ComponentActivity() {
         // Edge-to-edge first, then hide both bars in an immersive-sticky setup:
         // a swipe from an edge shows them transiently, and they fade again.
         enableEdgeToEdge()
-        SystemBars.hideImmersive(this)
+        SystemBars.showTransparent(this)
         val graph = (application as SippyApp).graph
         setContent {
             SippyRoot(graph)
@@ -28,6 +28,6 @@ class MainActivity : ComponentActivity() {
      */
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) SystemBars.hideImmersive(this)
+        if (hasFocus) SystemBars.showTransparent(this)
     }
 }
