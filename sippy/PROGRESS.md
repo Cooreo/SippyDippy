@@ -881,3 +881,35 @@ and no manifest were written by hand.
 - Same-day follow-up for the next release: the merge-time deploy always shows the
   previous version until the release finishes (~8 min) and re-deploys. That is the
   designed behaviour, not a failure.
+
+---
+
+# ROUND 7 — bugs, features, feel
+
+## A1 — status bar, insets and the bar behind Settings: root cause (written before code)
+
+**Symptom.** The clock sits on top of "Drinks"/"Friends"/"Settings" and the Home
+date and streak chips, and the last Settings rows disappear behind the floating
+pill.
+
+**Root cause.** Two halves, both structural:
+
+1. `MainActivity` calls `enableEdgeToEdge()`, which *draws* behind the system bars
+   but does not *hide* them. Nothing in the Compose tree consumed
+   `WindowInsets`: every screen padded itself with a fixed `top = 16.dp`
+   (Home) or `28.dp` (Drinks, Friends, Settings), so the first row of every
+   screen starts inside the status bar's box. The bars were also never hidden,
+   so the overlap was permanent rather than transient.
+2. The bottom was half-done: `FloatingNav` applied `navigationBarsPadding()` for
+   the *system* bar, and screens reserved `104.dp + inset` for the pill — but the
+   Settings list is the one screen whose content ends exactly at that boundary
+   (its last row is a full-height card), and sheets sat at the raw bottom edge
+   with no inset at all. A 12 dp clearance is not a clearance when the last row
+   is a card with a shadow.
+
+**Fix.** Hide both bars in an immersive-sticky configuration (swipe from an edge
+brings them back transiently), pad the content frame by
+`WindowInsets.statusBarsIgnoringVisibility` so the first row clears the clock
+whether the bars are shown **or** hidden, pad bottom sheets by the navigation
+inset, and give Settings `pill height + navigation inset + 24.dp` of bottom
+padding so its last card scrolls clear.

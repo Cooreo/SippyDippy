@@ -18,6 +18,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
@@ -51,6 +54,7 @@ import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.model.ThemeMode
 import com.cooreo.sippy.ui.components.Celebration
 import com.cooreo.sippy.ui.components.FloatingNav
+import com.cooreo.sippy.ui.components.NavBarHeight
 import com.cooreo.sippy.ui.components.NavTarget
 import com.cooreo.sippy.ui.glass.GlassTier
 import com.cooreo.sippy.ui.glass.LocalGlassTier
@@ -126,15 +130,26 @@ fun SippyRoot(graph: AppGraph) {
         val tier = remember(reduce) { GlassTier.forSdk(reduceEffects = reduce) }
         CompositionLocalProvider(LocalGlassTier provides tier) {
             SippyBackdropHost {
-                when {
-                    !ready -> Splash()
-                    // First run (or a kill mid-flow): onboarding owns the screen.
-                    !state.settings.onboardingComplete -> OnboardingScreen(
-                        state = state,
-                        controller = controller,
-                        animate = !reduce,
-                    )
-                    else -> AppScaffold(state, controller, animate = !reduce)
+                // The backdrop stays full-bleed; the content is padded by the
+                // stable status-bar inset so the first row clears the clock even
+                // while the bars are hidden (A1).
+                Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)) {
+                    when {
+                        !ready -> Splash()
+                        // First run (or a kill mid-flow): onboarding owns the screen.
+                        !state.settings.onboardingComplete -> Box(
+                            Modifier
+                                .fillMaxSize()
+                                .navigationBarsPadding(),
+                        ) {
+                            OnboardingScreen(
+                                state = state,
+                                controller = controller,
+                                animate = !reduce,
+                            )
+                        }
+                        else -> AppScaffold(state, controller, animate = !reduce)
+                    }
                 }
             }
         }
@@ -166,9 +181,12 @@ private fun AppScaffold(
     // Quick adds are water; the Log sheet is there for everything else.
     val water = remember { DrinkTable.byId("water") }
 
-    // The floating bar plus the gesture inset, so nothing hides behind it.
+    // The floating pill plus the gesture inset, so nothing hides behind it.
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val navSpace = 104.dp + navInset
+    val navSpace = NavBarHeight + navInset + 12.dp
+    // Settings ends on a full-height card, so it gets the pill + inset + a
+    // margin of its own (A1) instead of the shared clearance.
+    val settingsBottom = navSpace + 24.dp
 
     LaunchedEffect(Unit) {
         controller.events.collect { event ->
@@ -239,7 +257,7 @@ private fun AppScaffold(
                     state = state,
                     controller = controller,
                     onOpenDeveloper = { showDeveloper = true },
-                    bottomPadding = navSpace,
+                    bottomPadding = settingsBottom,
                     remindersPrompt = remindersPrompt,
                 )
             }

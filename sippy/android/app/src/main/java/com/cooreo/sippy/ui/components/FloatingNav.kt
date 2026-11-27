@@ -25,6 +25,13 @@ import com.cooreo.sippy.ui.glass.GlassSurface
 import com.cooreo.sippy.ui.theme.Dimens
 import com.cooreo.sippy.ui.theme.LocalSippyColors
 
+/**
+ * The height the floating pill occupies inside the content frame:
+ * 56 dp item + 2x8 dp row padding + 2x10 dp margins. Screens reserve this (plus
+ * the navigation inset) as bottom content padding.
+ */
+val NavBarHeight = 92.dp
+
 /** The four destinations behind the bottom bar's four glyphs. */
 enum class NavTarget(val label: String) {
     HOME("Home"),

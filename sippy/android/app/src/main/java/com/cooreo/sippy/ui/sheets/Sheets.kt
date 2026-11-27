@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -58,7 +59,14 @@ internal fun SheetScrim(
                 .background(Color.Black.copy(alpha = 0.42f))
                 .clickable(onClick = onDismiss),
         )
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+        // The sheet sits at the screen edge, so it takes the navigation inset
+        // itself (the root frame pads the top only).
+        Box(
+            Modifier
+                .fillMaxSize()
+                .navigationBarsPadding(),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
             content()
         }
     }
