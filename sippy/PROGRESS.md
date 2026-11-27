@@ -250,3 +250,31 @@ Round-1 root-cause note (lens scaled in place, no real fall, box-centre vs shape
 **Gates (all real output, this pass):** tsc 0 · lint 0 errors / 3 warnings (pre-existing fast-refresh) · vitest 37/37 (6 new intro tests: reveal centre == mark centre at 360×640 / 1280×720 / 1920×1080 / 2560×1440; total ≤4500 ms; renderer decision; RM renders nothing and never creates a WebGL context) · build ~4.8 s · subpath build (`VITE_BASE=/sippy/`) ✓.
 
 **Known honest gaps:** visual quality of the shader scene, intro frame rate, and the live URL need a browser (none in this sandbox); backdrop-filter count in the hero viewport peaks at ~7 small surfaces (nav pill, 2 CTAs, 3 phone chips, liquid tab bar) — every other viewport ≤6.
+
+## Hero: phone preview → filling water ring (round-3 task)
+
+**SPEC.md note:** the task linked `SPEC.md`, but no such file exists anywhere in the repo (checked root, `sippy/`, `sippy/site/`, git history) — implemented from the task's 7-point spec + this file.
+
+**What changed (nothing else):**
+- `src/sections/Hero.tsx` — the hero's phone (`<PhoneMock variant="home"/>`) is gone, replaced by `<HeroWaterRing/>` in the same `.hero-visual` column (Dippy buddy + parallax + bob unchanged).
+- `src/components/HeroWaterRing.tsx` (new) — glass disc fills 0→100% in 4 s (easeInOutCubic), gentle wave on the surface, centred tabular-numbers label counting in sync; at 100% a 0.7 s shimmer sweeps the disc and the label crossfades (grid cell, no layout shift) to "Goal reached"; holds 1.5 s, resets, loops. IntersectionObserver (0.2) pauses offscreen and resumes mid-cycle. `prefers-reduced-motion` → static 100% state with the label, no rAF, no animation.
+- `src/styles/index.css` — `.hr*` block. `--hr-size: clamp(260px, 34vw, 520px)`; the `.hr` box IS the disc (exact bounding box). Motion = transform/opacity only: level = `translateY` on the fill, wave = `translateX` on a clipped element (the sanctioned exception; two tileable periods so the −50% drift is seamless), shimmer = transform sweep + opacity. Label colour is explicit per theme (`#0a1120` light / `#f4f7ff` dark) + a static `::before` halo (light brightens, dark darkens) so the contrast margin holds at every fill level.
+- `PhoneMock`/`PhoneDevice`/app `WaterRing` + all `.pm-*`/`.device*` styles are **kept** — they are shared with the Showcase (which must not change); the hero has zero phone markup or hero-phone styles left, and no hidden copies.
+
+**Label contrast on the disc (computed, WCAG 2.x relative luminance; caustics mean measured from the actual `hero-caustics.webp` top band = RGB(19,61,111); page-under-disc includes the 0.40-alpha hero scrim at ~50vh):**
+
+| mode | background | RGB | no halo | with halo (shipped) |
+|---|---|---|---|---|
+| dark | glass only (fill 0%) | (31,52,77) | 11.83:1 | **14.06:1** |
+| dark | water top, surface at centre (worst) | (48,100,182) | 5.41:1 | **8.25:1** |
+| light | glass only (fill 0%) | (84,100,121) | 3.12:1 | **7.57:1** |
+| light | water top, surface at centre (worst) | (68,119,198) | 4.22:1 | **8.53:1** |
+
+All ≥ 7.5:1 with the halo — AA/AAA for large and normal text in both themes.
+
+**Bounding box (`--hr-size: clamp(260px, 34vw, 520px)`, the `.hr` element = the disc exactly):**
+- viewport 360px → 260 × 260 px (column available: 320 px ✓)
+- viewport 1280px → 435.2 × 435.2 px (visual column ≈ 538 px ✓)
+- viewport 2560px → 520 × 520 px (visual column ≈ 532 px ✓ — cap chosen so it never overflows the grid column)
+
+**Gates:** tsc exit 0; lint 0 errors / 3 pre-existing warnings; 37/37 tests; build 4.79 s; subpath build (`VITE_BASE=/sippy/`) 4.79 s.
