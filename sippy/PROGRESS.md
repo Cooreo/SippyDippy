@@ -1,6 +1,6 @@
 # PROGRESS — Sippy
 
-Running log: done / verified / broken / next. Last updated: 2026-11-26.
+**CURRENT STATE (2026-11-27, post-round-4 merge — start here for new sessions):** `main` is up to date and deployed (PR #6 "Fix CTA labels, improve water orb", Pages deploy green). Shipped so far: glass design system + gallery, CTA contrast fixes, surface-break intro, hero water ring (fill 0→100% loop + counting label, wave/caustics, glass rim depth), no-cache Pages headers. **Nothing pending; all gates green** (tsc 0 · lint 0 err / 3 pre-existing warn · 37/37 tests · build ~4.6 s · `VITE_BASE=/sippy/` subpath build ✓). Standing rules: every completed round → commit + push session branch → PR → merge to main → verify Pages deploy green → report (PLAN.md top note + decision log #12); **no SPEC.md exists** in the repo — work from the round's inline brief + this file; the live site only updates on merge to `main` (workflow) and serves no-cache via `public/_headers`; no headless browser in the sandbox — "computed" values are CSS/PIL-derived, label them as such; keep `PhoneMock`/Showcase and the intro out of scope unless asked.
 
 ## Phase 0 (plan) — ✅ approved with changes
 Old repo: empty (README only). Toolchain: Node 22 only — no Java/SDK/browser/KVM. Network: npm + GitHub API + codeload only (all Maven/Google hosts blocked) → APK built by user (Option A, agreed). See PLAN.md v2.
