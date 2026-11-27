@@ -1,0 +1,299 @@
+// Copyright 2024, Christopher Banes and the Haze project contributors
+// SPDX-License-Identifier: Apache-2.0
+
+package dev.chrisbanes.haze
+
+import android.content.Intent
+import android.graphics.Point
+import android.graphics.Rect
+import android.os.SystemClock
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.BySelector
+import androidx.test.uiautomator.Configurator
+import androidx.test.uiautomator.Direction
+import androidx.test.uiautomator.SearchCondition
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
+import androidx.test.uiautomator.Until
+import kotlin.math.roundToInt
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
+
+internal const val FORCE_BLUR_EXTRA = "dev.chrisbanes.haze.sample.android.FORCE_BLUR"
+private const val BENCHMARK_SAMPLE_ROUTE_EXTRA =
+  "dev.chrisbanes.haze.sample.android.BENCHMARK_SAMPLE_ROUTE"
+private const val BENCHMARK_SAMPLE_EFFECT_EXTRA =
+  "dev.chrisbanes.haze.sample.android.BENCHMARK_SAMPLE_EFFECT"
+private const val BENCHMARK_SCENARIO_EXTRA =
+  "dev.chrisbanes.haze.sample.android.BENCHMARK_SCENARIO"
+
+internal fun Intent.selectBenchmarkSample(
+  route: String,
+  effect: String,
+  scenarioId: String? = null,
+) {
+  putExtra(BENCHMARK_SAMPLE_ROUTE_EXTRA, route)
+  putExtra(BENCHMARK_SAMPLE_EFFECT_EXTRA, effect)
+  scenarioId?.let { putExtra(BENCHMARK_SCENARIO_EXTRA, it) }
+}
+
+internal inline fun <T> withoutUiAutomatorIdleWait(
+  enabled: Boolean = true,
+  block: () -> T,
+): T {
+  if (!enabled) return block()
+  val configurator = Configurator.getInstance()
+  val previousTimeout = configurator.waitForIdleTimeout
+  configurator.setWaitForIdleTimeout(0)
+  return try {
+    block()
+  } finally {
+    configurator.setWaitForIdleTimeout(previousTimeout)
+  }
+}
+
+internal fun UiDevice.waitForObject(
+  selector: BySelector,
+  timeout: Duration = 15.seconds,
+): UiObject2 = waitForObjectOrNull(selector, timeout)
+  ?: error("Object with selector [$selector] not found")
+
+internal fun UiDevice.waitForObjectOrNull(
+  selector: BySelector,
+  timeout: Duration = 5.seconds,
+): UiObject2? {
+  if (wait(Until.hasObject(selector), timeout)) {
+    return findObject(selector)
+  }
+  return null
+}
+
+internal fun <R> UiDevice.wait(condition: SearchCondition<R>, timeout: Duration): R {
+  return wait(condition, timeout.inWholeMilliseconds)
+}
+
+internal fun UiDevice.waitForImagesList() = waitForObject(By.res("lazy_column"))
+
+internal fun UiDevice.waitForScaffoldWithEquivalentStyleChurn() = waitForObject(By.res("lazy_grid"))
+
+internal fun UiDevice.waitForCreditCard() = waitForObject(By.res("credit_card_2"))
+
+internal fun UiDevice.navigateToImagesList() {
+  findBlurSampleListItem(By.res("Images List")).click()
+  waitForIdle()
+}
+
+internal fun UiDevice.navigateToScaffold() {
+  findBlurSampleListItem(By.res("Scaffold")).click()
+  waitForIdle()
+}
+
+internal fun UiDevice.navigateToCreditCard() {
+  findBlurSampleListItem(By.res("Credit Card")).click()
+  waitForIdle()
+}
+
+/**
+ * [awaitStableStart] settles the Start button before the click. Pass false from a measured block
+ * that never clicks it, so the wait does not extend the measured window.
+ */
+internal fun UiDevice.waitForBlurProfilingScenario(
+  scenarioId: String,
+  awaitStableStart: Boolean = true,
+) {
+  waitForProfilingObject(
+    effectName = "Blur",
+    scenarioId = scenarioId,
+    expectedPhase = "selected",
+    selector = By.res("blur_profiling_selected_$scenarioId"),
+  )
+  waitForProfilingObject(
+    effectName = "Blur",
+    scenarioId = scenarioId,
+    expectedPhase = "ready",
+    selector = By.res("blur_profiling_start"),
+  )
+  if (awaitStableStart) waitForStableBounds(By.res("blur_profiling_start"))
+}
+
+internal fun UiDevice.runBlurProfilingScenario(scenarioId: String) {
+  waitForProfilingObject(
+    effectName = "Blur",
+    scenarioId = scenarioId,
+    expectedPhase = "ready",
+    selector = By.res("blur_profiling_start"),
+  ).click()
+  SystemClock.sleep(BLUR_PROFILING_MEASURE_MILLIS)
+  requireProfilingComplete(effectName = "Blur", scenarioId = scenarioId, tagPrefix = "blur")
+}
+
+internal fun UiDevice.waitForGlassProduct() = waitForObject(By.res("glass_product_page_0"))
+
+internal fun UiDevice.navigateToGlassProduct() {
+  findGlassSampleListItem(By.res("Glass — Product")).click()
+  waitForGlassProduct()
+}
+
+internal fun UiDevice.advanceGlassProduct() {
+  waitForObject(By.desc("Next artwork")).click()
+  waitForObject(By.res("glass_product_page_1"))
+}
+
+internal fun UiDevice.waitForGlassPlayground() =
+  waitForObject(By.res("glass_playground_loop_1"), timeout = 20.seconds)
+
+internal fun UiDevice.navigateToGlassPlayground() {
+  findGlassSampleListItem(By.res("Glass — Playground")).click()
+  waitForGlassPlayground()
+}
+
+internal fun UiDevice.measureFullGlassPlaygroundLoop() {
+  waitForObject(By.desc("Reset demo")).click()
+  waitForObject(By.res("glass_playground_loop_0"))
+  waitForObject(By.res("glass_playground_loop_1"), timeout = 20.seconds)
+}
+
+internal fun UiDevice.waitForGlassProfilingScenario(scenarioId: String) {
+  waitForProfilingObject(
+    effectName = "Glass",
+    scenarioId = scenarioId,
+    expectedPhase = "selected",
+    selector = By.res("glass_profiling_selected_$scenarioId"),
+  )
+  waitForProfilingObject(
+    effectName = "Glass",
+    scenarioId = scenarioId,
+    expectedPhase = "ready",
+    selector = By.res("glass_profiling_start"),
+  )
+  waitForStableBounds(By.res("glass_profiling_start"))
+}
+
+internal fun UiDevice.runGlassProfilingScenario(scenarioId: String) {
+  waitForProfilingObject(
+    effectName = "Glass",
+    scenarioId = scenarioId,
+    expectedPhase = "ready",
+    selector = By.res("glass_profiling_start"),
+  ).click()
+  SystemClock.sleep(GLASS_PROFILING_MEASURE_MILLIS)
+  requireProfilingComplete(effectName = "Glass", scenarioId = scenarioId, tagPrefix = "glass")
+}
+
+/**
+ * The scenario screen animates in after launch, and UI Automator reports the button mid-flight.
+ * Clicking it then lands on the sample list underneath and navigates away. Run from setup so the
+ * wait stays outside the measured window.
+ */
+private fun UiDevice.waitForStableBounds(selector: BySelector, stableFor: Duration = 500.milliseconds) {
+  var last: Rect? = null
+  var since = SystemClock.elapsedRealtime()
+  val deadline = since + 15.seconds.inWholeMilliseconds
+  while (SystemClock.elapsedRealtime() < deadline) {
+    val bounds = findObject(selector)?.visibleBounds
+    val now = SystemClock.elapsedRealtime()
+    if (bounds != last) {
+      last = bounds
+      since = now
+    } else if (bounds != null && now - since >= stableFor.inWholeMilliseconds) {
+      return
+    }
+    SystemClock.sleep(50)
+  }
+  error("Bounds of [$selector] never settled: $last")
+}
+
+/**
+ * Fails the iteration when the scenario never ran, for example because the start click was lost.
+ * Checked after the measured window so it adds no UI Automator work while frames are recorded.
+ * Otherwise the iteration would silently record a static screen with no frames (#1587).
+ */
+private fun UiDevice.requireProfilingComplete(effectName: String, scenarioId: String, tagPrefix: String) {
+  waitForProfilingObject(
+    effectName = effectName,
+    scenarioId = scenarioId,
+    expectedPhase = "complete",
+    selector = By.res("${tagPrefix}_profiling_phase_complete"),
+    timeout = 2.seconds,
+  )
+}
+
+private fun UiDevice.waitForProfilingObject(
+  effectName: String,
+  scenarioId: String,
+  expectedPhase: String,
+  selector: BySelector,
+  timeout: Duration = 15.seconds,
+): UiObject2 = waitForObjectOrNull(selector, timeout)
+  ?: error(
+    "$effectName profiling timeout: scenario=$scenarioId, phase=$expectedPhase, " +
+      "selector=$selector, timeout=$timeout, visibleNodes=" +
+      findObjects(By.pkg(TARGET_PACKAGE))
+        .map { node ->
+          "${node.resourceName}:${node.text}:${node.contentDescription}"
+        },
+  )
+
+// Scenarios run for 3 seconds; the buffer absorbs completion scheduling jitter.
+private const val GLASS_PROFILING_MEASURE_MILLIS = 3_250L
+private const val BLUR_PROFILING_MEASURE_MILLIS = 3_250L
+
+private fun UiDevice.findBlurSampleListItem(selector: BySelector): UiObject2 =
+  findSampleListItem(effect = "blur", selector = selector)
+
+private fun UiDevice.findGlassSampleListItem(selector: BySelector): UiObject2 =
+  findSampleListItem(effect = "glass", selector = selector)
+
+private fun UiDevice.findSampleListItem(effect: String, selector: BySelector): UiObject2 {
+  waitForObject(By.res("sample_effect_$effect")).click()
+  return waitForObject(By.res("sample_list"))
+    .apply { setGestureMarginPercentage(0.1f) }
+    .scrollUntil(Direction.DOWN, Until.findObject(selector))
+}
+
+internal fun UiDevice.repeatedScrolls(
+  tag: String,
+  startDirection: Direction = Direction.DOWN,
+  repetitions: Int = 4,
+) {
+  // Scroll up + down several times
+  repeat(repetitions) { index ->
+    val node = waitForObject(By.res(tag))
+    // Set gesture margins to avoid triggering gesture navigation
+    // with input events from automation.
+    val horiz = (displayWidth / 6f).roundToInt()
+    val vert = (displayHeight / 8f).roundToInt()
+    node.setGestureMargins(horiz, vert, horiz, vert)
+    val direction = when {
+      index % 2 == 0 -> startDirection
+      else -> startDirection.opposite()
+    }
+    node.scroll(direction, 0.8f)
+  }
+}
+
+internal fun UiDevice.repeatedDrags(
+  tag: String,
+  repetitions: Int = 4,
+) {
+  val creditCard = waitForObject(By.res(tag))
+
+  repeat(repetitions) {
+    // Drag it up
+    creditCard.drag(Point(creditCard.visibleCenter.x, (displayHeight * 0.2f).toInt()))
+    // Wait for it to settle back to the middle
+    waitForIdle()
+    // Drag it down
+    creditCard.drag(Point(creditCard.visibleCenter.x, (displayHeight * 0.8f).toInt()))
+    // Wait for it to settle back to the middle
+    waitForIdle()
+  }
+}
+
+private fun Direction.opposite(): Direction = when (this) {
+  Direction.LEFT -> Direction.RIGHT
+  Direction.RIGHT -> Direction.LEFT
+  Direction.DOWN -> Direction.UP
+  else -> Direction.DOWN
+}

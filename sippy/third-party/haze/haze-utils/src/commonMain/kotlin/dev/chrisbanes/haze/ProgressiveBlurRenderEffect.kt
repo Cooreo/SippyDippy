@@ -1,0 +1,192 @@
+// Copyright 2024, Christopher Banes and the Haze project contributors
+// SPDX-License-Identifier: Apache-2.0
+
+@file:OptIn(InternalHazeApi::class)
+
+package dev.chrisbanes.haze
+
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Shader
+
+/**
+ * Creates a separable progressive blur clipped to [size] at [offset].
+ *
+ * [mask] supplies the per-pixel blur intensity and [blurRadiusPx] supplies its maximum radius.
+ *
+ * The shader samples at most 150 px either side of a pixel. Where a pixel's local radius
+ * ([blurRadiusPx] scaled by the mask intensity) exceeds that, the kernel is truncated but its
+ * Gaussian is still sized for the untruncated radius, so the result is weaker than a blur of that
+ * radius would be. [blurRadiusPx] is not clamped.
+ *
+ * Haze Blur uses this effect on Android 13 (API 33) and newer and on Skiko platforms. Older Android
+ * versions approximate progressive blur with layered or masked platform blur instead.
+ */
+@InternalHazeApi
+public fun createProgressiveBlurRenderEffect(
+  blurRadiusPx: Float,
+  size: Size,
+  offset: Offset,
+  mask: Shader,
+): PlatformRenderEffect = createProgressiveBlurRenderEffect(blurRadiusPx, size, offset, mask, offset)
+
+/**
+ * Creates a progressive blur with a mask origin independent of its crop bounds.
+ *
+ * Samples are clamped for output pixels inside the crop and, with [repeatEdge], for one more pixel
+ * beyond it, so a downscaled result drawn back up retains its edge opacity. Further out, unclamped
+ * samples let the blur fade into the expanded margin.
+ */
+@InternalHazeApi
+public fun createProgressiveBlurRenderEffect(
+  blurRadiusPx: Float,
+  size: Size,
+  offset: Offset,
+  mask: Shader,
+  maskOrigin: Offset,
+  repeatEdge: Boolean = false,
+): PlatformRenderEffect {
+  // Drawing a result back up filters at most one pixel past its edge.
+  val edgeRepeat = if (repeatEdge) 1f else 0f
+  val crop = floatArrayOf(
+    offset.x,
+    offset.y,
+    offset.x + size.width,
+    offset.y + size.height,
+  )
+
+  val horizontal = createRuntimeShaderRenderEffect(
+    effect = HORIZONTAL_PROGRESSIVE_BLUR_EFFECT,
+    shaderNames = arrayOf("content"),
+    inputs = arrayOf(null),
+  ) {
+    setFloatUniform("blurRadius", blurRadiusPx)
+    setFloatUniform("crop", crop[0], crop[1], crop[2], crop[3])
+    setFloatUniform("maskOrigin", maskOrigin.x, maskOrigin.y)
+    setFloatUniform("edgeRepeat", edgeRepeat)
+    setChildShader("mask", mask)
+  }
+
+  return createRuntimeShaderRenderEffect(
+    effect = VERTICAL_PROGRESSIVE_BLUR_EFFECT,
+    shaderNames = arrayOf("content"),
+    inputs = arrayOf(horizontal),
+  ) {
+    setFloatUniform("blurRadius", blurRadiusPx)
+    setFloatUniform("crop", crop[0], crop[1], crop[2], crop[3])
+    setFloatUniform("maskOrigin", maskOrigin.x, maskOrigin.y)
+    setFloatUniform("edgeRepeat", edgeRepeat)
+    setChildShader("mask", mask)
+  }
+}
+
+private val VERTICAL_PROGRESSIVE_BLUR_EFFECT by lazy(LazyThreadSafetyMode.NONE) {
+  createRuntimeEffect(makeProgressiveBlurSksl(vertical = true))
+}
+
+private val HORIZONTAL_PROGRESSIVE_BLUR_EFFECT by lazy(LazyThreadSafetyMode.NONE) {
+  createRuntimeEffect(makeProgressiveBlurSksl(vertical = false))
+}
+
+internal expect val avoidProgressiveBlurLoopBreak: Boolean
+
+/**
+ * Creates the SKSL blur shader code for either vertical or horizontal pass.
+ *
+ * Adapted from https://www.shadertoy.com/view/Mtl3Rj
+ * Uses GPU-friendly optimizations, see
+ * https://www.rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling
+ */
+internal fun makeProgressiveBlurSksl(
+  vertical: Boolean,
+  avoidLoopBreak: Boolean = avoidProgressiveBlurLoopBreak,
+): String = """
+    uniform shader content;
+    uniform float blurRadius;
+    uniform vec4 crop;
+    uniform float2 maskOrigin;
+    uniform float edgeRepeat;
+    uniform shader mask;
+
+    const half maxRadius = 150.0;
+
+    float gaussian(float x, float sigma) {
+      return exp(-(x * x) / (2.0 * sigma * sigma));
+    }
+
+    vec2 clampToCrop(vec2 coord) {
+      vec2 midpoint = (crop.xy + crop.zw) / 2.0;
+      vec2 lower = min(crop.xy + vec2(0.5), midpoint);
+      vec2 upper = max(crop.zw - vec2(0.5), midpoint);
+      return clamp(coord, lower, upper);
+    }
+
+    vec4 sampleContent(vec2 coord, bool repeatsEdge) {
+      return content.eval(repeatsEdge ? clampToCrop(coord) : coord);
+    }
+
+    vec4 blur(vec2 coord, float radius) {
+      // Truncate the radius
+      half r = floor(radius + 0.5);
+
+      // Need to use float and vec here for higher precision, otherwise we see
+      // visually clipping on certain devices (Samsung for example)
+      // https://github.com/chrisbanes/haze/issues/520
+      float sigma = max(radius / 2.0, 1.0);
+      float weightSum = 1.0;
+      // Unclipped expanded layers need unclamped samples to fade beyond the repeated edge.
+      bool repeatsEdge = all(greaterThanEqual(coord, crop.xy - vec2(edgeRepeat))) &&
+        all(lessThanEqual(coord, crop.zw + vec2(edgeRepeat)));
+      vec4 result = sampleContent(coord, repeatsEdge);
+
+      // Windows Direct3D stalls on first draw with an early break (issue #1260).
+      for (half i = 1.0; i < maxRadius; i += 2.0) {
+        if (i < r) {
+          float weightL = gaussian(i, sigma);
+          float weightH = gaussian(i + 1.0, sigma);
+          float weight = weightL + weightH;
+          vec2 offset = ${if (vertical) "vec2(0.0, i + weightH / weight)" else "vec2(i + weightH / weight, 0.0)"};
+
+          vec2 newCoord = coord - offset;
+          if (newCoord.x >= crop[0] && newCoord.y >= crop[1]) {
+            result += weight * sampleContent(newCoord, repeatsEdge);
+            weightSum += weight;
+          }
+
+          newCoord = coord + offset;
+          if (newCoord.x <= crop[2] && newCoord.y <= crop[3]) {
+            result += weight * sampleContent(newCoord, repeatsEdge);
+            weightSum += weight;
+          }
+        } ${if (avoidLoopBreak) "" else "else { break; }"}
+      }
+
+      // Check if radius is odd
+      if (r < maxRadius && mod(r, 2.0) == 1.0) {
+        float weight = gaussian(r, sigma);
+        vec2 offset = ${if (vertical) "vec2(0.0, r)" else "vec2(r, 0.0)"};
+
+        vec2 newCoord = coord - offset;
+        if (newCoord.x >= crop[0] && newCoord.y >= crop[1]) {
+          result += weight * sampleContent(newCoord, repeatsEdge);
+          weightSum += weight;
+        }
+
+        newCoord = coord + offset;
+        if (newCoord.x <= crop[2] && newCoord.y <= crop[3]) {
+          result += weight * sampleContent(newCoord, repeatsEdge);
+          weightSum += weight;
+        }
+      }
+
+      return result / weightSum;
+    }
+
+    vec4 main(vec2 coord) {
+      // Offset the coord for the mask, but coerce it to be at least 0, 0
+      vec2 maskCoord = max(coord - maskOrigin, vec2(0.0, 0.0));
+      float intensity = mask.eval(maskCoord).a;
+
+      return blur(coord, mix(0.0, blurRadius, intensity));
+    }
+  """

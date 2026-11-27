@@ -1,0 +1,102 @@
+# Haze
+
+Haze provides visual effects whose reusable appearance descriptions can be applied consistently
+across supported platforms.
+
+## Language
+
+**Glass style**:
+A reusable description of a Glass material's appearance. Its values may depend on observable state,
+so the same Glass style can describe an appearance that changes over time.
+_Avoid_: Material variant
+
+**Built-in Glass style**:
+A library-provided Glass style representing a supported named material response, such as Regular or
+Clear. It owns the optical, edge, lighting, chromatic, tone, and content-normal responses while
+preserving independently composed shape, background colour, tint, alpha, light position, and
+interaction appearance. It remains recognisable when a renderer simplifies advanced optics.
+_Avoid_: Material preset
+
+**Glass optics**:
+An immutable description of a Glass material's refraction, blur, and depth response. Its optical
+parameter values may be fixed across surface sizes or interpolated by size without becoming
+different semantic kinds of optics.
+_Avoid_: Fixed optics, adaptive optics
+
+**Refraction profile**:
+The sampling response that determines how captured content bends through a Glass surface. It may
+follow the surface profile or use an edge response authored independently of lighting.
+_Avoid_: Blur profile, lighting profile
+
+**Sampled content**:
+The captured pixels a Glass surface reads through its refraction profile. A pressed Glass surface
+samples the same content whether it draws alone or as part of a Glass cluster.
+_Avoid_: Sampled backdrop
+
+**Press transform**:
+The scale and pivot a pressed Glass surface applies to itself. It scales the surface together with
+its sampled content, as if the whole surface were drawn smaller or larger.
+_Avoid_: Press scale, interaction transform
+
+**Regular Glass style**:
+The default built-in Glass style whose blur and depth adapt to the surface's shortest side while its
+refraction response uses authored constants.
+_Avoid_: Default Glass style
+
+**Clear Glass style**:
+A built-in Glass style that prioritises visibility of content behind the surface. It uses the same
+shallow blur across surface sizes while its refraction response remains authored specifically for
+Clear.
+_Avoid_: Transparent Glass, no effect
+
+**Optical size point**:
+A point that pairs a Glass surface's shortest dimension with one optical parameter value.
+_Avoid_: Size step, size threshold
+
+**Optical size value**:
+An optical parameter value that is either fixed for every Glass surface size or smoothly
+interpolated across two or more ordered optical size points.
+_Avoid_: Size response, blur profile, adaptive optics
+
+**Glass container**:
+An ancestor that draws its Glass members' surfaces together, so that nearby members can merge into
+one shape and share one optical size. Its merge distance sets how close members must be before they merge.
+_Avoid_: Effect container
+
+**Glass member**:
+A Glass surface that belongs to its nearest Glass container. It keeps its own shape, colours and
+interaction response, unless it is part of a Glass group, which draws with its first member's shape
+and appearance.
+_Avoid_: Child surface, container item
+
+**Glass cluster**:
+Glass members of one container that are close enough and share enough appearance to draw as one
+surface. Their edges stretch towards each other and form smooth bridges as they approach.
+_Avoid_: Union, blob, merged group
+
+**Glass group**:
+Glass members of one container that share a group key and are consecutive in layout order.
+They draw as one Glass shape over their combined bounds, whatever the distance between them. A
+group takes part in a Glass cluster as one member.
+_Avoid_: Glass container, union
+
+**Node-bound edge**:
+A straight part of a Glass surface's silhouette that lies on the bounds of the surface's layout
+node. A corner that curves away from those bounds is not part of it. The edge is node-bound
+wherever the surface sits, not only where it meets a window edge.
+_Avoid_: Window edge, screen edge
+
+**Backdrop input**:
+The `HazeInput.Backdrop` intent to consume all pixels drawn earlier in the same window. A native
+renderer may consume those current-window pixels when it is eligible. When native rendering is
+unavailable, incompatible, or fails, a supplied source fallback provides portable rendering;
+without one, content remains unchanged and Haze does not demand source capture. Backdrop input
+cannot select individual Haze sources, include later drawing, or cross a dialog, popup, or other
+window boundary.
+_Avoid_: Backdrop source, native backdrop guarantee
+
+**Sources input**:
+The `HazeInput.Sources` input that consumes pixels captured by associated `hazeSource` modifiers.
+It preserves explicit source selection and retained-output policies, including the semantics needed
+for cross-window alignment or exact source ownership.
+_Avoid_: Source backdrop, implicit backdrop

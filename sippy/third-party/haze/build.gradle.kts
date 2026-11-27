@@ -1,0 +1,110 @@
+// Copyright 2023, Christopher Banes and the Haze project contributors
+// SPDX-License-Identifier: Apache-2.0
+
+
+import org.gradle.api.file.DuplicatesStrategy
+import org.gradle.api.tasks.AbstractCopyTask
+import org.jetbrains.dokka.gradle.DokkaExtension
+import org.jetbrains.kotlin.gradle.targets.js.ir.DefaultIncrementalSyncTask
+import org.jetbrains.kotlin.gradle.targets.js.npm.tasks.KotlinNpmInstallTask
+
+plugins {
+  id("dev.chrisbanes.root")
+
+  alias(libs.plugins.android.application) apply false
+  alias(libs.plugins.android.library) apply false
+  alias(libs.plugins.android.kotlin.multiplatform.library) apply false
+  alias(libs.plugins.baselineprofile) apply false
+  alias(libs.plugins.cacheFixPlugin) apply false
+  alias(libs.plugins.android.lint) apply false
+  alias(libs.plugins.android.test) apply false
+  alias(libs.plugins.spotless) apply false
+  alias(libs.plugins.compose.multiplatform) apply false
+  alias(libs.plugins.compose.compiler) apply false
+  alias(libs.plugins.mavenpublish) apply false
+  alias(libs.plugins.metalava) apply false
+  alias(libs.plugins.roborazzi) apply false
+  alias(libs.plugins.poko) apply false
+  alias(libs.plugins.dokka)
+}
+
+val checkPublicApiDocumentation = tasks.register("checkPublicApiDocumentation") {
+  group = "verification"
+  description = "Checks that public API documentation generates without warnings."
+}
+
+tasks.named("check") {
+  dependsOn(checkPublicApiDocumentation)
+  // gradle/build-logic is an included build, so `check` doesn't reach its tests by name.
+  dependsOn(gradle.includedBuild("build-logic").task(":convention:test"))
+}
+
+// gradle/build-logic is an included build, so `check` and `spotlessCheck` don't reach its tasks by name.
+tasks.named("spotlessCheck") {
+  dependsOn(gradle.includedBuild("build-logic").task(":convention:spotlessCheck"))
+}
+
+tasks.withType<KotlinNpmInstallTask>().configureEach {
+  args.add("--userconfig=${rootProject.file("gradle/npmrc")}")
+  if (name == "kotlinWasmNpmInstall") {
+    // Kotlin supplies Wasm tooling separately; plugin peers must not install a second webpack.
+    args.add("--omit=peer")
+  }
+}
+
+subprojects {
+  pluginManager.withPlugin("org.jetbrains.dokka") {
+    extensions.configure<DokkaExtension> {
+      dokkaPublications.configureEach {
+        failOnWarning.set(true)
+      }
+      dokkaSourceSets.configureEach {
+        reportUndocumented.set(true)
+      }
+    }
+
+    pluginManager.withPlugin("dev.chrisbanes.metalava") {
+      val dokkaModuleTask = tasks.named("dokkaGenerateModuleHtml")
+      checkPublicApiDocumentation.configure {
+        dependsOn(dokkaModuleTask)
+      }
+    }
+  }
+
+  tasks.withType<AbstractCopyTask>().configureEach {
+    if (name.endsWith("TestDevelopmentExecutableCompileSync")) {
+      // Kotlin/JS copies duplicate Skiko runtime files from main and test resources.
+      duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    }
+  }
+
+  afterEvaluate {
+    tasks.withType<DefaultIncrementalSyncTask>().configureEach {
+      if (name.endsWith("TestDevelopmentExecutableCompileSync")) {
+        // Kotlin/JS configures these tasks after the root project configures subprojects.
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+      }
+    }
+  }
+
+  dependencies {
+    components {
+      listOf(
+        "coil-core-iosarm64",
+        "coil-core-iossimulatorarm64",
+        "coil-core-js",
+        "coil-core-jvm",
+        "coil-core-macosarm64",
+        "coil-core-wasm-js",
+      ).forEach { module ->
+        withModule("io.coil-kt.coil3:$module") {
+          allVariants {
+            withDependencies {
+              removeIf { it.group == "org.jetbrains.skiko" && it.name == "skiko" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,283 @@
+// Copyright 2024, Christopher Banes and the Haze project contributors
+// SPDX-License-Identifier: Apache-2.0
+
+@file:OptIn(InternalHazeApi::class)
+
+package dev.chrisbanes.haze
+
+import android.graphics.RenderEffect
+import android.graphics.RuntimeShader
+import android.os.Build
+import androidx.annotation.ChecksSdkIntAtLeast
+import androidx.annotation.RequiresApi
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shader
+import androidx.compose.ui.graphics.isUnspecified
+import androidx.compose.ui.graphics.toAndroidColorSpace
+
+/**
+ * On Android, we use RuntimeShader directly rather than a RuntimeEffect.
+ * This class wraps the SKSL and the [SharedRuntimeShader] compiled from it.
+ */
+@InternalHazeApi
+public actual class PlatformRuntimeEffect(internal val sksl: String) {
+  private val lock = Any()
+  private var sharedShader: Any? = null
+
+  /** The shader compiled from [sksl], compiling it on first use. */
+  @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+  internal fun sharedShader(): SharedRuntimeShader = synchronized(lock) {
+    sharedShader as SharedRuntimeShader? ?: SharedRuntimeShader(sksl).also { sharedShader = it }
+  }
+}
+
+@InternalHazeApi
+public actual fun createRuntimeEffect(sksl: String): PlatformRuntimeEffect {
+  return PlatformRuntimeEffect(sksl)
+}
+
+/** Returns whether the device supports Android runtime-shader render effects. */
+@ChecksSdkIntAtLeast(api = 33)
+@InternalHazeApi
+public actual fun isRuntimeShaderRenderEffectSupported(): Boolean = Build.VERSION.SDK_INT >= 33
+
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+@InternalHazeApi
+public actual fun createRuntimeShaderRenderEffect(
+  effect: PlatformRuntimeEffect,
+  shaderNames: Array<String>,
+  inputs: Array<PlatformRenderEffect?>,
+  uniforms: RuntimeShaderUniformProvider.() -> Unit,
+): PlatformRenderEffect {
+  val recorded = RecordedUniforms().apply(uniforms)
+  val shader = wrapRuntimeShaderConstruction {
+    effect.sharedShader()
+  }
+  return shader.createEffect(recorded, shaderNames, inputs)
+}
+
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+@InternalHazeApi
+public actual fun createMutableRuntimeShaderRenderEffect(
+  effect: PlatformRuntimeEffect,
+  shaderNames: Array<String>,
+  inputs: Array<PlatformRenderEffect?>,
+): MutableRuntimeShaderRenderEffect = wrapRuntimeShaderConstruction {
+  AndroidMutableRuntimeShaderRenderEffect(
+    effect = effect,
+    shaderNames = shaderNames,
+    inputs = inputs,
+  )
+}
+
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+private class AndroidMutableRuntimeShaderRenderEffect(
+  effect: PlatformRuntimeEffect,
+  private val shaderNames: Array<String>,
+  inputs: Array<PlatformRenderEffect?>,
+) : MutableRuntimeShaderRenderEffect {
+  private val uniforms = RecordedUniforms()
+  private var inputs = inputs.copyOf()
+
+  // Compiled now, as constructing a RuntimeShader here used to, so an invalid shader still fails when
+  // the effect is created rather than on its first update.
+  private val shader = effect.sharedShader()
+
+  override fun updateUniforms(
+    uniforms: RuntimeShaderUniformProvider.() -> Unit,
+  ): PlatformRenderEffect {
+    uniforms(this.uniforms)
+    return shader.createEffect(this.uniforms, shaderNames, inputs)
+  }
+
+  override fun updateInputs(
+    inputs: Array<PlatformRenderEffect?>,
+    uniforms: RuntimeShaderUniformProvider.() -> Unit,
+  ): PlatformRenderEffect {
+    this.inputs = inputs.copyOf()
+    return updateUniforms(uniforms)
+  }
+}
+
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+private fun createAndroidRuntimeShaderRenderEffect(
+  shader: RuntimeShader,
+  shaderNames: Array<String>,
+  inputs: Array<PlatformRenderEffect?>,
+): PlatformRenderEffect {
+  require(shaderNames.isNotEmpty()) {
+    "shaderNames must contain at least one shader uniform name"
+  }
+  require(shaderNames.size >= inputs.size) {
+    "shaderNames (${shaderNames.size}) must be >= inputs (${inputs.size})"
+  }
+
+  // Android's createRuntimeShaderEffect only supports a single content input.
+  // Find the content shader name — the one with a null input (receives rendered content).
+  val contentIndex = inputs.indexOfFirst { it == null }
+  val contentShaderName = when {
+    contentIndex >= 0 -> shaderNames.getOrNull(contentIndex) ?: shaderNames.first()
+    else -> shaderNames.first()
+  }
+
+  return wrapRuntimeShaderConstruction {
+    // Chain any non-null input RenderEffects.
+    val chainedInput = inputs.filterNotNull().reduceOrNull { acc, input ->
+      acc.then(input)
+    }
+    RenderEffect.createRuntimeShaderEffect(shader, contentShaderName).let { content ->
+      chainedInput?.then(content) ?: content
+    }
+  }
+}
+
+/**
+ * A [RuntimeShader] shared by every effect created from the same SkSL.
+ *
+ * Constructing a [RuntimeShader] compiles its SkSL, which is expensive and happens on the main
+ * thread as effects first draw. A [RenderEffect] copies the shader's uniforms and children when it
+ * is created, so effects can share one compiled shader if each gives it the state a new shader would
+ * have before creating a [RenderEffect]: its own uniforms and children, zero for uniforms only other
+ * effects set (using each uniform's integer or float type), and no children otherwise. A child cannot be unset, so between effects every child is
+ * [EmptyChildShader], which samples as transparent black just as an unset child does, and which
+ * keeps the shared shader from holding on to a child after the effect that set it is gone.
+ */
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+internal class SharedRuntimeShader(
+  sksl: String,
+  // A seam so tests can inject a binding failure; Robolectric cannot fail a real RuntimeShader.
+  private val bindChild: (RuntimeShader, String, android.graphics.Shader) -> Unit =
+    { shader, name, child -> shader.setInputShader(name, child) },
+) {
+  private val shader = trace("HazeRuntimeShader.construct") { RuntimeShader(sksl) }
+  private val intUniformNames = HashSet<String>()
+  private val floatUniformSizes = HashMap<String, Int>()
+  private val colorUniforms = HashSet<String>()
+  private val zeroArrays = HashMap<Int, FloatArray>()
+  private val childNames = HashSet<String>()
+
+  /** A zero array of [size], shared because [RuntimeShader] copies it; callers must not write to it. */
+  internal fun zeroFloats(size: Int): FloatArray = zeroArrays.getOrPut(size) { FloatArray(size) }
+
+  @Synchronized
+  fun createEffect(
+    uniforms: RecordedUniforms,
+    shaderNames: Array<String>,
+    inputs: Array<PlatformRenderEffect?>,
+  ): PlatformRenderEffect {
+    for (name in intUniformNames) {
+      if (name !in uniforms.ints) shader.setIntUniform(name, 0)
+    }
+    for ((name, size) in floatUniformSizes) {
+      if (name !in uniforms.floats) shader.setFloatUniform(name, zeroFloats(size))
+    }
+    for (name in colorUniforms) {
+      if (name !in uniforms.colors) shader.setColorUniform(name, 0)
+    }
+    for ((name, value) in uniforms.ints) {
+      shader.setIntUniform(name, value)
+      intUniformNames += name
+    }
+    for ((name, values) in uniforms.floats) {
+      shader.setFloatUniform(name, values)
+      floatUniformSizes[name] = values.size
+    }
+    for ((name, color) in uniforms.colors) {
+      shader.setColorUniform(name, color.packed)
+      colorUniforms += name
+    }
+    try {
+      for ((name, child) in uniforms.children) {
+        bindChild(shader, name, child)
+        childNames += name
+      }
+      return createAndroidRuntimeShaderRenderEffect(shader, shaderNames, inputs)
+    } finally {
+      for (name in childNames) bindChild(shader, name, EmptyChildShader)
+    }
+  }
+}
+
+/** A child shader that samples as transparent black everywhere, as an unset child does. */
+private val EmptyChildShader: android.graphics.Shader by lazy {
+  android.graphics.BitmapShader(
+    android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888),
+    android.graphics.Shader.TileMode.CLAMP,
+    android.graphics.Shader.TileMode.CLAMP,
+  )
+}
+
+/** A colour uniform recorded as an Android `ColorLong`, ready for `RuntimeShader.setColorUniform`. */
+internal class RecordedColor {
+  var packed: Long = 0L
+}
+
+/**
+ * Uniforms set by one effect, applied to its [SharedRuntimeShader] each time it creates an effect.
+ *
+ * Float and colour entries are rewritten in place when a name is set again with the same size, so
+ * a long-lived effect that updates its uniforms every frame does not allocate. That is safe because
+ * [RuntimeShader] copies the values it is given.
+ */
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+internal class RecordedUniforms : RuntimeShaderUniformProvider {
+  val ints = HashMap<String, Int>()
+  val floats = HashMap<String, FloatArray>()
+  val colors = HashMap<String, RecordedColor>()
+  val children = HashMap<String, Shader>()
+
+  private fun floatsFor(name: String, size: Int): FloatArray {
+    val existing = floats[name]
+    if (existing != null && existing.size == size) return existing
+    return FloatArray(size).also { floats[name] = it }
+  }
+
+  override fun setColorUniform(name: String, color: Color) {
+    colors.getOrPut(name) { RecordedColor() }.packed = color.toAndroidColorLong()
+  }
+
+  override fun setFloatUniform(name: String, value: Float) {
+    floatsFor(name, 1)[0] = value
+  }
+
+  override fun setFloatUniform(name: String, value1: Float, value2: Float) {
+    floatsFor(name, 2).apply {
+      this[0] = value1
+      this[1] = value2
+    }
+  }
+
+  override fun setFloatUniform(name: String, value1: Float, value2: Float, value3: Float, value4: Float) {
+    floatsFor(name, 4).apply {
+      this[0] = value1
+      this[1] = value2
+      this[2] = value3
+      this[3] = value4
+    }
+  }
+
+  override fun setFloatUniform(name: String, values: FloatArray) {
+    values.copyInto(floatsFor(name, values.size))
+  }
+
+  override fun setIntUniform(name: String, value: Int) {
+    ints[name] = value
+  }
+
+  override fun setChildShader(name: String, shader: Shader) {
+    children[name] = shader
+  }
+}
+
+/**
+ * Compose's [Color.value] is already an Android `ColorLong` for colour spaces with IDs up to 15. It
+ * numbers the others (BT.2020 HLG and PQ, Oklab, ...) differently, and its own `toColorLong` returns an
+ * invalid value for some of them on older SDKs, so those take the platform's pack function.
+ */
+@InternalHazeApi
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+public fun Color.toAndroidColorLong(): Long = when {
+  isUnspecified -> 0L // Transparent black, as the shader has always received for Color.Unspecified.
+  (value and 63u).toInt() <= 15 -> value.toLong()
+  else -> android.graphics.Color.pack(red, green, blue, alpha, colorSpace.toAndroidColorSpace())
+}

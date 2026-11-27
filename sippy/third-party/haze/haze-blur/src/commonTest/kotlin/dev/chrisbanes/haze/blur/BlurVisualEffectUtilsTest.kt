@@ -1,0 +1,204 @@
+// Copyright 2026, Christopher Banes and the Haze project contributors
+// SPDX-License-Identifier: Apache-2.0
+
+package dev.chrisbanes.haze.blur
+
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.layout.ScaleFactor
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import assertk.assertThat
+import assertk.assertions.isEqualTo
+import assertk.assertions.isFalse
+import assertk.assertions.isNotEqualTo
+import assertk.assertions.isTrue
+import dev.chrisbanes.haze.HazeProgressive
+import kotlin.test.Test
+
+class BlurVisualEffectUtilsTest {
+
+  @Test
+  fun renderEffectCacheKey_solidColorGraphIgnoresGeometry() {
+    val colorEffects = listOf(HazeColorEffect.tint(Color.Red))
+    val params = renderEffectParams(colorEffects = colorEffects)
+
+    assertThat(params.renderEffectCacheKey(Density(2f))).isEqualTo(
+      renderEffectParams(
+        colorEffects = colorEffects,
+        contentSize = Size(800f, 600f),
+        contentOffset = Offset(24f, 12f),
+      ).renderEffectCacheKey(Density(2f)),
+    )
+  }
+
+  @Test
+  fun renderEffectCacheKey_brushTintTracksSizeAndOffset() {
+    val colorEffects = listOf(
+      HazeColorEffect.tint(Brush.verticalGradient(listOf(Color.Red, Color.Blue))),
+    )
+    val params = renderEffectParams(colorEffects = colorEffects)
+    val key = params.renderEffectCacheKey(Density(2f))
+
+    assertThat(key).isNotEqualTo(
+      renderEffectParams(
+        colorEffects = colorEffects,
+        contentSize = Size(800f, 600f),
+      ).renderEffectCacheKey(Density(2f)),
+    )
+    assertThat(key).isNotEqualTo(
+      renderEffectParams(
+        colorEffects = colorEffects,
+        contentOffset = Offset(24f, 12f),
+      ).renderEffectCacheKey(Density(2f)),
+    )
+  }
+
+  @Test
+  fun renderEffectCacheKey_colorFilterTracksOffsetButNotSize() {
+    val colorEffects = listOf(
+      HazeColorEffect.colorFilter(ColorFilter.tint(Color.Red)),
+    )
+    val params = renderEffectParams(colorEffects = colorEffects)
+    val key = params.renderEffectCacheKey(Density(2f))
+
+    assertThat(key).isEqualTo(
+      renderEffectParams(
+        colorEffects = colorEffects,
+        contentSize = Size(800f, 600f),
+      ).renderEffectCacheKey(Density(2f)),
+    )
+    assertThat(key).isNotEqualTo(
+      renderEffectParams(
+        colorEffects = colorEffects,
+        contentOffset = Offset(24f, 12f),
+      ).renderEffectCacheKey(Density(2f)),
+    )
+  }
+
+  @Test
+  fun renderEffectCacheKey_maskAndProgressiveTrackGeometry() {
+    val mask = Brush.verticalGradient(listOf(Color.Black, Color.Transparent))
+    val progressive = HazeProgressive.verticalGradient(startIntensity = 1f, endIntensity = 0f)
+    val masked = renderEffectParams(mask = mask)
+    val progressiveParams = renderEffectParams(progressive = progressive)
+
+    assertThat(masked.renderEffectCacheKey(Density(2f))).isNotEqualTo(
+      renderEffectParams(
+        contentSize = Size(800f, 600f),
+        contentOffset = Offset(24f, 12f),
+        mask = mask,
+      ).renderEffectCacheKey(Density(2f)),
+    )
+    assertThat(progressiveParams.renderEffectCacheKey(Density(2f))).isNotEqualTo(
+      renderEffectParams(
+        contentSize = Size(800f, 600f),
+        contentOffset = Offset(24f, 12f),
+        progressive = progressive,
+      ).renderEffectCacheKey(Density(2f)),
+    )
+  }
+
+  @Test
+  fun renderEffectCacheKey_progressiveMaskTracksMaskAndGeometry() {
+    val density = Density(2f)
+    val mask = Brush.verticalGradient(listOf(Color.Black, Color.Transparent))
+    val progressiveMask = Brush.horizontalGradient(listOf(Color.Transparent, Color.Black))
+    val progressiveOnly = renderEffectParams(progressiveMask = progressiveMask)
+
+    assertThat(progressiveOnly.renderEffectCacheKey(density))
+      .isNotEqualTo(renderEffectParams().renderEffectCacheKey(density))
+    assertThat(progressiveOnly.renderEffectCacheKey(density)).isNotEqualTo(
+      renderEffectParams(contentSize = Size(800f, 600f), progressiveMask = progressiveMask)
+        .renderEffectCacheKey(density),
+    )
+    assertThat(progressiveOnly.renderEffectCacheKey(density)).isNotEqualTo(
+      renderEffectParams(contentOffset = Offset(24f, 12f), progressiveMask = progressiveMask)
+        .renderEffectCacheKey(density),
+    )
+
+    val both = renderEffectParams(mask = mask, progressiveMask = progressiveMask)
+      .renderEffectCacheKey(density)
+    assertThat(both).isNotEqualTo(renderEffectParams(mask = mask).renderEffectCacheKey(density))
+    assertThat(both).isNotEqualTo(progressiveOnly.renderEffectCacheKey(density))
+  }
+
+  @Test
+  fun renderEffectCacheKey_actualCaptureScaleMattersOnlyForAuthoredShaders() {
+    val density = Density(1f)
+    val mask = Brush.verticalGradient(listOf(Color.Black, Color.Transparent))
+    val original = renderEffectParams(mask = mask, captureScale = ScaleFactor(0.5f, 0.5f))
+    val changed = renderEffectParams(mask = mask, captureScale = ScaleFactor(0.5f, 0.51f))
+    assertThat(original.renderEffectCacheKey(density)).isNotEqualTo(changed.renderEffectCacheKey(density))
+    assertThat(renderEffectParams(captureScale = ScaleFactor(0.5f, 0.5f)).renderEffectCacheKey(density))
+      .isEqualTo(renderEffectParams(captureScale = ScaleFactor(0.5f, 0.51f)).renderEffectCacheKey(density))
+  }
+
+  @Test
+  fun renderEffectCacheKey_tracksDensity() {
+    val params = renderEffectParams()
+
+    assertThat(params.renderEffectCacheKey(Density(1f)))
+      .isNotEqualTo(params.renderEffectCacheKey(Density(2f)))
+  }
+
+  @Test
+  fun renderEffectCacheKey_tracksBackdropBackgroundColor() {
+    val density = Density(2f)
+
+    assertThat(renderEffectParams(backgroundColor = Color.Red).renderEffectCacheKey(density))
+      .isNotEqualTo(
+        renderEffectParams(backgroundColor = Color.Blue).renderEffectCacheKey(density),
+      )
+  }
+
+  @Test
+  fun renderEffectCacheKey_canonicalizesDisabledNoise() {
+    val density = Density(2f)
+    val key = renderEffectParams(noiseFactor = 0f).renderEffectCacheKey(density)
+
+    assertThat(key)
+      .isEqualTo(renderEffectParams(noiseFactor = -1f).renderEffectCacheKey(density))
+    assertThat(key)
+      .isEqualTo(renderEffectParams(noiseFactor = Float.NaN).renderEffectCacheKey(density))
+    assertThat(key)
+      .isNotEqualTo(renderEffectParams(noiseFactor = 0.15f).renderEffectCacheKey(density))
+  }
+
+  @Test
+  fun hasVisibleNoise_onlyForPositiveFactors() {
+    assertThat((-1f).hasVisibleNoise()).isFalse()
+    assertThat(0f.hasVisibleNoise()).isFalse()
+    assertThat(Float.NaN.hasVisibleNoise()).isFalse()
+    assertThat(0.15f.hasVisibleNoise()).isTrue()
+  }
+
+  private fun renderEffectParams(
+    colorEffects: List<HazeColorEffect> = listOf(HazeColorEffect.tint(Color.Red)),
+    noiseFactor: Float = 0.15f,
+    contentSize: Size = Size(640f, 480f),
+    contentOffset: Offset = Offset(8f, 4f),
+    captureScale: ScaleFactor = ScaleFactor(1f, 1f),
+    backgroundColor: Color = Color.Transparent,
+    mask: Brush? = null,
+    progressiveMask: Brush? = null,
+    progressive: HazeProgressive? = null,
+  ) = RenderEffectParams(
+    blurRadius = 20.dp,
+    noiseFactor = noiseFactor,
+    scale = 1f,
+    contentSize = contentSize,
+    contentOffset = contentOffset,
+    captureScale = captureScale,
+    colorEffects = colorEffects,
+    backgroundColor = backgroundColor,
+    mask = mask,
+    progressiveMask = progressiveMask,
+    progressive = progressive,
+    blurTileMode = TileMode.Clamp,
+  )
+}

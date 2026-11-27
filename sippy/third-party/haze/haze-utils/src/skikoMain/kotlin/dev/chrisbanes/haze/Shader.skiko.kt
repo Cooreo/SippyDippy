@@ -1,0 +1,35 @@
+// Copyright 2024, Christopher Banes and the Haze project contributors
+// SPDX-License-Identifier: Apache-2.0
+
+@file:OptIn(InternalHazeApi::class)
+
+package dev.chrisbanes.haze
+
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.asComposeShader
+import org.jetbrains.skia.ColorFilter
+import org.jetbrains.skia.Shader
+
+/**
+ * Creates a fractal noise shader.
+ */
+@InternalHazeApi
+public fun createFractalNoiseShader(
+  baseFrequencyX: Float,
+  baseFrequencyY: Float,
+  numOctaves: Int,
+  seed: Float,
+): androidx.compose.ui.graphics.Shader = Shader.makeFractalNoise(
+  baseFrequencyX = baseFrequencyX,
+  baseFrequencyY = baseFrequencyY,
+  numOctaves = numOctaves,
+  seed = seed,
+).asComposeShader()
+
+@InternalHazeApi
+public actual fun createBlendColorFilter(
+  color: Int,
+  blendMode: BlendMode,
+): PlatformColorFilter {
+  return ColorFilter.makeBlend(color, blendMode.toSkiaBlendMode())
+}

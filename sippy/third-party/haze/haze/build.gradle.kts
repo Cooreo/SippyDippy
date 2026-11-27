@@ -1,0 +1,219 @@
+// Copyright 2023, Christopher Banes and the Haze project contributors
+// SPDX-License-Identifier: Apache-2.0
+
+
+import dev.chrisbanes.gradle.addDefaultHazeTargets
+import dev.chrisbanes.gradle.checkPublishedDependencies
+import java.time.Duration
+import java.util.Properties
+import java.util.zip.ZipFile
+import org.gradle.api.tasks.testing.AbstractTestTask
+plugins {
+  id("dev.chrisbanes.android.library")
+  id("dev.chrisbanes.kotlin.multiplatform")
+  id("dev.chrisbanes.compose")
+  id("androidx.baselineprofile")
+  id("org.jetbrains.dokka")
+  id("com.vanniktech.maven.publish")
+  id("dev.chrisbanes.metalava")
+  id("dev.drewhamilton.poko")
+}
+
+checkPublishedDependencies()
+
+kotlin {
+  android {
+    namespace = "dev.chrisbanes.haze"
+
+    optimization {
+      consumerKeepRules.publish = true
+      consumerKeepRules.file("consumer-rules.pro")
+    }
+
+    withHostTest {
+      isIncludeAndroidResources = true
+    }
+
+    withDeviceTest {
+      instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+  }
+
+  addDefaultHazeTargets(project, withSkikoMain = true)
+  explicitApi()
+
+  sourceSets {
+    commonMain {
+      dependencies {
+        api(libs.compose.animation.core)
+        api(libs.compose.ui)
+        implementation(projects.hazeUtils)
+        implementation(libs.androidx.lifecycle.runtime.compose)
+      }
+    }
+
+    androidMain {
+      dependencies {
+        implementation(libs.androidx.activity)
+      }
+    }
+
+    commonTest {
+      dependencies {
+        implementation(kotlin("test"))
+        implementation(libs.assertk)
+
+        implementation(libs.compose.foundation)
+        implementation(libs.compose.ui.test)
+
+        implementation(projects.internal.contextTest)
+      }
+    }
+
+    named("androidHostTest") {
+      dependencies {
+        implementation(libs.compose.foundation)
+        implementation(libs.compose.ui.test.junit4)
+        implementation(projects.internal.screenshotTest)
+      }
+    }
+
+    named("androidDeviceTest") {
+      dependencies {
+        implementation(libs.androidx.activity.compose)
+        implementation(libs.assertk)
+        implementation(libs.androidx.compose.ui.test.manifest)
+        implementation(libs.androidx.test.core)
+        implementation(libs.androidx.test.runner)
+        implementation(libs.compose.foundation)
+      }
+    }
+
+    jvmTest {
+      dependencies {
+        implementation(compose.desktop.currentOs)
+      }
+    }
+  }
+
+  compilerOptions {
+    optIn.add("dev.chrisbanes.haze.ExperimentalHazeApi")
+    optIn.add("dev.chrisbanes.haze.InternalHazeApi")
+  }
+}
+
+val enableAppleTests = providers.gradleProperty("haze.enableAppleTests").isPresent
+
+/**
+ * Disable native host and iOS sim tests by default. They have a high CI cost (mostly
+ * linking), but CI can opt in to iOS simulator coverage with -Phaze.enableAppleTests.
+ */
+tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest> {
+  enabled = enableAppleTests
+}
+tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeHostTest> {
+  enabled = enableAppleTests
+}
+
+poko {
+  pokoAnnotation.set("dev/chrisbanes/haze/Poko")
+}
+
+baselineProfile {
+  filter {
+    include("dev.chrisbanes.haze.**")
+    exclude("dev.chrisbanes.haze.sample.**")
+  }
+}
+
+dependencies {
+  baselineProfile(projects.internal.benchmark)
+}
+
+tasks.withType<Test>().configureEach {
+  failOnNoDiscoveredTests.set(false)
+}
+
+val jvmTest = tasks.named<Test>("jvmTest") {
+  exclude("**/HazeDesktopWindowRenderingTest.class")
+}
+
+tasks.register<Test>("desktopWindowTest") {
+  group = "verification"
+  description = "Tests source-backed rendering between real Desktop windows; requires a display."
+  val compiledJvmTests = jvmTest.get()
+  testClassesDirs = compiledJvmTests.testClassesDirs
+  classpath = compiledJvmTests.classpath
+  javaLauncher.set(compiledJvmTests.javaLauncher)
+  dependsOn(provider { jvmTest.get().let { it.taskDependencies.getDependencies(it) } })
+  include("**/HazeDesktopWindowRenderingTest.class")
+  failOnNoDiscoveredTests.set(true)
+  maxParallelForks = 1
+  timeout.set(Duration.ofMinutes(2))
+  systemProperty("java.awt.headless", "false")
+  systemProperty(
+    "haze.desktopWindowTest.outputDir",
+    layout.buildDirectory.dir("outputs/desktop-window-tests").get().asFile.absolutePath,
+  )
+  environment("SKIKO_RENDER_API", "SOFTWARE")
+  // Xvfb sessions change both values; track them so cached fork options cannot retain a dead display.
+  environment("DISPLAY", providers.environmentVariable("DISPLAY").getOrElse(""))
+  environment("XAUTHORITY", providers.environmentVariable("XAUTHORITY").getOrElse(""))
+  outputs.upToDateWhen { false }
+  outputs.doNotCacheIf("Real display rendering must execute on every invocation") { true }
+}
+
+tasks.register<org.gradle.api.tasks.Exec>("verifyDesktopWindowTests") {
+  group = "verification"
+  description = "Runs and verifies every required real Desktop window rendering test."
+  dependsOn("desktopWindowTest")
+  commandLine(
+    "python3",
+    rootProject.file("scripts/verify_desktop_window_tests.py").absolutePath,
+    layout.buildDirectory.file(
+      "test-results/desktopWindowTest/TEST-dev.chrisbanes.haze.HazeDesktopWindowRenderingTest.xml",
+    ).get().asFile.absolutePath,
+  )
+}
+
+val verifyAndroidAarCompileSdk = tasks.register("verifyAndroidAarCompileSdk") {
+  group = "verification"
+  description = "Verifies that the Android AAR supports consumers compiling with SDK 37.0."
+
+  dependsOn("bundleAndroidMainAar")
+  inputs.file(layout.buildDirectory.file("outputs/aar/haze.aar"))
+
+  doLast {
+    val metadata = Properties()
+    ZipFile(inputs.files.singleFile).use { aar ->
+      aar.getInputStream(
+        checkNotNull(aar.getEntry("META-INF/com/android/build/gradle/aar-metadata.properties")),
+      ).use(metadata::load)
+    }
+
+    check(metadata.getProperty("minCompileSdk") == "37") {
+      "Expected Android AAR minCompileSdk=37, found ${metadata.getProperty("minCompileSdk")}"
+    }
+    check(metadata.getProperty("minCompileMinorSdk") == "0") {
+      "Expected Android AAR minCompileMinorSdk=0, " +
+        "found ${metadata.getProperty("minCompileMinorSdk")}"
+    }
+  }
+}
+
+tasks.named("check") {
+  dependsOn(verifyAndroidAarCompileSdk)
+}
+
+// Compose resources plugin generates this task for withDeviceTest() even when
+// no androidDeviceTest source set exists. Disable it to avoid outputDirectory errors.
+tasks.configureEach {
+  if (name == "copyAndroidDeviceTestComposeResourcesToAndroidAssets") {
+    enabled = false
+  }
+}
+
+// A process deadline also stops synchronous UI idling that coroutine cancellation cannot preempt.
+tasks.withType<AbstractTestTask>().configureEach {
+  timeout.convention(Duration.ofMinutes(5))
+}

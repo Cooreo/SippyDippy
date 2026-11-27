@@ -1,0 +1,158 @@
+// Copyright 2024, Christopher Banes and the Haze project contributors
+// SPDX-License-Identifier: Apache-2.0
+
+@file:OptIn(androidx.compose.ui.InternalComposeUiApi::class)
+@file:Suppress("DEPRECATION")
+
+package dev.chrisbanes.haze.test
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.LocalSystemTheme
+import androidx.compose.ui.MotionDurationScale
+import androidx.compose.ui.SystemTheme
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.PixelMap
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SkikoComposeUiTest
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.v2.runSkikoComposeUiTest
+import androidx.compose.ui.unit.Density
+import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
+import com.github.takahirom.roborazzi.InternalRoborazziApi
+import com.github.takahirom.roborazzi.RoborazziOptions
+import com.github.takahirom.roborazzi.provideRoborazziContext
+import com.github.takahirom.roborazzi.roboOutputName
+import io.github.takahirom.roborazzi.captureRoboImage
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
+
+actual abstract class ScreenshotTest : ContextTest()
+
+actual fun ScreenshotTest.runScreenshotTest(
+  size: Size,
+  block: ScreenshotUiTest.() -> Unit,
+) = runScreenshotTestIn(size, EmptyCoroutineContext, block)
+
+/**
+ * Runs [block] with a zero [MotionDurationScale], so animations jump to their end state instead of
+ * rendering every intermediate frame in [ScreenshotUiTest.waitForIdle] (#1778). Use it only when
+ * every capture is pixel-identical to the animated run: samples that read the scale can change
+ * behavior.
+ */
+fun ScreenshotTest.runScreenshotTestWithoutMotion(
+  size: Size = Size(1080f, 1920f),
+  block: ScreenshotUiTest.() -> Unit,
+) = runScreenshotTestIn(size, NoMotion, block)
+
+private object NoMotion : MotionDurationScale {
+  override val scaleFactor = 0f
+}
+
+@OptIn(ExperimentalTestApi::class, ExperimentalRoborazziApi::class, InternalRoborazziApi::class)
+private fun runScreenshotTestIn(
+  size: Size,
+  effectContext: CoroutineContext,
+  block: ScreenshotUiTest.() -> Unit,
+) {
+  runSkikoComposeUiTest(
+    size = size,
+    density = Density(2.75f),
+    effectContext = effectContext,
+  ) {
+    provideRoborazziContext().apply {
+      setRuleOverrideRoborazziOptions(HazeRoborazziDefaults.roborazziOptions)
+      setRuleOverrideOutputDirectory("screenshots/desktop")
+    }
+    createScreenshotUiTest().block()
+  }
+}
+
+@OptIn(ExperimentalTestApi::class, ExperimentalRoborazziApi::class, InternalRoborazziApi::class)
+private fun SkikoComposeUiTest.createScreenshotUiTest() = object : ScreenshotUiTest {
+  override val supportsRuntimeBlur: Boolean = true
+  override val mainClock get() = this@createScreenshotUiTest.mainClock
+
+  override fun setContent(content: @Composable () -> Unit) {
+    this@createScreenshotUiTest.setContent {
+      // Keep Glass snapshots independent from the host OS appearance. Nested providers still win.
+      CompositionLocalProvider(LocalSystemTheme provides SystemTheme.Light, content = content)
+    }
+  }
+
+  override fun captureRoot(
+    nameSuffix: String?,
+    unmatchedPixelThreshold: Float?,
+    artifactPath: String?,
+  ) {
+    val output = artifactPath?.substringAfterLast('/') ?: when {
+      nameSuffix.isNullOrEmpty() -> "${roboOutputName()}.webp"
+      else -> "${roboOutputName()}_$nameSuffix.webp"
+    }
+    val options = unmatchedPixelThreshold
+      ?.let(HazeRoborazziDefaults::roborazziOptions)
+      ?: HazeRoborazziDefaults.roborazziOptions
+    val context = provideRoborazziContext()
+    val previousOutputDirectory = context.outputDirectory
+    artifactPath?.substringBeforeLast('/', missingDelimiterValue = "")?.takeIf(String::isNotEmpty)
+      ?.let { context.setRuleOverrideOutputDirectory(it) }
+    try {
+      this@createScreenshotUiTest.captureRootArtifact(output, options)
+    } finally {
+      if (artifactPath != null) context.setRuleOverrideOutputDirectory(previousOutputDirectory)
+    }
+  }
+
+  override fun captureRootPixels(): PixelMap =
+    this@createScreenshotUiTest.captureRootImage().toPixelMap()
+
+  override fun onNodeWithTag(testTag: String) =
+    this@createScreenshotUiTest.onNodeWithTag(testTag)
+
+  override fun waitForIdle() {
+    this@createScreenshotUiTest.waitForIdle()
+  }
+
+  override fun swipeUpOnRoot() {
+    this@createScreenshotUiTest.onRoot().performTouchInput {
+      swipeUp()
+    }
+  }
+}
+
+/**
+ * Writes the root artifact with Roborazzi. Both Roborazzi overloads skip a disabled task, but only
+ * the semantics-node one writes UI-tree diagnostics, so use it when they are requested.
+ */
+@OptIn(ExperimentalTestApi::class, ExperimentalRoborazziApi::class)
+internal fun SkikoComposeUiTest.captureRootArtifact(output: String, options: RoborazziOptions) {
+  // Return before touching the semantics root: it can wait for idle, draw, or throw without content.
+  if (!options.taskType.isEnabled()) return
+  if (options.uiTreeDumpOptions != null) {
+    onRoot().captureRoboImage(output, options)
+  } else {
+    captureRootImage().captureRoboImage(output, options)
+  }
+}
+
+/**
+ * Captures the root without rendering it again. [SkikoComposeUiTest.waitForIdle] already renders
+ * pending changes to the test surface, but `onRoot().captureToImage()` redraws the whole scene,
+ * which doubles the cost of every Desktop capture (#1778). Redraw only when the root does not
+ * cover the surface, because the surface snapshot is not cropped.
+ */
+@OptIn(ExperimentalTestApi::class)
+private fun SkikoComposeUiTest.captureRootImage(): ImageBitmap {
+  // Fetch bounds first: the fetch can wait for idle and draw, which must precede the snapshot.
+  val bounds = onRoot().fetchSemanticsNode().boundsInWindow
+  val image = captureToImage()
+  val coversSurface = bounds.left == 0f && bounds.top == 0f &&
+    bounds.width.toInt() == image.width && bounds.height.toInt() == image.height
+  return if (coversSurface) image else onRoot().captureToImage()
+}

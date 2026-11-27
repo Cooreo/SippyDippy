@@ -1,0 +1,118 @@
+// Copyright 2025, Christopher Banes and the Haze project contributors
+// SPDX-License-Identifier: Apache-2.0
+
+
+import dev.chrisbanes.gradle.addDefaultHazeTargets
+import dev.chrisbanes.gradle.checkPublishedDependencies
+import org.gradle.api.tasks.testing.Test
+
+plugins {
+  id("dev.chrisbanes.android.library")
+  id("dev.chrisbanes.android.managed-devices")
+  id("dev.chrisbanes.kotlin.multiplatform")
+  id("dev.chrisbanes.compose")
+  id("org.jetbrains.dokka")
+  id("com.vanniktech.maven.publish")
+  id("dev.chrisbanes.metalava")
+  id("dev.drewhamilton.poko")
+  id("io.github.takahirom.roborazzi")
+}
+
+checkPublishedDependencies()
+
+kotlin {
+  android {
+    namespace = "dev.chrisbanes.haze.glass"
+    androidResources.enable = true
+
+    withHostTest {
+      isIncludeAndroidResources = true
+    }
+  }
+
+  addDefaultHazeTargets(project, withSkikoMain = true)
+  explicitApi()
+
+  sourceSets {
+    commonMain {
+      dependencies {
+        api(projects.haze)
+        api(libs.compose.animation.core)
+        api(libs.compose.foundation)
+        implementation(projects.hazeUtils)
+        implementation(libs.compose.ui)
+      }
+    }
+
+    commonTest {
+      dependencies {
+        implementation(kotlin("test"))
+        implementation(libs.assertk)
+        implementation(libs.compose.ui.test)
+        implementation(projects.internal.contextTest)
+      }
+    }
+
+    named("androidDeviceTest") {
+      dependencies {
+        implementation(libs.assertk)
+        implementation(libs.androidx.activity.compose)
+        implementation(libs.androidx.compose.ui.test.junit4)
+        implementation(libs.androidx.compose.ui.test.manifest)
+        implementation(libs.androidx.test.espresso.core)
+        implementation(libs.androidx.test.runner)
+      }
+    }
+
+    named("androidHostTest") {
+      dependencies {
+        implementation(projects.internal.screenshotTest)
+        implementation(libs.compose.ui.test.junit4)
+      }
+    }
+
+    jvmTest {
+      dependencies {
+        implementation(compose.desktop.currentOs)
+      }
+    }
+  }
+
+  // Main sources opt in file by file; tests use the experimental and internal APIs freely.
+  sourceSets.matching { it.name.endsWith("Test") }.configureEach {
+    languageSettings.optIn("dev.chrisbanes.haze.ExperimentalHazeApi")
+    languageSettings.optIn("dev.chrisbanes.haze.InternalHazeApi")
+  }
+}
+
+dependencies {
+  add("androidHostTestImplementation", libs.androidx.activity)
+}
+
+roborazzi {
+  outputDir.set(project.layout.projectDirectory.dir("screenshots"))
+}
+
+poko {
+  pokoAnnotation.set("dev/chrisbanes/haze/Poko")
+}
+
+tasks.withType<Test>().matching { it.name == "testAndroidHostTest" }.configureEach {
+  systemProperty("robolectric.pixelCopyRenderMode", "hardware")
+}
+
+// The CPU-bound Skiko Desktop suite ran as a single 17-minute fork on CI's critical path.
+tasks.withType<Test>().matching { it.name == "jvmTest" }.configureEach {
+  maxParallelForks = 4
+}
+
+// Classpath for the Metal profiling launcher GlassMetalProfileScene (#1766). Run it with `java -cp`
+// as documented in internal/benchmark/README.md#metal-profiling-launcher.
+val prepareGlassMetalProfile by tasks.registering {
+  val test = kotlin.jvm().compilations.getByName("test")
+  val classpath = files(test.output.allOutputs, test.runtimeDependencyFiles)
+  val outputFile = layout.buildDirectory.file("glass-metal-profile-classpath.txt")
+  inputs.files(classpath)
+  outputs.file(outputFile)
+  doLast { outputFile.get().asFile.writeText(classpath.files.joinToString(File.pathSeparator)) }
+}

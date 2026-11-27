@@ -1,0 +1,16 @@
+# Sippy — build artifacts & secrets (repo-root files outside sippy/ are never touched)
+node_modules/
+dist/
+build/
+.gradle/
+.kotlin/
+local.properties
+*.apk
+*.aab
+*.keystore
+keys/
+.DS_Store
+*.log
+site/public/downloads/*.apk
+site/sippy-demo/
+site/sippy/

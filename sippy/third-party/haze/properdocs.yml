@@ -1,0 +1,122 @@
+# Project information
+site_name: "Haze"
+site_description: "Visual effects (blur and more) for Compose Multiplatform"
+site_author: "Chris Banes"
+site_url: "https://chrisbanes.github.io/haze/"
+edit_uri: "tree/main/docs/"
+remote_branch: gh-pages
+strict: true
+
+docs_dir: docs
+exclude_docs: |
+  agents/**
+  research/**
+  specs/**
+  superpowers/**
+
+repo_name: "Haze"
+repo_url: "https://github.com/chrisbanes/haze"
+
+# Navigation
+nav:
+  - "Overview": index.md
+  - "Architecture": architecture.md
+  - "Core Concepts": core-concepts.md
+  - "Blur":
+    - "Overview": blur/index.md
+    - "Usage": blur/usage.md
+    - "Material presets": blur/materials.md
+    - "Material 3 integration": blur/material3.md
+    - "FAQs": blur/faq.md
+    - "Platforms": blur/platforms.md
+  - "Glass":
+    - "Overview": effects/glass/index.md
+    - "Containers": effects/glass/containers.md
+  - "Custom Effects": custom-effects.md
+  - "Performance":
+    - "Guide": performance.md
+    - "Benchmark results": benchmark-results.md
+  - "Scenarios":
+    - "Camera": scenarios/camera.md
+    - "UIKit interop on iOS": scenarios/uikit-interop.md
+  - "Recipes": recipes.md
+  - "Migrating to Haze 2.0": migrating-2.0.md
+  - "Changelog": changelog.md
+  - "API reference": api/index.html
+  - "Sample code": https://github.com/chrisbanes/haze/tree/main/sample/shared/src/commonMain/kotlin/dev/chrisbanes/haze/sample
+  - "🕸️ Sample app (Wasm)": sample/wasm/index.html
+
+# Configuration
+theme:
+  name: "material"
+  language: "en"
+  logo: media/logo.webp
+  favicon: media/logo.webp
+  palette:
+    primary: "white"
+    accent: "teal"
+  font:
+    text: "DM Sans"
+    code: "DM Mono"
+  features:
+    - content.tabs.link
+    - content.code.copy
+
+plugins:
+  - mike
+  - social
+  - search
+  - mkdocs-video:
+      is_video: true
+      video_muted: true
+      video_controls: false
+      video_autoplay: true
+      video_loop: true
+      css_style:
+        width: "100%"
+        height: "30rem"
+  - redirects:
+      redirect_maps:
+        'materials.md': 'blur/materials.md'
+        'usage.md': 'blur/usage.md'
+        'faq.md': 'blur/faq.md'
+        'platforms.md': 'blur/platforms.md'
+        'glass/performance.md': 'performance.md#glass'
+
+# Extensions
+markdown_extensions:
+  - admonition
+  - attr_list
+  - codehilite:
+      guess_lang: false
+  - footnotes
+  - toc:
+      permalink: true
+  - pymdownx.betterem
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.tilde
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.magiclink
+  - mdx_gh_links:
+      user: "chrisbanes"
+      repo: "haze"
+
+extra:
+  versions:
+    haze: !ENV [HAZE_VERSION, "local-development"]
+  version:
+    provider: mike
+    alias: true
+
+extra_javascript:
+  - javascripts/snapshot-version.js
+  - javascripts/sample-tabs.js
+
+validation:
+  unrecognized_links: warn
+  anchors: warn

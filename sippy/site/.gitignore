@@ -1,0 +1,6 @@
+node_modules/
+dist/
+coverage/
+lighthouse-report.*
+*.local
+.DS_Store
