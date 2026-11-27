@@ -245,6 +245,6 @@ class UpdateManager(
 
     companion object {
         const val MANIFEST_URL =
-            "https://raw.githubusercontent.com/cooreo/SippyDippy/main/releases/latest.json"
+            "https://raw.githubusercontent.com/Cooreo/SippyDippy/main/releases/latest.json"
     }
 }

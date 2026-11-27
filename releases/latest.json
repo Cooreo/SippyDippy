@@ -1,0 +1,13 @@
+{
+  "versionCode": 0,
+  "versionName": "0.0.0",
+  "apkUrl": "",
+  "sha256": "",
+  "sizeBytes": 0,
+  "minSdk": 26,
+  "releasedAt": "",
+  "notes": [
+    "Placeholder: the release workflow rewrites this file after the first tagged release.",
+    "The updater ignores manifests whose versionCode is not higher than the installed build."
+  ]
+}

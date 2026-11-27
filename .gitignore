@@ -22,3 +22,6 @@ captures/
 *.apk
 *.aab
 *.ap_
+
+# Android release artifacts staged by CI (never committed)
+sippy/android/dist/

@@ -218,7 +218,7 @@ private fun EntryRow(entry: LogEntry, onDelete: () -> Unit) {
                 Text(drink.name, color = c.text1, fontSize = 14.sp)
                 Text(
                     text = "${entry.volumeMl} ml · ${entry.hydratedMl} ml counted · " +
-                        LocalTime.ofEpochMilli(entry.atEpochMs).format(timeFormat),
+                        java.time.Instant.ofEpochMilli(entry.atEpochMs).atZone(java.time.ZoneId.systemDefault()).toLocalTime().format(timeFormat),
                     color = c.text3,
                     fontSize = 11.sp,
                 )

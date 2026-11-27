@@ -44,6 +44,7 @@ import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.state.SippyController
 import com.cooreo.sippy.ui.theme.Accent
 import com.cooreo.sippy.ui.theme.LocalSippyColors
+import com.cooreo.sippy.ui.theme.toId
 
 @Composable
 fun SettingsScreen(

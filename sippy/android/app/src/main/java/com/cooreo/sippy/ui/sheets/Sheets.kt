@@ -213,6 +213,3 @@ fun UpdateSheet(
 /** Small alias so the sheet does not depend on the update package. */
 typealias UpdateManagerProgress = com.cooreo.sippy.update.UpdateManager.Progress
 
-@Composable
-private fun <T> StateFlow<T>.collectAsStateCompat() =
-    androidx.lifecycle.compose.collectAsStateWithLifecycle(this)

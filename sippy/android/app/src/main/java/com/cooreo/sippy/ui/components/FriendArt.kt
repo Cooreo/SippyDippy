@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import com.cooreo.sippy.R
@@ -16,26 +17,20 @@ import com.cooreo.sippy.domain.friends.Mood
 import com.cooreo.sippy.model.FriendKind
 
 @Composable
-fun friendPainter(kind: FriendKind, mood: Mood) = painterResource(
-    when (kind) {
+fun friendPainter(kind: FriendKind, mood: Mood): Painter {
+    val cheerful = mood == Mood.HAPPY || mood == Mood.DANCING
+    val resource = when (kind) {
         FriendKind.DIPPY -> when (mood) {
             Mood.HAPPY -> R.drawable.dippy_happy
             Mood.DANCING -> R.drawable.dippy_dancing
             Mood.SLEEPY -> R.drawable.dippy_sleepy
-            // No sad art exists yet (brief: no new art this round) — the sleepy
-            // droplet, desaturated, reads as "let down" without new assets.
             Mood.SAD -> R.drawable.dippy_sleepy
-        },
-        FriendKind.PLANT -> when (mood) {
-            Mood.HAPPY, Mood.DANCING -> R.drawable.friend_plant_bloom
-            Mood.SLEEPY, Mood.SAD -> R.drawable.friend_plant_sprout
-        },
-        FriendKind.CAT -> when (mood) {
-            Mood.HAPPY, Mood.DANCING -> R.drawable.friend_pet_adult
-            Mood.SLEEPY, Mood.SAD -> R.drawable.friend_pet_cub
-        },
-    },
-)
+        }
+        FriendKind.PLANT -> if (cheerful) R.drawable.friend_plant_bloom else R.drawable.friend_plant_sprout
+        FriendKind.CAT -> if (cheerful) R.drawable.friend_pet_adult else R.drawable.friend_pet_cub
+    }
+    return painterResource(resource)
+}
 
 @Composable
 fun FriendImage(

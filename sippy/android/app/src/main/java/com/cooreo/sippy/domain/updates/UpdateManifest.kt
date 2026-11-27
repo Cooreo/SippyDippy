@@ -43,10 +43,13 @@ object UpdateManifestParser {
 
 object ApkUrlPolicy {
     /** The only host/path prefix the updater will ever download from. */
-    const val ALLOWED_PREFIX = "https://github.com/cooreo/SippyDippy/releases/download/"
+    const val ALLOWED_PREFIX = "https://github.com/Cooreo/SippyDippy/releases/download/"
 
+    /** Case-insensitive prefix check, so a differently-cased URL still works. */
     fun isAllowed(url: String): Boolean =
-        url.startsWith(ALLOWED_PREFIX) && !url.contains(" ") && !url.contains("\n")
+        url.lowercase().startsWith(ALLOWED_PREFIX.lowercase()) &&
+            !url.contains(" ") &&
+            !url.contains("\n")
 }
 
 object VersionPolicy {
