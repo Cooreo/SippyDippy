@@ -56,8 +56,20 @@ class LogGroupsTest {
     @Test
     fun homeSeesOnlyTheNewestThreeOfToday() {
         val today = (1..5).map { sip("t$it", 101, it * 60L, 250, 250) }
-        val newest = LogGroups.newestOfDay(today + entries, todayEpoch = 101, limit = 3)
+        // Older days must not leak into Home's window; the fixture's day-101
+        // entries are dropped here because they are later in the day and would
+        // legitimately outrank t5.
+        val otherDays = entries.filter { it.dayEpoch != 101L }
+        val newest = LogGroups.newestOfDay(today + otherDays, todayEpoch = 101, limit = 3)
         assertEquals(listOf("t5", "t4", "t3"), newest.map { it.id })
+    }
+
+    @Test
+    fun theWindowIsClampedToTodayOnly() {
+        // Entries from yesterday sit closer to the front of the list but must
+        // never appear in today's window.
+        val yesterday = listOf(sip("y1", 100, 1400, 250, 250))
+        assertEquals(emptyList<String>(), LogGroups.newestOfDay(yesterday, 101, 3).map { it.id })
     }
 
     @Test
