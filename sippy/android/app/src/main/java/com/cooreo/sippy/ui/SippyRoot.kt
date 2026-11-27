@@ -63,6 +63,7 @@ import com.cooreo.sippy.ui.glass.SippyBackdropHost
 import com.cooreo.sippy.ui.screens.DeveloperScreen
 import com.cooreo.sippy.ui.screens.DrinksScreen
 import com.cooreo.sippy.ui.screens.FriendsScreen
+import com.cooreo.sippy.ui.screens.HistoryScreen
 import com.cooreo.sippy.ui.screens.HomeScreen
 import com.cooreo.sippy.ui.screens.OnboardingScreen
 import com.cooreo.sippy.ui.screens.SettingsScreen
@@ -197,6 +198,7 @@ private fun AppScaffold(
     var celebrationAt by remember { mutableStateOf(0L) }
     var toast by remember { mutableStateOf<ToastMessage?>(null) }
     var remindersPrompt by remember { mutableIntStateOf(0) }
+    var showHistory by remember { mutableStateOf(false) }
 
     val today = Dates.todayEpochDay()
     val todayEntries = remember(state.log, today) {
@@ -250,7 +252,13 @@ private fun AppScaffold(
             label = "tab",
         ) { current ->
             when (current) {
-                Tab.HOME -> HomeScreen(
+                Tab.HOME -> if (showHistory) {
+                    HistoryScreen(
+                        state = state,
+                        bottomPadding = navSpace,
+                        onBack = { showHistory = false },
+                    )
+                } else HomeScreen(
                     state = state,
                     todayEntries = todayEntries,
                     hydratedMl = hydrated,
@@ -267,6 +275,7 @@ private fun AppScaffold(
                     },
                     onEditEntry = { editing = it },
                     onFriendTap = { friend -> toast = moodToast(friend, state, goalMet, todayEntries) },
+                    onSeeAll = { showHistory = true },
                 )
                 Tab.DRINKS -> DrinksScreen(
                     bottomPadding = navSpace,
@@ -298,7 +307,10 @@ private fun AppScaffold(
 
         FloatingNav(
             current = tab.navTarget,
-            onSelect = { tab = it.toTab() },
+            onSelect = {
+                tab = it.toTab()
+                showHistory = false
+            },
             onLog = { showAddDrink = true },
             modifier = Modifier.align(Alignment.BottomCenter),
         )

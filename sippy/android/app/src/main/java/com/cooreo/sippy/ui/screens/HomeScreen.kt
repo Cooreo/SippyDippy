@@ -89,6 +89,7 @@ fun HomeScreen(
     onOpenReminders: () -> Unit,
     onEditEntry: (LogEntry) -> Unit,
     onFriendTap: (Friend) -> Unit,
+    onSeeAll: () -> Unit,
 ) {
     val c = LocalSippyColors.current
     val fraction = ringOverride ?: WaterMath.goalFraction(hydratedMl, goalMl)
@@ -162,15 +163,12 @@ fun HomeScreen(
                 ) {
                     Text("Today", style = SippyType.emphasis, color = c.text1)
                     Spacer(Modifier.weight(1f))
-                    Text(
-                        text = "${todayEntries.size} " +
-                            if (todayEntries.size == 1) "drink" else "drinks",
-                        style = SippyType.caption,
-                        color = c.text3,
-                    )
+                    // Home keeps the three most recent; the dated log lives behind
+                    // "See all" (B1).
+                    GlassChip(label = "See all", onClick = onSeeAll)
                 }
             }
-            items(todayEntries, key = { it.id }) { entry ->
+            items(todayEntries.take(3), key = { it.id }) { entry ->
                 EntryCard(entry = entry, goalMl = goalMl, onClick = { onEditEntry(entry) })
             }
         }

@@ -955,3 +955,19 @@ Developer options that states the active tier, API level, both settings, low-RAM
 RenderEffect support, runtime-shader support and whether the backdrop layer
 initialised; (c) give the backdrop the site's detail (caustics, droplets, a light
 shaft) so refraction is visible, and draw a real rim on every glass surface.
+
+### A1 — correction after the first CI run
+
+The first A1 push (`a52d108`) failed to compile (runs `46054103475`, `46054329635`,
+`46054581376`) and the sandbox cannot read Actions logs (they redirect to Azure
+blob storage, which is outside its allowlist). Bisected by swapping one API at a
+time: the failing construct was the content frame using
+`WindowInsets.statusBarsIgnoringVisibility` + `Modifier.windowInsetsPadding(...)`.
+CI went green (`46054834205`) with `Modifier.statusBarsPadding()` (`8ce9277`).
+
+Consequence, stated plainly: with the bars hidden, `statusBarsPadding()` is 0 —
+which is correct for an immersive screen (there is no clock to collide with).
+When a swipe brings the transient bars up, they are overlays by design and do not
+re-dispatch insets, so the top row keeps its position under a translucent bar for
+the duration of the swipe. Everything else in A1 (immersive hide, navigation
+insets on the sheets, Settings clearance, the floating pill) is unaffected.
