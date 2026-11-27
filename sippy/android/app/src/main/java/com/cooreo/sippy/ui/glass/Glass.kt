@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import kotlin.math.sin
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cooreo.sippy.ui.theme.Dimens
 import com.cooreo.sippy.ui.theme.LocalSippyColors
@@ -294,11 +295,18 @@ fun GlassButton(
             .then(if (enabled) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
-        GlassSurface(shape = shape, tint = tint, shadow = false) {
+        GlassSurface(
+            modifier = Modifier.matchParentSize(),
+            shape = shape,
+            tint = tint,
+            shadow = false,
+        ) {
             Box(Modifier.padding(contentPadding), contentAlignment = Alignment.Center) {
                 androidx.compose.material3.Text(
                     text = label,
                     color = if (prominent) Color.White else c.text1,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -322,15 +330,20 @@ fun GlassChip(
             .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
+        // matchParentSize: the visible pill is exactly the cell the caller
+        // measured, so chips in a weighted row line up (A4).
         GlassSurface(
+            modifier = Modifier.matchParentSize(),
             shape = shape,
             tint = if (selected) c.accent.copy(alpha = 0.72f) else null,
             shadow = false,
         ) {
-            Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Box(Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
                 androidx.compose.material3.Text(
                     text = label,
                     color = if (selected) Color.White else c.text1,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
