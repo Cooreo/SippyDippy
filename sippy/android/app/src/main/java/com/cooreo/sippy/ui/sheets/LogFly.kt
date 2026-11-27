@@ -16,6 +16,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -93,10 +94,13 @@ fun LogFly(
 
         // The labels rise from the orb and fade out just before the end.
         val p = progress.value.coerceIn(0f, 1f)
-        val rise = 34.dp.toPx() * p
+        // A composable body is not a Density scope, so the conversions happen in one.
+        val density = LocalDensity.current
+        val risePx = with(density) { 34.dp.toPx() } * p
+        val liftPx = with(density) { 18.dp.toPx() }
         val alpha = if (p < 0.15f) p / 0.15f else (1f - (p - 0.15f) / 0.85f).coerceIn(0f, 1f)
         val baseX = target.center.x
-        val baseY = target.top - 18.dp.toPx()
+        val baseY = target.top - liftPx
 
         Text(
             text = "+${data.volumeMl} ml",
@@ -107,7 +111,7 @@ fun LogFly(
                 .offset {
                     IntOffset(
                         x = (baseX - 30.dp.toPx()).roundToInt(),
-                        y = (baseY - rise).roundToInt(),
+                        y = (baseY - risePx).roundToInt(),
                     )
                 }
                 .graphicsLayer { this.alpha = alpha },
@@ -122,7 +126,7 @@ fun LogFly(
                     .offset {
                         IntOffset(
                             x = (baseX + 6.dp.toPx()).roundToInt(),
-                            y = (baseY - rise - 22.dp.toPx()).roundToInt(),
+                            y = (baseY - risePx - 22.dp.toPx()).roundToInt(),
                         )
                     }
                     .graphicsLayer { this.alpha = alpha * 0.9f },
