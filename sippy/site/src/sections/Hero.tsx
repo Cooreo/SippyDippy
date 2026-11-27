@@ -7,7 +7,7 @@ import {
   useTransform,
 } from "motion/react";
 import { CtaButton } from "../components/CtaButton";
-import { PhoneMock } from "../components/PhoneMock";
+import { HeroWaterRing } from "../components/HeroWaterRing";
 import { asset } from "../lib/router";
 import { springs } from "../lib/tokens";
 
@@ -18,8 +18,9 @@ const WORDS = ["Drink", "consistently.", "Joyfully."];
  * nav), vertically centered, full-viewport height.
  *
  * Round 2: the CTA row is the shared CtaButton (primary "See install
- * steps"/"Get the APK" + ghost "How it works"); the phone is the live
- * recreation (PhoneDevice + app components + demo loop). Words rise
+ * steps"/"Get the APK" + ghost "How it works"); the preview is the
+ * filling water ring (HeroWaterRing — the phone preview is gone).
+ * Words rise
  * blur-to-sharp when the intro reveals (playWords), fast under a skip.
  *
  * The hero is dark via the backdrop's soft scrim — it has NO section
@@ -107,7 +108,7 @@ export function Hero({
           </motion.div>
         </div>
         <div className="hero-visual" ref={visualRef} onPointerMove={onPointerMove}>
-          {/* Dippy floating by the phone — gentle idle bob, never over text */}
+          {/* Dippy floating by the ring — gentle idle bob, never over text */}
           <motion.div
             className="hero-buddy-wrap"
             animate={reduced ? { y: 0 } : { y: [0, -7, 0] }}
@@ -128,7 +129,7 @@ export function Hero({
             transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
           >
             <motion.div style={{ rotateX, rotateY }}>
-              <PhoneMock variant="home" />
+              <HeroWaterRing />
             </motion.div>
           </motion.div>
         </div>

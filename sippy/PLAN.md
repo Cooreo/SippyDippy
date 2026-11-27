@@ -2,6 +2,9 @@
 
 Status: **Phase 3 running** · Base: `6fadff8` of `Cooreo/SippyDippy` (read-only; the ONE exception is `.github/workflows/deploy.yml` at the repo root, explicitly requested in the Phase 3 brief)
 
+> **STANDING RULE — auto-merge to `main` (user instruction, 2026-11-27):**
+> every completed task/round is merged to `main` AUTOMATICALLY — as soon as the work is committed + pushed to the session branch, open a PR to `main` and merge it (no waiting for the user to ask), then confirm the Pages deploy run is green so the live site (https://cooreo.github.io/SippyDippy/) always reflects the latest work. Applies to ALL future rounds and tasks in this project. (The user still reviews the live result and can reject — a rejection just means the next round fixes it, merged the same way.)
+
 ## 1. Environment audit (unchanged, verified)
 Node 22 present; **no Java/Android SDK/browser/KVM**. Network: npm + GitHub API + codeload only; all Maven/Google hosts blocked → **APK built by you** (Option A, agreed). Website fully buildable/runnable here.
 
@@ -73,3 +76,4 @@ CREDITS.md final, PROGRESS.md final, section-6 report per phase.
 | 9 | Intro test flags `?intro=1` / `?intro=0` | ✅ approved |
 | 10 | Hero mockup built from **real glass components** (no images) | ✅ approved |
 | 11 | Lighthouse run against the **production preview build** (:4173) | ✅ approved |
+| 12 | **Auto-merge:** every completed task/round → PR to `main` + merge automatically, then verify the Pages deploy (no manual merge requests needed) | ✅ approved 2026-11-27 |

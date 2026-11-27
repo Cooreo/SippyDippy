@@ -916,6 +916,182 @@ section[id] {
   filter: blur(48px);
 }
 
+/* — Hero water ring (replaces the phone preview in the hero column).
+   Sized with clamp() across 360→2560 viewports; the disc is the full
+   bounding box (no extra padding). Motion = transform/opacity only:
+   level = translateY on the fill, wave = translateX on a clipped
+   element (the sanctioned exception), shimmer = transform sweep +
+   opacity. Label uses theme token text-1 → AA on the disc in both
+   themes (see PROGRESS.md contrast table). — */
+.hr {
+  --hr-size: clamp(260px, 34vw, 520px);
+  width: var(--hr-size);
+  height: var(--hr-size);
+}
+.hr-disc {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      circle at 32% 26%,
+      rgba(255, 255, 255, 0.1),
+      rgba(255, 255, 255, 0.04) 42%,
+      rgba(255, 255, 255, 0.015) 70%
+    ),
+    rgba(255, 255, 255, 0.05);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.22),
+    inset 0 2px 14px rgba(255, 255, 255, 0.1),
+    inset 0 -14px 34px rgba(2, 8, 20, 0.25),
+    0 26px 60px rgba(2, 8, 20, 0.42);
+}
+.hr-water {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden; /* the circular clip the wave rides on */
+}
+.hr-fill {
+  position: absolute;
+  inset: 0;
+  transform: translateY(100%);
+  will-change: transform;
+  background: linear-gradient(
+    180deg,
+    rgba(59, 130, 246, 0.62) 0%,
+    rgba(37, 99, 235, 0.72) 45%,
+    rgba(29, 78, 216, 0.85) 100%
+  );
+}
+.hr-wave {
+  position: absolute;
+  top: -8%;
+  left: 0;
+  width: 200%; /* two tileable periods — the -50 % drift is seamless */
+  height: 16%;
+  animation: hr-wave-drift 3.2s linear infinite;
+}
+.hr-wave svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.hr-wave path {
+  fill: rgba(59, 130, 246, 0.62); /* = water top colour → no seam */
+}
+@keyframes hr-wave-drift {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.hr-shimmer {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  pointer-events: none;
+}
+.hr-shimmer-band {
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 55%;
+  background: linear-gradient(
+    100deg,
+    transparent,
+    rgba(255, 255, 255, 0.3),
+    transparent
+  );
+  transform: translateX(-130%) skewX(-12deg);
+  opacity: 0;
+}
+.hr.is-done .hr-shimmer-band {
+  animation: hr-shimmer-sweep 0.7s ease-out 1;
+}
+@keyframes hr-shimmer-sweep {
+  from {
+    transform: translateX(-130%) skewX(-12deg);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  to {
+    transform: translateX(230%) skewX(-12deg);
+    opacity: 0;
+  }
+}
+.hr-label {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  /* explicit per-theme label colours — measured worst case (label over
+     the water surface at the centre) = 4.1:1 light / 5.4:1 dark, both
+     well above the 3:1 large-text AA bar (see PROGRESS.md) */
+  color: #0a1120; /* light theme (default) */
+  pointer-events: none;
+}
+.dark .hr-label {
+  color: #f4f7ff;
+}
+/* static halo behind the label — keeps the contrast margin at EVERY
+   fill level (the water surface crosses the label mid-cycle). Light:
+   the text is dark, so the halo brightens; dark: the text is white,
+   so the halo darkens. Pure background layer — no motion. */
+.hr-label::before {
+  content: "";
+  position: absolute;
+  left: 14%;
+  right: 14%;
+  top: 28%;
+  bottom: 28%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(255, 255, 255, 0) 72%
+  );
+  pointer-events: none;
+}
+.dark .hr-label::before {
+  background: radial-gradient(
+    ellipse at center,
+    rgba(4, 10, 24, 0.3) 0%,
+    rgba(4, 10, 24, 0) 72%
+  );
+}
+.hr-num,
+.hr-goal {
+  grid-area:
+    1 / 1; /* stacked in one cell → the crossfade never shifts layout */
+  position: relative; /* above the ::before halo (both positioned) */
+  z-index: 1;
+  transition: opacity 0.25s ease;
+}
+.hr-num {
+  font-family: var(--ff-display);
+  font-weight: 800;
+  font-size: calc(var(--hr-size) * 0.19);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.hr-goal {
+  opacity: 0;
+  font-family: var(--ff-display);
+  font-weight: 700;
+  font-size: calc(var(--hr-size) * 0.115);
+  line-height: 1.15;
+}
+
 /* — Live phone (shared: hero + showcase). Round-2 rebuild (R2-1).
    A real device is a DARK bezel holding a dark screen (a bright bezel
    inverts figure/ground and reads as a "tube" around a mismatched
