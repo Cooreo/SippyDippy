@@ -19,8 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -155,7 +154,7 @@ fun SippyRoot(graph: AppGraph) {
                 // The backdrop stays full-bleed; the content is padded by the
                 // stable status-bar inset so the first row clears the clock even
                 // while the bars are hidden (A1).
-                Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)) {
+                Box(Modifier.fillMaxSize().statusBarsPadding()) {
                     when {
                         !ready -> Splash()
                         // First run (or a kill mid-flow): onboarding owns the screen.
