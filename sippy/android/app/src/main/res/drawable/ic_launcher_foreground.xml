@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sippy adaptive icon foreground — glass droplet (same geometry as shared/logo/logo.svg,
+     scaled 0.72x and centred to sit inside the adaptive safe zone).
+     Drop into app/src/main/res/drawable/. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.72"
+        android:scaleY="0.72"
+        android:translateX="31"
+        android:translateY="31">
+        <path
+            android:pathData="M32 7 C 26.5 15.5 16 27.5 16 39 A 16 16 0 0 0 48 39 C 48 27.5 37.5 15.5 32 7 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:startX="32"
+                    android:startY="7"
+                    android:endX="32"
+                    android:endY="55"
+                    android:type="linear">
+                    <item android:offset="0" android:color="#5B9BFF"/>
+                    <item android:offset="1" android:color="#1D5FE0"/>
+                </gradient>
+            </aapt:attr>
+        </path>
+        <path
+            android:pathData="M23.5 33.5 Q 20.5 40 25 46.5"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="3"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000"/>
+    </group>
+</vector>

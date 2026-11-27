@@ -1,0 +1,24 @@
+# ---- secrets & local machine state (never committed) ----
+*.jks
+*.keystore
+*.b64
+keystore.properties
+local.properties
+.env*
+# the website's committed default base path is the one exception
+!sippy/site/.env
+
+# ---- IDE / OS ----
+.idea/
+*.iml
+.DS_Store
+
+# ---- Gradle / Android build output ----
+.gradle/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
