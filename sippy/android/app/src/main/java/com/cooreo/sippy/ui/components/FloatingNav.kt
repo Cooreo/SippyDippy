@@ -2,12 +2,15 @@ package com.cooreo.sippy.ui.components
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -32,14 +35,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -96,6 +103,8 @@ fun FloatingNav(
     onLog: () -> Unit,
     modifier: Modifier = Modifier,
     animate: Boolean = true,
+    /** Where the + button ended up, so the Log sheet can grow out of it (B7). */
+    onLogBounds: (Rect) -> Unit = {},
 ) {
     val c = LocalSippyColors.current
     val shape = RoundedCornerShape(Dimens.pill)
@@ -212,7 +221,7 @@ fun FloatingNav(
                     NavItem(NavTarget.HOME, current, lens, onSelect)
                     NavItem(NavTarget.DRINKS, current, lens, onSelect)
                     Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        LogButton(onLog)
+                        LogButton(onLog, onLogBounds)
                     }
                     NavItem(NavTarget.FRIENDS, current, lens, onSelect)
                     NavItem(NavTarget.SETTINGS, current, lens, onSelect)
@@ -278,14 +287,53 @@ private fun RowScope.NavItem(
 }
 
 @Composable
-private fun LogButton(onLog: () -> Unit) {
+private fun LogButton(onLog: () -> Unit, onBounds: (Rect) -> Unit) {
     val c = LocalSippyColors.current
+    // B7: a press squashes the button and sends one ripple out through it. Drawn,
+    // not the platform's indication: the rest of the app silences indications on
+    // purpose, and a drawn ripple cannot be clipped differently per API level.
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val squash by animateFloatAsState(
+        targetValue = if (pressed) 0.90f else 1f,
+        animationSpec = spring(dampingRatio = 0.30f, stiffness = 780f),
+        label = "logSquash",
+    )
+    val ripple = remember { Animatable(0f) }
+    LaunchedEffect(pressed) {
+        if (pressed) {
+            ripple.snapTo(0f)
+            ripple.animateTo(1f, tween(420))
+        }
+    }
     Box(
         modifier = Modifier
             .size(56.dp)
+            .onGloballyPositioned { onBounds(it.boundsInRoot()) }
+            .graphicsLayer {
+                scaleX = 1f + (1f - squash) * 0.85f
+                scaleY = squash
+            }
             .clip(CircleShape)
             .background(c.accent)
-            .clickable(role = Role.Button, onClick = onLog)
+            .drawBehind {
+                // Clipped by the circle above, so it can never bleed out of the
+                // button as it grows.
+                val p = ripple.value.coerceIn(0f, 1f)
+                if (p > 0f && p < 1f) {
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.30f * (1f - p)),
+                        radius = size.minDimension * 0.62f * p,
+                        center = center,
+                    )
+                }
+            }
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Button,
+                onClick = onLog,
+            )
             .semantics { contentDescription = "Log a drink" },
         contentAlignment = Alignment.Center,
     ) {
