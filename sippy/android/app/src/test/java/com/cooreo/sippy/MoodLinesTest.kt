@@ -42,10 +42,13 @@ class MoodLinesTest {
 
     @Test
     fun twoFriendsOfOneSpeciesDoNotSayTheSameThing() {
+        // Two lines per mood and a hash over the id: across a handful of friends
+        // the species must produce more than one sentence, whatever the ids.
         for (kind in FriendKind.entries) {
-            val first = MoodLines.line(kind, Mood.HAPPY, "a1")
-            val second = MoodLines.line(kind, Mood.HAPPY, "b2")
-            assertTrue("$kind echoed itself", first != second)
+            val lines = (1..8)
+                .map { MoodLines.line(kind, Mood.HAPPY, "friend-$it") }
+                .toSet()
+            assertTrue("$kind always said the same thing", lines.size >= 2)
         }
     }
 
