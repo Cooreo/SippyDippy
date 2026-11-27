@@ -1,0 +1,1893 @@
+# Changelog
+
+All notable changes to this project are documented here.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## Unreleased
+
+### Added
+
+- `GlassDefaults.continuousShape` exposes the default continuous 16 dp shape for clips, borders and
+  indications ([#1743](https://github.com/chrisbanes/haze/issues/1743)).
+- Glass fallback rendering blurs captured content on Android 12 and 12L hardware and uses an
+  automatic scrim on unblurred paths. Set `fallbackColor` to replace or disable that scrim. Clear
+  uses its light response in both system appearances
+  ([#1731](https://github.com/chrisbanes/haze/issues/1731),
+  [#1754](https://github.com/chrisbanes/haze/issues/1754)).
+- Continuous Glass corner shapes interpolate their corners and smoothing with Compose's
+  `Interpolatable.lerp` ([#1752](https://github.com/chrisbanes/haze/issues/1752)).
+
+- Glass supports continuous, iOS-style corners with the new `ContinuousRoundedCornerShape`, passed
+  to `GlassStyle`'s `shape`. Masking, refraction, lighting, and the rim all follow the smoothed
+  corners, and the same shape works with `Modifier.clip` and `Modifier.border`. Opposite corners
+  that overlap, as in a leaf, keep their smoothing, alone and in a `hazeGlassContainer`
+  ([#1734](https://github.com/chrisbanes/haze/issues/1734),
+  [#1749](https://github.com/chrisbanes/haze/issues/1749)).
+- Glass styles can draw a thin light band inside a surface's top and bottom edges with
+  `rimHighlight(intensity, width, sides)`, where `sides` sets how strongly the left and right edges
+  are lit. It follows merged container shapes
+  ([#1742](https://github.com/chrisbanes/haze/issues/1742)).
+- Glass interaction responses accept a `scale` up to `1.2f`, so a pressed surface can grow instead of
+  shrinking. A grown member of a `hazeGlassContainer` merges with nearby neighbours while pressed
+  ([#1735](https://github.com/chrisbanes/haze/issues/1735)).
+- Glass styles can draw a thin line just outside a surface's shape with `edgeOutline(color, width)`,
+  separating the Glass from its backdrop. The outline follows merged container shapes and leaves
+  the rim visible up to the outermost pixel inside a straight node-bound edge. Limited renderers
+  draw an equivalent stroke ([#1741](https://github.com/chrisbanes/haze/issues/1741),
+  [#1798](https://github.com/chrisbanes/haze/issues/1798)).
+- `edgeOutline` accepts `topAndBottomStrength`, which weakens the outline on the top and bottom
+  edges and blends through corners; limited renderers draw a uniform outline at the mean strength
+  ([#1755](https://github.com/chrisbanes/haze/issues/1755)).
+
+### Changed
+
+- Below `HazePerformanceMode.Quality`, a wide Glass blur on Android reads a reduced copy of its
+  source, scaled with the quality fraction, and mixes it with the sharp source in fewer render
+  passes. Nine Glass surfaces used about 21% less CPU frame time at P90 on a Pixel 6, and lazy
+  grids of Glass about 24% less. `Quality` keeps the platform blur; thin, high-contrast detail
+  behind Glass can blur slightly differently in `Balanced` and `Performance`.
+- Glass uses continuous 16 dp corners when no shape is authored. Regular and Clear draw a thin dark
+  outline, strongest on the left and right and absent from Clear's top and bottom, and a top and
+  bottom rim highlight, stronger on Clear; dark Regular has less backdrop contrast and a fainter
+  rim. Clear brightens its left and right edges much less. Values were tuned side by side with
+  iOS 27 Liquid Glass. Custom styles inherit Regular's edges, which can be disabled with
+  later `edgeOutline` and `rimHighlight` writes. Authored shapes and
+  Clear's appearance-independent ordinary response are preserved
+  ([#1736](https://github.com/chrisbanes/haze/issues/1736),
+  [#1743](https://github.com/chrisbanes/haze/issues/1743)).
+- Glass with circular corners does less shader work across the flat interior of a surface, most
+  noticeably in merged containers. The rendered result is unchanged
+  ([#1766](https://github.com/chrisbanes/haze/issues/1766)).
+- Glass containers do less shader work for members that are too far from a pixel to shape it.
+  The rendered result is unchanged ([#1766](https://github.com/chrisbanes/haze/issues/1766)).
+- On Android, `HazePerformanceMode.Performance` and other modes below `Balanced` refract and light
+  continuous Glass corners as circular corners of the same radius. The silhouette and edge softness
+  stay exact; `Balanced` and `Quality` are unchanged
+  ([#1766](https://github.com/chrisbanes/haze/issues/1766)).
+- Haze sources that feed effects in another window, or same-window effects on Android 12
+  (API 31), queue at most one refresh coroutine for a burst of snapshot applies instead of one per
+  apply. Effects refresh in the same frame as before
+  ([#1843](https://github.com/chrisbanes/haze/issues/1843)).
+- Core `haze` no longer declares a dependency on `androidx.collection`, which nothing in it uses.
+  Consumers still receive it through Compose
+  ([#1845](https://github.com/chrisbanes/haze/issues/1845)).
+- Android 12 and 12L Blur with custom shader brushes no longer rebuilds its mask, tint and noise
+  shaders, or its layer paints, for each progressive band and colour-filter pass when it redraws
+  with an unchanged style ([#1857](https://github.com/chrisbanes/haze/issues/1857)).
+- Unmasked Blur scrim colour filters now receive the effect alpha as input instead of being faded
+  afterwards. A colour filter that replaces alpha, such as `ColorFilter.tint(color, BlendMode.Src)`,
+  therefore no longer fades with the effect's alpha. The default tint and other alpha-preserving
+  filters are unchanged ([#1828](https://github.com/chrisbanes/haze/issues/1828)).
+
+### Deprecated
+
+- `GlassDefaults.shape` retains its circular value and released getter type. Use
+  `GlassDefaults.continuousShape` for the new default, or `RoundedCornerShape(16.dp)` to keep the
+  former corners ([#1743](https://github.com/chrisbanes/haze/issues/1743)).
+
+### Fixed
+
+- `HazeEffectNode` no longer drops or churns source `preDrawListeners` when `DirtyFields.Areas`
+  re-evaluates to an unchanged area set or hits the unplaced position-strategy early return
+  ([#1929](https://github.com/chrisbanes/haze/issues/1929)).
+- A `hazeEffect` nested inside two `hazeSource`s that use the same state, where the outer source has
+  the lower `zIndex`, no longer throws on its first draw with `HazeSourceSelection.Behind`, under
+  `HazeInput.Sources` or while Backdrop falls back to sources. `Behind` now excludes every same-state
+  ancestor `hazeSource`, not only the nearest one.
+  As a result, a relocated effect surface whose owner draws outside the enclosing outer source no
+  longer samples that source ([#1905](https://github.com/chrisbanes/haze/issues/1905)).
+- RenderScript Blur on Android 6 to 11 (API 23 to 30) no longer leaks each blur context it
+  releases, with its output bitmap, buffers and input surface, after a resize, an invalidation, a
+  memory trim or a detach ([#1904](https://github.com/chrisbanes/haze/issues/1904)).
+- Android Blur no longer crashes when a linear progressive blur uses an easing that overshoots,
+  such as `EaseInBack` or an elastic easing, on Android 12 and 12L or after a runtime shader
+  failure. Each blur layer's intensity stays within `0f`..`1f`
+  ([#1906](https://github.com/chrisbanes/haze/issues/1906)).
+- With `HazeFeatureFlags.isPlatformBackdropEnabled`, a relocated Backdrop effect no longer prepares
+  its platform effect again on every frame while its owner is over the native composition budget,
+  and an effect that declines a frame no longer reports a native capture that forces an isolated
+  layer ([#1913](https://github.com/chrisbanes/haze/issues/1913)).
+- Android Blur's layered linear progressive blur on Android 12 and 12L, or after a runtime shader
+  failure, now fades noise and colour filters with the gradient's intensity, matching Android 13+
+  ([#1910](https://github.com/chrisbanes/haze/issues/1910)).
+- Glass progressive blur with a `SolidColor` brush, as in
+  `HazeProgressive.Brush(SolidColor(...))`, blurs uniformly instead of reading an unset or stale
+  mask ([#1907](https://github.com/chrisbanes/haze/issues/1907)).
+- Square Glass surfaces on the fallback renderer no longer draw their highlight, interaction light
+  or edge outside their bounds ([#1908](https://github.com/chrisbanes/haze/issues/1908)).
+- Glass surfaces with fractional sample padding no longer replay their source up to nine times
+  each frame to fill sub-pixel slivers at the sample's edges.
+- A Glass container surface that only moves, as when its members scroll, no longer re-runs its
+  style update each frame.
+- The Glass sample bottom tabs no longer throw for an empty tab list, and the Glass sample slider
+  finishes an active drag when it is resized or disabled
+  ([#1848](https://github.com/chrisbanes/haze/issues/1848)).
+- Android Blur no longer keeps a previous draw's shader, colour filter or path effect on reused
+  internal paints, and reused paints keep Compose's default antialiasing
+  ([#1844](https://github.com/chrisbanes/haze/issues/1844)).
+- Configured effect surfaces keep drawing a `HazeInput.Sources` cluster as one, instead of
+  splitting it, while a member is zero-size or unplaced
+  ([#1851](https://github.com/chrisbanes/haze/issues/1851)).
+- The Android ExoPlayer sample prepares and releases the player that is current, and detaches it from
+  its view when the sample is left or the player is replaced
+  ([#1847](https://github.com/chrisbanes/haze/issues/1847)).
+- Android Blur falls back instead of crashing when a runtime shader cannot be built: the combined
+  noise and tint pass uses the separate noise and tint effects, and progressive and custom-brush
+  effects draw through the routes Android 12 uses until the effect is detached. A failed custom-brush
+  draw no longer leaves a canvas layer open ([#1836](https://github.com/chrisbanes/haze/issues/1836)).
+- The web sample shows its unsupported-browser message instead of throwing when the browser cannot
+  compile Wasm ([#1849](https://github.com/chrisbanes/haze/issues/1849)).
+- The macOS sample keeps its application delegate alive, so closing the last window quits the app
+  ([#1850](https://github.com/chrisbanes/haze/issues/1850)).
+- Glass containers no longer recluster their members each time a `HazeInput.Content` member's own
+  content redraws ([#1846](https://github.com/chrisbanes/haze/issues/1846)).
+- Blur and Glass effects keep finite layer bounds, and apply their retention policy, while every
+  selected source is still unpositioned ([#1833](https://github.com/chrisbanes/haze/issues/1833)).
+- Pressing a merged Glass container member with a near-zero `scale` no longer crashes while drawing
+  its merged surface ([#1840](https://github.com/chrisbanes/haze/issues/1840)).
+- RenderScript Blur releases its shared RenderScript context on memory trim until the next blurred
+  draw, recovers from native failures without crashing or presenting a failed frame, and skips
+  native work at zero blur radius ([#1835](https://github.com/chrisbanes/haze/issues/1835)).
+- Android Blur noise no longer grows coarser at reduced capture scales. RenderScript and the API
+  31–32 custom-brush path draw the same grain as full resolution; the RenderEffect path draws one
+  noise texel per capture pixel ([#1832](https://github.com/chrisbanes/haze/issues/1832)).
+- RenderScript Blur publishes each blurred frame from the main thread, so the renderer never reads
+  its pixels while a later frame is being written
+  ([#1830](https://github.com/chrisbanes/haze/issues/1830)).
+- RenderScript Blur (API 23–30, `blurEnabled(true)`) no longer darkens a semi-transparent
+  background when the capture size is not a multiple of 4, and draws tints, colour filters and noise
+  over the effect's actual layer bounds when that layer is clipped or offset
+  ([#1912](https://github.com/chrisbanes/haze/issues/1912)).
+- Effects keep following a source's size and input-sharing outsets after a static
+  `CompositionLocal` change refreshes their configuration
+  ([#1829](https://github.com/chrisbanes/haze/issues/1829)).
+- Masked and partially transparent Blur scrim tints apply their blend mode against the content
+  behind them, instead of against transparent pixels
+  ([#1828](https://github.com/chrisbanes/haze/issues/1828)).
+- Blur scrim fallback tints using `BlendMode.Modulate`, `SrcIn` or `DstIn` no longer vanish under a
+  mask, progressive effect or alpha below 1. `Clear`, `SrcOut` and `DstAtop` now ignore the mask
+  and alpha there ([#1909](https://github.com/chrisbanes/haze/issues/1909)).
+- Merged Glass clusters that fall back from `HazeInput.Backdrop` to their source fallback no longer keep
+  redrawing while idle ([#1827](https://github.com/chrisbanes/haze/issues/1827)).
+- Progressive blur avoids long first-render pauses on Windows Direct3D, including when opening a
+  new window ([#1260](https://github.com/chrisbanes/haze/issues/1260)).
+- Progressive blur preserves edge opacity by keeping accepted samples inside the captured content
+  ([#1727](https://github.com/chrisbanes/haze/issues/1727)).
+- Progressive blur keeps its crop within the captured content when downscaling, including expanded
+  bounds and fractional offsets ([#1728](https://github.com/chrisbanes/haze/issues/1728)).
+- Progressive blur no longer lets the page show through the edges of its content in the Default and
+  Performance modes, where the mask leaves those edges unblurred
+  ([#1772](https://github.com/chrisbanes/haze/issues/1772)).
+- Blur masks and brush tints keep their authored positions when captured content is scaled or
+  resized ([#1730](https://github.com/chrisbanes/haze/issues/1730)).
+- Glass no longer lets the layer beneath show through the straight edges of its surfaces, such as
+  a bar docked to a window edge. Unmerged surfaces now cover the outermost pixels of those edges
+  whatever their corners, with or without an edge outline or expanded layer bounds, except with
+  `HazeInput.Backdrop`. Square surfaces do so at full and reduced input scale; rounded and
+  continuous ones in the Default and Quality modes. A surface that refracts outwards, such as a
+  strongly concave one, still shows the layer beneath where its refraction reads past the content
+  it captured. These surfaces also draw fine detail more sharply, because their content is no
+  longer resampled at a sub-pixel offset
+  ([#1775](https://github.com/chrisbanes/haze/issues/1775),
+  [#1785](https://github.com/chrisbanes/haze/issues/1785)).
+- A `HazeSourceSelection.where` predicate whose state changes on a background thread while its
+  effect is being removed no longer throws "This node does not have an owner"
+  ([#1837](https://github.com/chrisbanes/haze/issues/1837)).
+- Android Blur switches between its RenderEffect and fallback paths when an attached effect's canvas
+  changes between hardware and software acceleration, without needing a style change
+  ([#1834](https://github.com/chrisbanes/haze/issues/1834)).
+
+## 2.1.0 <small>2026-11-02</small> { id="2.1.0" }
+
+### Added
+
+- Glass surfaces can merge into connected shapes and animate as members join or leave. Use
+  `hazeGlassContainer` for nearby surfaces or group related controls into one shape. New container
+  samples show these interactions in practice
+  ([#1409](https://github.com/chrisbanes/haze/issues/1409),
+  [#1447](https://github.com/chrisbanes/haze/issues/1447)). See the
+  [Glass containers guide](https://chrisbanes.github.io/haze/dev/effects/glass/containers/).
+- Apps with several effects over the same source can reduce repeated source rendering on Android
+  with experimental `HazeInputSharing`. It is off by default, uses more GPU memory, and clips the
+  source to its bounds plus any configured outsets
+  ([#1611](https://github.com/chrisbanes/haze/issues/1611)). See the
+  [input-sharing trade-offs](https://chrisbanes.github.io/haze/dev/performance/).
+- Glass optics are easier to customize: start from `GlassOptics.regular` or `GlassOptics.clear`
+  and use `optics { copy(...) }` to change selected values without replacing the rest of a style.
+
+### Changed
+
+- Glass is now stable in both `haze-glass` and `haze-glass-material3`, with no
+  `@ExperimentalHazeApi` opt-in required.
+- Blur and Glass styles can respond to animated state without rebuilding the style or recomposing
+  the effect's call site. Remember a style once, then read animated values inside its block.
+  Blur support contributed by [Mohammad Jaber](https://github.com/moyaver)
+  ([#1602](https://github.com/chrisbanes/haze/pull/1602)).
+- Glass better respects reduced-transparency preferences: it obscures background detail with
+  stronger blur and a more opaque appearance. Apps can customize the opaque fallback color
+  ([#1549](https://github.com/chrisbanes/haze/issues/1549)).
+- Blur and Glass do less repeated rendering work and reuse more of their retained output.
+  See the [performance guide](https://chrisbanes.github.io/haze/dev/performance/) for measurements
+  and trade-offs; Glass containers can still add substantial cost to dense scrolling layouts.
+- Blur and Glass use less peak GPU memory on Android. In the sample workloads on a Pixel 8a, Glass
+  used about 7% less than in 2.0.1, and Blur `Quality`, where it was recorded, used at least 9%
+  less.
+- Updated Kotlin to 2.4.21 and Compose Multiplatform to 1.12.2.
+- When upgrading from experimental Glass in 2.0.x, recompile code that uses it.
+  `GlassOptics` and `GlassAccessibilitySettings` no longer support destructuring, and
+  `GlassDefaults.positionAnimationSpec` is now `GlassDefaults.interactionPositionAnimationSpec`.
+- Remember or hoist `HazeBlurStyle { }` instances: they now compare by identity rather than value.
+  Material presets continue to compare by value.
+
+### Removed
+
+- `GlassDefaults.optics`; use `GlassOptics.regular`.
+- The parameter-based `GlassStyleScope.optics(...)` overload; use `optics { copy(...) }` or pass
+  a `GlassOptics` value.
+- `GlassStyle.Material3()` overloads; use `GlassStyle.material3()` or `style.material3()`.
+
+### Fixed
+
+- Content-based Blur no longer leaks transparent pixels along edges when its captured input is downscaled ([#1726](https://github.com/chrisbanes/haze/issues/1726)).
+- Source-backed effects sample the correct content across sibling Android `ComposeView`s in the
+  same window ([#1718](https://github.com/chrisbanes/haze/issues/1718)).
+- Blur no longer shows stale content while scrolling on Android API 31
+  ([#1509](https://github.com/chrisbanes/haze/issues/1509)). Effects also keep tracking sources that
+  move or resize after being selected by a `HazeSourceSelection.where` predicate
+  ([#1412](https://github.com/chrisbanes/haze/issues/1412)).
+- Corrected masks, progressive blur opacity, tints and color filters across Android rendering
+  paths, including combining a mask with progressive blur
+  ([#1415](https://github.com/chrisbanes/haze/issues/1415),
+  [#1635](https://github.com/chrisbanes/haze/issues/1635),
+  [#1413](https://github.com/chrisbanes/haze/issues/1413),
+  [#1374](https://github.com/chrisbanes/haze/issues/1374)).
+- Cupertino materials preserve text contrast with a frosted fallback when blur is disabled
+  ([#1638](https://github.com/chrisbanes/haze/issues/1638)).
+- Glass press animations no longer crash when a spring overshoots
+  ([#1371](https://github.com/chrisbanes/haze/issues/1371)). Press responses cancel when the pointer
+  leaves the surface and stay active during drag interactions
+  ([#1637](https://github.com/chrisbanes/haze/issues/1637)).
+- Native backdrop effects recover after declined frames or empty layers, rather than remaining
+  in fallback rendering, with a contribution from [Matt Van Horn](https://github.com/mvanhorn)
+  ([#1417](https://github.com/chrisbanes/haze/issues/1417),
+  [#1430](https://github.com/chrisbanes/haze/pull/1430)).
+- Desktop effects stay aligned with sources in other windows and refresh when those windows move,
+  with a contribution from [Shayan Khan](https://github.com/shayann07)
+  ([#1377](https://github.com/chrisbanes/haze/issues/1377),
+  [#1387](https://github.com/chrisbanes/haze/pull/1387)).
+
+## 2.0.1 <small>2026-09-29</small> { id="2.0.1" }
+
+### Changed
+
+- Built-in Regular and Clear Glass styles now follow the Compose host's system light or dark
+  appearance, including when no style is supplied
+  ([#1349](https://github.com/chrisbanes/haze/pull/1349)).
+- `HazePerformanceMode.Default` now selects the fixed `Balanced` profile for built-in Blur and
+  Glass. `Adaptive` remains as a deprecated compatibility alias and no longer adjusts quality
+  automatically ([#1362](https://github.com/chrisbanes/haze/pull/1362)).
+- Updated Compose Multiplatform to 1.12.1, AndroidX Core to 1.19.1, and AndroidX Tracing to 2.0.3
+  ([#1343](https://github.com/chrisbanes/haze/pull/1343),
+  [#1352](https://github.com/chrisbanes/haze/pull/1352),
+  [#1353](https://github.com/chrisbanes/haze/pull/1353)).
+- Documented iOS UIKit interop placement and pixel-capture limits
+  ([#1347](https://github.com/chrisbanes/haze/pull/1347)).
+
+### Fixed
+
+- Avoided unnecessary effect redraws when an effect and its sources move together during screen
+  transitions ([#1351](https://github.com/chrisbanes/haze/pull/1351), by
+  [Tae Hagen](https://github.com/TaeHagen)).
+- Kept the Blur capture layer across size changes to avoid flicker during transitions such as
+  opening a bottom sheet ([#1361](https://github.com/chrisbanes/haze/pull/1361), by
+  [Tae Hagen](https://github.com/TaeHagen)).
+- Stopped observing source selection after a Blur effect detaches
+  ([#1356](https://github.com/chrisbanes/haze/pull/1356)).
+- Presented the first asynchronous RenderScript Blur result without requiring another content
+  redraw ([#1364](https://github.com/chrisbanes/haze/pull/1364)).
+- Refreshed RenderScript Blur when source children move during scrolling on Android below API 31,
+  preventing a stale captured image ([#1367](https://github.com/chrisbanes/haze/pull/1367)).
+
+## 2.0.0 <small>2026-09-22</small> { id="2.0.0" }
+
+Haze 2.0 rebuilds the library around typed, modular visual effects. Blur moves into its own
+artifact, Glass joins as an experimental multiplatform effect, and each modifier now declares its
+input, shareable Style, performance policy, and rendering behavior explicitly.
+
+### Added
+
+- Added the `haze-blur` artifact and typed `Modifier.hazeBlur` API, with replayable
+  `HazeBlurStyle` programs that can be shared and extended with `then`.
+- Added the experimental `haze-glass` artifact, including Regular and Clear built-in styles,
+  refraction, depth blur, tint, lighting, accessibility settings, progressive effects, and
+  hover, focus, and press responses.
+- Added `HazeInput.Content`, `HazeInput.Sources`, and `HazeInput.Backdrop` so effects can explicitly
+  select their input. Backdrop includes a portable captured-source fallback and an experimental,
+  opt-in native backend on supported Android versions.
+- Added `HazeEffectFactory` and `HazeEffectRenderer` for custom typed effects, plus optional
+  `haze-blur-material3` and `haze-glass-material3` integrations.
+- Added shared `HazePerformanceMode` controls for built-in Blur and Glass, including adaptive,
+  quality, balanced, performance, and fixed-quality profiles.
+
+### Changed
+
+- Replaced the mutable `Modifier.hazeEffect` Blur DSL with typed `Modifier.hazeBlur` and
+  `Modifier.hazeGlass` APIs. Styles are immutable, replayable configurations; rendering resources
+  are owned by their modifier nodes.
+- Moved Blur APIs to `dev.chrisbanes.haze.blur` and moved `HazeProgressive` to the core
+  `dev.chrisbanes.haze` package. Blur applications now depend on both `haze` and `haze-blur`.
+- Reworked source selection, retained-output policy, cross-window positioning, and default
+  workload-aware sampling around explicit input and performance contracts.
+- Updated Kotlin to 2.4.20, Compose Multiplatform to 1.12.0, and Jetpack Compose to 1.12.1.
+  `macosArm64` remains supported; the upstream-removed `iosX64` and `macosX64` targets are no
+  longer published.
+
+### Fixed
+
+- Corrected source sampling through scaled and rotated graphics layers, nested Haze states,
+  sticky headers, and multiple Compose roots or windows.
+- Improved retained-layer lifecycle, invalidation, caching, and teardown behavior across Android,
+  Desktop, iOS, and Web, including RenderScript crash and resource-leak fixes.
+- Fixed progressive Blur coverage and tint behavior on Android 12 and 12L, and refined Glass
+  rendering, colour handling, rounded edges, fallback behavior, and animation performance.
+
+### Removed
+
+- Removed the Haze 1 Blur surface and the temporary Haze 2 prerelease adapters, including
+  `Modifier.hazeEffect` Blur overloads, legacy `HazeStyle`/`HazeTint` aliases, mutable effect
+  scopes, and public renderer internals.
+- Removed readable/copyable Blur and Glass Style internals. Build styles with their factory DSLs,
+  create colour effects through `HazeColorEffect.tint` or `colorFilter`, and use `then` for
+  variations.
+
+See the [Haze 2.0 migration guide](https://chrisbanes.github.io/haze/2.0.0/migrating-2.0/) for dependency,
+import, API, input-policy, and performance-mode changes.
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.7.2...2.0.0
+
+<details>
+<summary>Prerelease history</summary>
+
+## 2.0.0-rc02 <small>2026-09-18</small> { id="2.0.0-rc02" }
+
+### Added
+
+- Added `RefractionProfile.Edge(width)` to author edge refraction independently of surface lighting.
+  The default `RefractionProfile.Surface` preserves existing custom optics
+  ([#1332](https://github.com/chrisbanes/haze/pull/1332)).
+- Added an Android tilt-aware Glass sample with fixed and gravity-driven lighting modes
+  ([#1319](https://github.com/chrisbanes/haze/pull/1319)).
+
+### Changed
+
+- Calibrated Clear Glass refraction against iOS 27 captures, including the inward edge falloff and
+  wider optical corners that produce curved loops. Clear also uses the accepted brighter tone
+  ([#1332](https://github.com/chrisbanes/haze/pull/1332)).
+- Calibrated Regular Glass against native iOS 27 light appearance, with a narrower refraction band,
+  brighter tone, and wider diffusion on cards and panels. Fixed the physical-pixel blur cap that
+  prevented larger authored radii from taking effect on dense displays
+  ([#1332](https://github.com/chrisbanes/haze/pull/1332)).
+- Clear uses a consistent shallow blur across surface sizes
+  ([#1332](https://github.com/chrisbanes/haze/pull/1332)).
+- Preserved in-gamut source colour when Glass requests a chroma boost, avoiding clipped saturated
+  plateaus, and retained authored tint and edge-shadow Compose `ColorSpace` semantics in
+  colour-managed shader uniforms
+  ([#1334](https://github.com/chrisbanes/haze/pull/1334)).
+- Lowered the Android compile SDK requirement from the 37.2 preview SDK to the standard Android 37
+  SDK while preserving the experimental native Backdrop runtime gates and fallback
+  ([#1323](https://github.com/chrisbanes/haze/pull/1323)).
+- Consolidated Glass Lab into Glass Playground, with a compact selector for comparing the Regular
+  and Clear built-in styles
+  ([#1324](https://github.com/chrisbanes/haze/pull/1324),
+  [#1326](https://github.com/chrisbanes/haze/pull/1326)).
+
+### Fixed
+
+- Preserved brush RGB while progressive tint alpha is modulated on Android 12 and 12L
+  ([#1331](https://github.com/chrisbanes/haze/pull/1331)).
+- Reset retained capture-layer effects before Android's layered progressive blur path records a new
+  frame, preventing stale alpha and render effects across transitions
+  ([#1333](https://github.com/chrisbanes/haze/pull/1333)).
+- Removed hard one-pixel boundaries from rounded Glass controls and dark bevel bands from
+  progressive Glass over opaque captures
+  ([#1336](https://github.com/chrisbanes/haze/pull/1336)).
+
+## 2.0.0-rc01 <small>2026-09-13</small> { id="2.0.0-rc01" }
+
+### Added
+
+- Added `LocalHazePerformanceMode` for providing the default Blur and Glass performance mode to a
+  composition subtree. Explicit modifier values still take precedence
+  ([#1314](https://github.com/chrisbanes/haze/pull/1314)).
+- Allow `HazeInput.Backdrop()` to omit its source fallback. When native Backdrop rendering is
+  unavailable, effects without a fallback leave their content unchanged
+  ([#1318](https://github.com/chrisbanes/haze/pull/1318)).
+- Added direct and embeddable web sample links, sample performance controls, and a Glass music
+  player example
+  ([#1307](https://github.com/chrisbanes/haze/pull/1307),
+  [#1310](https://github.com/chrisbanes/haze/pull/1310),
+  [#1313](https://github.com/chrisbanes/haze/pull/1313),
+  [#1314](https://github.com/chrisbanes/haze/pull/1314)).
+
+### Changed
+
+- `HazePerformanceMode.Fixed` now interpolates quality continuously across its supported input-pixel
+  range instead of selecting one of three tiers. `Balanced` remains `Fixed(0.5f)` and now retains
+  more detail in Glass
+  ([#1316](https://github.com/chrisbanes/haze/pull/1316)).
+- Consolidated performance guidance and published updated Haze 1 versus Haze 2, performance-mode,
+  fixed-quality, and native Backdrop measurements
+  ([#1301](https://github.com/chrisbanes/haze/pull/1301),
+  [#1304](https://github.com/chrisbanes/haze/pull/1304),
+  [#1317](https://github.com/chrisbanes/haze/pull/1317)).
+
+### Fixed
+
+- Draw Glass rims without an unnecessary offscreen effect on supported Android and Skiko canvases,
+  while retaining the fallback when the destination canvas cannot use the direct shader path
+  ([#1297](https://github.com/chrisbanes/haze/pull/1297),
+  [#1298](https://github.com/chrisbanes/haze/pull/1298)).
+- Prevent unrelated sibling redraws from re-recording an unchanged retained Haze source
+  ([#1299](https://github.com/chrisbanes/haze/pull/1299)).
+
+## 2.0.0-beta03 <small>2026-09-07</small> { id="2.0.0-beta03" }
+
+### Added
+
+- Added `HazeInput.Backdrop` with portable source fallback and an experimental native backend for
+  Android 17 QPR2. Native rendering is disabled by default and requires
+  `HazeFeatureFlags.isPlatformBackdropEnabled`; physical Android 37.2 acceptance remains pending
+  ([#1278](https://github.com/chrisbanes/haze/pull/1278)).
+- Added `GlassAccessibilitySettings` and `LocalGlassAccessibilitySettings` for app-supplied reduced
+  transparency, increased contrast, and visible borders, plus the `edgeShadow` style builder and
+  `GlassOptics.refractionDetailIntensity` controls
+  ([#1272](https://github.com/chrisbanes/haze/pull/1272),
+  [#1275](https://github.com/chrisbanes/haze/pull/1275)).
+
+### Changed
+
+- Replaced the experimental `GlassOptics.Adaptive` and `GlassOptics.Fixed` types with one public
+  `GlassOptics` configuration. Blur and depth can now use independent shortest-dimension points
+  through `OpticalSizeValue.Responsive`
+  ([#1272](https://github.com/chrisbanes/haze/pull/1272)).
+- Refined Glass edge shading and the default specular response
+  ([#1275](https://github.com/chrisbanes/haze/pull/1275)).
+- Skip source capture while no effects consume it
+  ([#1279](https://github.com/chrisbanes/haze/pull/1279)).
+- Validate progressive gradient intensities as finite values in `0f..1f` and require at least two
+  stops when converting gradients to brushes
+  ([#1282](https://github.com/chrisbanes/haze/pull/1282)).
+- Refreshed Android baseline profiles for Haze 2
+  ([#1293](https://github.com/chrisbanes/haze/pull/1293),
+  [#1294](https://github.com/chrisbanes/haze/pull/1294)).
+- Updated Kotlin to 2.4.20 ([#1295](https://github.com/chrisbanes/haze/pull/1295)).
+
+### Fixed
+
+- Corrected the built-in Regular and Clear Glass blur and depth responses so compact surfaces retain
+  more source detail while larger surfaces increase their blur smoothly
+  ([#1272](https://github.com/chrisbanes/haze/pull/1272)).
+- Corrected published Compose dependency scopes
+  ([#1283](https://github.com/chrisbanes/haze/pull/1283)).
+- Fixed `Behind` source selection across nested independent Haze states
+  ([#1290](https://github.com/chrisbanes/haze/pull/1290)).
+- Accept subpixel blur radii in the RenderScript backend
+  ([#1291](https://github.com/chrisbanes/haze/pull/1291)).
+- Preserve progressive blur coverage for constant and restricted intensity ranges on Android 12
+  and 12L ([#1292](https://github.com/chrisbanes/haze/pull/1292)).
+- Fixed a RenderScript teardown race that could crash during scrolling and activity relaunch
+  ([#1294](https://github.com/chrisbanes/haze/pull/1294)).
+
+## 2.0.0-beta02 <small>2026-08-27</small> { id="2.0.0-beta02" }
+
+### Added
+
+- Added `GlassStyle.regular` and `GlassStyle.clear` as built-in Glass styles. Regular keeps the
+  geometry-adaptive material response, while Clear prioritizes visibility of content behind the
+  material. The optional `haze-glass-material3` artifact adds `GlassStyle.material3()` for applying
+  Material 3 defaults to either built-in or custom styles
+  ([#1264](https://github.com/chrisbanes/haze/pull/1264)).
+
+### Changed
+
+- Updated Compose Multiplatform and Jetpack Compose to 1.12.0
+  ([#1252](https://github.com/chrisbanes/haze/pull/1252),
+  [#1253](https://github.com/chrisbanes/haze/pull/1253)).
+
+### Fixed
+
+- Prevented snapshot observers from accessing detached Haze source nodes during Android activity
+  teardown ([#1262](https://github.com/chrisbanes/haze/pull/1262)).
+
+### Removed
+
+- Removed `GlassDefaults.style`; use `GlassStyle.regular`, `GlassStyle.clear`, or compose a custom
+  style instead ([#1264](https://github.com/chrisbanes/haze/pull/1264)).
+
+## 2.0.0-beta01 <small>2026-08-20</small> { id="2.0.0-beta01" }
+
+### Added
+
+- Added `refractionFoldStrength` to `GlassOptics.Fixed` and the inline `GlassStyle.optics(...)`
+  builder. The optional edge fold reverses local refraction near the Glass boundary without
+  expanding its capture area ([#1236](https://github.com/chrisbanes/haze/pull/1236)).
+- Added CameraX and Kamera samples plus a camera guide. Blur and Glass can process live previews
+  rendered into their Compose source layer; Android `PreviewView` integrations must use
+  `ImplementationMode.COMPATIBLE` ([#1238](https://github.com/chrisbanes/haze/pull/1238)).
+
+### Changed
+
+- Haze 2 beta finalizes the supported source-selection and Blur contracts. Source predicates now
+  receive library-owned `HazeSourceMetadata` through the member
+  `HazeSourceSelection.where { ... }`; `HazeColorEffect` is factory-only; and a nullable
+  `fallbackColorEffect(null)` explicitly clears an inherited fallback.
+- On Android 12 and 12L, progressive linear Blur now selects its fallback from the resolved
+  `HazePerformanceMode` tier: full-resolution tiers use the layered approximation, while
+  downsampled tiers use a mask.
+
+### Fixed
+
+- Haze effects now sample source content correctly through scaled or rotated `graphicsLayer`
+  transforms, including transforms applied directly to the effect-bearing composable
+  ([#717](https://github.com/chrisbanes/haze/issues/717)).
+- Glass pointer lights now track direct mouse, stylus, and touch input immediately; focus and
+  `InteractionSource`-derived movement still use `interactionPositionAnimationSpec`
+  ([#1234](https://github.com/chrisbanes/haze/pull/1234)).
+- Fixed visible refraction seams on elongated, rounded Glass surfaces
+  ([#1235](https://github.com/chrisbanes/haze/pull/1235)).
+- Glass now preserves captured input when a runtime-shader draw failure falls back in the same
+  frame, including own-content input with a transparent background
+  ([#1230](https://github.com/chrisbanes/haze/pull/1230),
+  [#1231](https://github.com/chrisbanes/haze/pull/1231)).
+
+### Removed
+
+- Removed Haze 2 prerelease-only Blur adapters and aliases, including the legacy
+  `HazeBlurStyle(...)` forms, `HazeBlurStyle.Unspecified`, the Blur-package `HazeProgressive`
+  typealias, and deprecated defaults helpers.
+- Removed `HazeProgressive.LinearGradient.preferPerformance`; choose a
+  `HazePerformanceMode` tier instead.
+- Removed public `HazeColorEffect` concrete implementations, sentinel/default helpers, and
+  inspection APIs. Create effects with `tint(...)` or `colorFilter(...)`.
+- Removed the public core `Poko` marker and `HazeLogger.d(...)` operations from the supported API.
+
+## 2.0.0-alpha05 <small>2026-08-12</small> { id="2.0.0-alpha05" }
+
+### Added
+
+- Added `HazePerformanceMode` for built-in Blur and Glass. `Default` is adaptive; `Quality`,
+  `Balanced`, `Performance`, and `Fixed(qualityFraction)` select effect-owned profiles. Custom
+  effects continue to use `HazeSampling`
+  ([#1209](https://github.com/chrisbanes/haze/pull/1209),
+  [#1211](https://github.com/chrisbanes/haze/pull/1211)).
+- Added optional `haze-blur-material3` and `haze-glass-material3` artifacts. Their
+  `HazeBlurStyle.Material3()` and `GlassStyle.Material3()` factories use the current
+  `MaterialTheme.colorScheme.surface` without adding a Material dependency to the core effect
+  artifacts ([#1215](https://github.com/chrisbanes/haze/pull/1215)).
+
+### Changed
+
+- Built-in Blur and Glass now document the shared `HazePerformanceMode` contract: `Default` is
+  `Adaptive`, `Quality` replaces the former full-resolution choice, and prior built-in fixed
+  input-pixel fractions must be remeasured before selecting `Fixed(qualityFraction)`.
+  `HazeSampling` remains the generic contract for custom effects
+  ([#1206](https://github.com/chrisbanes/haze/issues/1206)).
+- Blur avoids redundant modifier updates when independently recreated `HazeBlurStyle` programs
+  are equivalent.
+
+### Fixed
+
+- Glass can now composite transparent captured content onto an explicit background before
+  refraction and blur using `GlassStyle.backgroundColor`
+  ([#1207](https://github.com/chrisbanes/haze/issues/1207)).
+- Restored the `macosArm64` target across every published module, along with the `sample/macos`
+  app. The target was published in `2.0.0-alpha03` and dropped from `2.0.0-alpha04` in
+  [#1002](https://github.com/chrisbanes/haze/pull/1002).
+
+## 2.0.0-alpha04 <small>2026-08-08</small> { id="2.0.0-alpha04" }
+
+### Highlights
+
+#### Revamped Effect APIs
+
+Alpha04 replaces the mutable, nested effect DSL with typed modifiers and explicit rendering
+policies. Blur now uses `Modifier.hazeBlur`, while Glass uses `Modifier.hazeGlass`. Each modifier
+declares its input (`HazeInput.Sources` or `HazeInput.Content`), Style, sampling policy, and layer
+behavior directly:
+
+```kotlin
+Modifier.hazeBlur(
+    input = HazeInput.Sources(hazeState),
+    style = HazeBlurStyle {
+        blurRadius(20.dp)
+    },
+    sampling = HazeSampling.Adaptive,
+)
+```
+
+`HazeBlurStyle` and `GlassStyle` are now immutable, replayable configurations that can be shared
+between modifiers and extended with `then`. Custom effects use a typed `HazeEffectFactory` with a
+renderer owned by each modifier node, keeping mutable rendering resources out of shareable Style
+objects. See the [Haze 2.0 migration guide](https://chrisbanes.github.io/haze/migrating-2.0/) for
+before-and-after examples.
+
+#### New `haze-glass` Library (Experimental)
+
+This release introduces `haze-glass`, a new multiplatform library for building refraction-driven
+Glass effects with Haze. It combines refraction, depth blur, tint, Fresnel and ambient lighting,
+specular highlights, dispersion, progressive blur, and interactive hover, focus, and press
+responses behind one portable API.
+
+`2.0.0-alpha04` is the library's first public release on Maven Central. Add the core Haze library
+and `haze-glass` with the same version:
+
+```kotlin
+dependencies {
+    implementation("dev.chrisbanes.haze:haze:2.0.0-alpha04")
+    implementation("dev.chrisbanes.haze:haze-glass:2.0.0-alpha04")
+}
+```
+
+Start with `Modifier.hazeGlass` and `GlassStyle`. The library uses the same API across supported
+platforms and gracefully falls back when a platform cannot provide a requested optical effect.
+`haze-glass` is experimental, is gated by `@ExperimentalHazeApi`, and may change before Haze 2.0
+is stable.
+
+### Breaking Changes
+
+- Custom effects now use only the typed `Modifier.hazeEffect`, `HazeEffectFactory`,
+  `HazeEffectRenderer`, `HazeEffectDrawScope`, and `HazeEffectLayoutScope` surface.
+  `VisualEffect`, `VisualEffectContext`, `HazeEffectScope`, the lambda-based `hazeEffect`
+  overloads, and the legacy renderer capability interfaces are removed.
+- `HazeEffectNode`, `HazeSourceNode`, `HazeArea`, `HazeCoordinates`, `HazePositionStrategy`, and
+  the source records and position policy on `HazeState` are now internal implementation details.
+  Source-selection predicates receive only `HazeSourceInfo`.
+- `HazeInputScale` is removed. Use `HazeSampling` to choose default, adaptive, full-resolution, or
+  fixed input sampling for typed effects. `HazeSampling.Default` is a pointer to `Adaptive`.
+- Blur now exposes `Modifier.hazeBlur`, opaque replayable `HazeBlurStyle`, and
+  `HazeBlurDefaults.style`. The mutable `BlurVisualEffect` runtime, scope extension, readable Style
+  properties, `copy`, and destructuring are removed permanently.
+- Glass now exposes only the typed `Modifier.hazeGlass` and replayable `GlassStyle` surface.
+  `GlassVisualEffect`, `glassEffect`, the old `hazeGlass` overload, `GlassRenderer`,
+  `GlassRendererCache`, `GlassStyleConfiguration`, grouped `GlassLighting`/`GlassColor`/
+  `GlassRendering` values, `GlassStyle.Unspecified`, and the public hover/press/release animation
+  defaults are removed. Declare response channels and animation specs explicitly in `GlassStyle`.
+  `GlassOptics.Absolute` is renamed to `GlassOptics.Fixed`, `lightPosition` now accepts semantic
+  `Alignment` rather than pixel `Offset`, and interaction-light radius and position animation move
+  from modifier arguments into the Style.
+
+### Added
+
+- Published the experimental `haze-glass` library to Maven Central, starting with
+  `2.0.0-alpha04`, in
+  [#1171](https://github.com/chrisbanes/haze/pull/1171).
+- Added declarative hover, focus, and press responses to `GlassStyle`, including localized lighting
+  and optics plus configurable transforms and motion on `Modifier.hazeGlass`.
+- Added progressive blur support to Glass.
+- Added `GlassOptics.Adaptive`, the default Glass material that adapts its optical response to a
+  surface's size, aspect ratio, and roundness.
+- Added direct fixed-optics authoring through `GlassStyle { optics(...) }`; keep
+  `GlassOptics.Fixed` for reusable or programmatically selected values in
+  [#1192](https://github.com/chrisbanes/haze/pull/1192).
+- Added source-selection and retained-output policies to `HazeInput.Sources`. Effects select
+  sources with `HazeSourceSelection` and keep the last frame through temporary source gaps by
+  default; use `HazeSourceRetention.ClearWhenUnavailable` when stale pixels are inappropriate.
+
+### Changed
+
+- Temporarily retain the former plural and singular `HazeBlurStyle(...)` construction forms,
+  `HazeBlurStyle.Unspecified`, and `HazeBlurDefaults.style(...)` builder as warning-level,
+  source-only migration shims. They preserve legacy sentinel behavior and will be removed before
+  Haze 2.0 stable; they do not provide binary compatibility with the former Style class.
+- Blur and Glass now use workload-aware adaptive sampling by default. Explicit sampling choices
+  still take precedence in
+  [#1189](https://github.com/chrisbanes/haze/pull/1189).
+- `GlassStyle` is now immutable, composable with `then`, and reusable across modifiers. Interaction
+  appearance now belongs to the Style, while interaction behavior remains on the modifier in
+  [#1190](https://github.com/chrisbanes/haze/pull/1190) and
+  [#1191](https://github.com/chrisbanes/haze/pull/1191).
+- Glass light positions now use semantic `Alignment` in
+  [#1193](https://github.com/chrisbanes/haze/pull/1193).
+- One portable Glass Style now works across platforms, with graceful fallback for unsupported
+  optics in
+  [#1194](https://github.com/chrisbanes/haze/pull/1194).
+- Invalid Glass configuration now fails when the Style or fixed optics are created in
+  [#1195](https://github.com/chrisbanes/haze/pull/1195).
+- Changed Glass blur composition so blur participates in refracted content.
+- Improved Android Glass performance for screens with multiple effects without changing configured
+  appearance or interaction.
+- Moved `HazeProgressive` to the core `dev.chrisbanes.haze` package with a deprecated blur-package typealias.
+
+### Fixed
+
+- Release rebuildable Desktop and Web effect resources when their composition lifecycle stops in
+  [#1156](https://github.com/chrisbanes/haze/pull/1156).
+- Bound and reuse Glass group-alpha composition surfaces, including allocation-free zero-alpha
+  drawing and predictable fallback for oversized output in
+  [#1064](https://github.com/chrisbanes/haze/pull/1064).
+- Reuse retained Glass stages, prepared render data, and runtime shaders during animation in
+  [#1057](https://github.com/chrisbanes/haze/pull/1057).
+- **Fix cross-window recomposition livelock** in
+  [#975](https://github.com/chrisbanes/haze/pull/975). When a `HazeState` is shared between effects
+  in different windows (e.g. a host composable and a `Dialog`), the previously-shared
+  `HazeState.resolvedStrategy` oscillated between `Local` and `Screen`, causing an infinite
+  recomposition loop. The resolved position strategy is now per-effect
+  (`HazeEffectNode.resolvedPositionStrategy`), so effects in different windows no longer stomp on
+  each other.
+- Fix sticky header haze scroll sync in
+  [#996](https://github.com/chrisbanes/haze/pull/996). `HazeSourceNode` now refreshes local
+  coordinates from every `onPlaced`, and observed area-position reads dirty `HazeEffectNode` area
+  offsets so sticky headers blur the currently visible content while scrolling.
+- Fixed source and effect positioning when they are hosted by separate iOS Compose roots
+  ([#978](https://github.com/chrisbanes/haze/pull/978)).
+
+Thanks to [Arda K.](https://github.com/ardakazanci) for
+[#1093](https://github.com/chrisbanes/haze/pull/1093) and
+[#1114](https://github.com/chrisbanes/haze/pull/1114), and to
+[Zongle Wang](https://github.com/Goooler) for
+[#971](https://github.com/chrisbanes/haze/pull/971).
+
+## 2.0.0-alpha03 <small>2026-06-08</small> { id="2.0.0-alpha03" }
+
+### Breaking Changes
+
+- **Removed APIs:** Delete all v1 migration aliases, including `HazeStyle`, `HazeTint`, `LocalHazeStyle`, and the `HazeTint(...)` factory function in #963
+- **Changed:** `HazeBlurStyle` is now an immutable class rather than a data class. The constructor and `copy()` parameter for `colorEffects` is nullable (`null` = unspecified, `emptyList()` = explicitly empty); the public property remains non-null and returns an empty list when unspecified in #963
+
+### Changed
+
+- Update Jetpack Compose to 1.11.2 in #938
+- Update Compose Multiplatform to 1.11.1 in #956
+- Upgrade AGP to 9.2.1 in #955
+
+### Fixed
+
+- Fix NPE race between `RenderScriptContext.applyBlur()` and `release()` in #962
+- Fix RenderScript blur temporary graphics layer leak on cancellation in #952
+- Fix dynamic area updates in `HazeEffectNode` in #950
+- Include resolved `CornerRadii` in fallback path cache invalidation in #954
+- Guard `VisualEffect` attach/detach until `HazeEffectNode` is attached in #953
+- Exclude `VisualEffect.Empty` from single-owner registration in #949
+
+## 2.0.0-alpha02 <small>2026-05-08</small> { id="2.0.0-alpha02" }
+
+Changes since 2.0.0-alpha01.
+
+### Breaking Changes
+
+- **Removed APIs:** `VisualEffectContext.visualEffect` property removed. Custom `VisualEffect` implementations should access their own state directly through class members or captured references. Inside `override fun DrawScope.draw(...)`, bare `this` refers to the `DrawScope`, not the `VisualEffect` instance.
+- **Lifecycle signature:** `VisualEffect.detach()` now receives the attached context as `detach(context: VisualEffectContext)`.
+- **Method renames:** `DrawScope.shouldDrawContentBehind(context)` is now `shouldDrawContentBehind(context)`.
+- **Method renames:** `shouldClip()` is now `shouldClipToNodeBounds()`, and `preferClipToAreaBounds()` is now `shouldPreferClipToAreaBounds()`.
+- **Removed APIs:** `calculateInputScaleFactor()` and `requireInvalidation()` were removed from `VisualEffect`.
+
+### Key Dependencies
+
+- Kotlin 2.3.20
+- Compose Multiplatform 1.11.0
+- Jetpack Compose 1.11.1
+- kotlinx-coroutines 1.11.0
+
+### Changed
+* Refine `VisualEffect` lifecycle API, enforce single-owner semantics in #916
+* Migrate to Compose v2 test APIs in #924
+* Update Gradle to v9.5.1 in #931
+* Update Compose Multiplatform to 1.11.0 in #933
+
+### Added
+* Add recomposition testing (count + loop detection + instrumentation) in #919
+
+### Fixed
+* Fix `IllegalStateException` from `currentValueOf` on unattached node in #921
+* Fix dark line artifact at progressive blur region edges in #929
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/2.0.0-alpha01...2.0.0-alpha02
+
+## 2.0.0-alpha01 <small>2026-04-28</small> { id="2.0.0-alpha01" }
+
+Major architectural refactor introducing a pluggable visual effects system for improved modularity and extensibility.
+
+### Highlights
+
+#### New `VisualEffect` Interface
+
+Haze now uses a `VisualEffect` interface that separates the core effect infrastructure from specific effect implementations. This enables better separation of concerns, a smaller core module, and potential for custom visual effects in the future.
+
+#### New `haze-blur` Module
+
+All blur functionality has been extracted from the core `haze` module into a separate `haze-blur` module:
+
+```kotlin
+implementation("dev.chrisbanes.haze:haze:2.0.0-alpha01")
+implementation("dev.chrisbanes.haze:haze-blur:2.0.0-alpha01")
+```
+
+#### New `blurEffect {}` API
+
+All blur-related properties now require a `blurEffect {}` wrapper:
+
+```kotlin
+Modifier.hazeEffect(state = hazeState) {
+  blurEffect {
+    blurRadius = 20.dp
+    colorEffects = listOf(HazeColorEffect.tint(...))
+  }
+}
+```
+
+#### Configurable `HazePositionStrategy`
+
+New `positionStrategy` parameter on `rememberHazeState()` to control how effect positions are calculated, fixing split-window blur misalignment scenarios.
+
+### Breaking Changes
+
+- **New module dependency:** Blur functionality now requires the `haze-blur` module
+- **API nesting:** Blur properties (`blurRadius`, `colorEffects`, `style`, `noiseFactor`, `progressive`, `mask`, etc.) now require `blurEffect {}` wrapper
+- **Package changes:** Blur classes moved to `dev.chrisbanes.haze.blur` package:
+  - `HazeStyle` → `dev.chrisbanes.haze.blur.HazeBlurStyle`
+  - `HazeTint` → `dev.chrisbanes.haze.blur.HazeColorEffect`
+  - `HazeProgressive` → `dev.chrisbanes.haze.blur.HazeProgressive`
+  - `LocalHazeStyle` → `dev.chrisbanes.haze.blur.LocalHazeBlurStyle`
+- **Removed APIs:** `rememberHazeState(blurEnabled)` parameter removed (use `blurEffect { blurEnabled = ... }`)
+- **Internal API renames:** `create*ImageFilter` functions renamed to `create*RenderEffect` (only affects custom effect authors using `@InternalHazeApi`)
+- **Dropped targets:** `iosX64` and `macosX64` targets removed, following Compose Multiplatform 1.11. These Intel-based targets are no longer supported upstream.
+
+### Key Dependencies
+
+- Kotlin 2.3.20
+- Compose Multiplatform 1.11.0-alpha04
+
+### Added
+* Introduce `VisualEffect` interface and pluggable effect system
+* Extract all blur functionality into a new `haze-blur` module
+* Add `blurEffect {}` wrapper for declarative blur configuration
+* Add `HazePositionStrategy` to control effect position calculation, fixing split-window misalignment
+* Refactor `HazeTint` to `HazeColorEffect` sealed interface with three concrete types: `TintColor`, `TintBrush`, and `ColorFilter` as a first-class effect
+* Add `VisualEffectContext` with lifecycle hooks for custom effects
+* Add migration helpers for v1 to v2 transition
+* Add `onTrimMemory` support to `VisualEffect` for memory pressure handling
+* Promote Materials API to stable, removing `@ExperimentalHazeMaterialsApi`
+* Add initial v2 documentation
+
+### Changed
+* Commonize `RenderEffect` and Shader handling, unifying skiko and android blur implementations
+* Performance: eliminate per-frame `GraphicsLayer` allocation in `hazeEffect`
+* Performance: remove `runBlocking` from RenderScript for faster startup
+* Harden `VisualEffect` lifecycle internals
+* Refactor screenshot test infrastructure to use `VisualEffect` for cross-effect reusability
+* Update Kotlin to 2.3.20
+* Update Compose Multiplatform to 1.11.0-alpha04
+
+### Fixed
+* Fix dark edge artifacts from RenderScript Allocation padding
+* Fix v2 documentation inconsistencies
+* Fix CHANGELOG not included in docs build
+
+### Migration
+
+For detailed migration instructions, see the [Migration Guide](https://chrisbanes.github.io/haze/migrating-2.0/).
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.7.2...2.0.0-alpha01
+
+</details>
+
+## 1.7.2 <small>2026-02-10</small> { id="1.7.2" }
+
+### Changed
+* Add changelog
+* Update Compose Multiplatform to 1.10.0
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.7.1...1.7.2
+
+## 1.7.1 <small>2025-11-24</small> { id="1.7.1" }
+
+### Changed
+* Use LruCache rather than SieveCache in #827
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.7.0...1.7.1
+
+## 1.7.0 <small>2025-11-10</small> { id="1.7.0" }
+
+### Highlights
+
+- 🆕 `forceInvalidateOnPreDraw` parameter on `HazeEffectScope` ([doc](https://chrisbanes.github.io/haze/latest/api/haze/dev.chrisbanes.haze/-haze-effect-scope/force-invalidate-on-pre-draw.html))
+- Optimized noise texture handling on Android
+- Only enable pre-draw listeners when we need to use them
+- This should be the last of the v1.x releases (barring any blocking issues which crop up).
+
+### Key dependencies
+  - Kotlin 2.2.20
+  - Compose Multiplatform 1.9.3
+  - Jetpack Compose 1.9.4
+
+### Changed
+* Dependency updates in #752
+* Add workaround for Kotlin Yarn errors in #764
+* Bump compile and min SDK versions in #773
+* Optimize areas and area offsets in #779
+* Compose 1.9.x and Kotlin 2.2.20 in #791
+* Reduce screenshot test thresholds in #806
+* Only enable pre-draw listeners when necessary in #809
+* Add a common pre-draw listener in #811
+* Invalidate on position change in #812
+* Update Android version references in platforms.md by @XIVIX134 in #814
+
+### Added
+* Add LeakCanary to sample in #769
+* [Android] Optimize noise texture in #778
+* Enable Kotlin explicit API in #790
+* Introduce expandLayerBounds flag in #807
+* Add forceInvalidateOnPreDraw flag in #810
+
+### New Contributors
+* @XIVIX134 made their first contribution in #814
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.6.10...1.7.0
+
+## 1.6.10 <small>2025-08-13</small> { id="1.6.10" }
+
+### Added
+* Add clipToAreasBounds flag in #744
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.6.9...1.6.10
+
+## 1.6.9 <small>2025-07-18</small> { id="1.6.9" }
+
+### Fixed
+* Fix transparent edges... again in #728
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.6.8...1.6.9
+
+## 1.6.8 <small>2025-07-14</small> { id="1.6.8" }
+
+### Changed
+* Reduce unnecessary draw invalidations in #725
+
+### Fixed
+* Check if node is attached from updateEffect in #724
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.6.7...1.6.8
+
+## 1.6.7 <small>2025-07-06</small> { id="1.6.7" }
+
+### Fixed
+* Workaround Compose draw exception on Android 9 in #707
+* Fix bounded edge treatment not working in #710
+* Fix Haze'd dialogs not blurring background content in #714
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.6.6...1.6.7
+
+## 1.6.6 <small>2025-06-28</small> { id="1.6.6" }
+
+### Changed
+* Remove dependency on kotlinx-datetime in #704
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.6.5...1.6.6
+
+## 1.6.5 <small>2025-06-27</small> { id="1.6.5" }
+
+### Changed
+* Add Dokka docs module in #687
+* Hide internal functions in #691
+
+### Fixed
+* [RenderScript] Don't crash when blurRadius == 0 in #686
+* Fix docs publish action in #690
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.6.4...1.6.5
+
+## 1.6.4 <small>2025-06-06</small> { id="1.6.4" }
+
+### Changed
+* Refactor screenshot testing setup in #673
+* Enable Dokka v2 in #676
+
+### Fixed
+* Fix overlapping content with layer transformations in #674
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.6.3...1.6.4
+
+## 1.6.3 <small>2025-06-01</small> { id="1.6.3" }
+
+### Highlights
+
+🆕 MacOS CMP targets - Thanks to @YuKongA for adding 'native' MacOS targets. These are completely experimental (and untested), as per MacOS targets for CMP.
+
+### Added
+* Add macos targets by @YuKongA in #660
+
+### Fixed
+* Skip drawing if not attached in #666
+* Skip layout calls if not attached in #668
+
+### New Contributors
+* @YuKongA made their first contribution in #660
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.6.2...1.6.3
+
+## 1.6.2 <small>2025-05-20</small> { id="1.6.2" }
+
+### Fixed
+* Stop clipping the drawn layer size in #654
+* Call drawContent safely in #655
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.6.1...1.6.2
+
+## 1.6.1 <small>2025-05-19</small> { id="1.6.1" }
+
+### Changed
+* Clarify fallbackTint kdoc in #647
+
+### Fixed
+* Update outdated Dialog doc by @Skaldebane in #639
+* Handle RenderScript not initializing in #645
+
+### New Contributors
+* @Skaldebane made their first contribution in #639
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.6.0...1.6.1
+
+## 1.6.0 <small>2025-05-12</small> { id="1.6.0" }
+
+### Highlights
+
+#### 🤖 Support for all versions of Android
+
+Haze now supports blurring for all versions of Android, using RenderScript underneath. The new [platforms](https://chrisbanes.github.io/haze/latest/platforms/#android) documentation has all of the details.
+
+#### 🎨 Foreground (content) blurring
+
+Haze always been a library which enables background blurring. There are times where you need to blur the foreground content though, which Haze has always left to `Modifier.blur`. With the addition of older Android support, and all of the other features Haze supports, it makes sense for Haze to support both scenarios. New in this release is foreground blurring ([doc](https://chrisbanes.github.io/haze/latest/usage/#foreground-blurring)).
+
+#### 📐 Blurred edge treatment
+
+With the addition of foreground blurring, the need to be able to customise how content is blurred at the edges is useful. This release contains a new `blurredEdgeTreatment` on the effect scope, which works the same way as `Modifier.blur`.
+
+### Added
+* Add RenderScript backed blur implementation in #590
+* Add `HazeState.blurEnabled` in #602
+* Update docs for 1.6.0 in #603
+* Add new platform docs in #605
+* Add trace functions in #615
+* Add support for content blurring in #616
+* Add blurredEdgeTreatment property in #625
+
+### Changed
+* Remove the final withSaveLayer call in #601
+* Tidy up HazeProgressive drawing in #604
+* Scale the noise texture appropriately in #613
+* Tweaks to Progressive support for RenderScript in #621
+* Compose Multiplatform 1.8.0 in #634
+
+### Fixed
+* Fix masking for content blurring in #619
+* Fix input scaled content being 1px smaller in #622
+* Noise fixes for Android in #626
+* Fix clamping blur effect on edges in #629
+* [RenderScript] Fix tint and noise size being incorrect in #632
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.5.4...1.6.0
+
+## 1.6.0-rc02 <small>2025-05-06</small> { id="1.6.0-rc02" }
+
+### Changed
+* Compose Multiplatform 1.8.0 in #634
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.6.0-rc01...1.6.0-rc02
+
+## 1.6.0-rc01 <small>2025-05-05</small> { id="1.6.0-rc01" }
+
+### Fixed
+* [RenderScript] Fix tint and noise size being incorrect in #632
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.6.0-beta03...1.6.0-rc01
+
+## 1.6.0-beta03 <small>2025-05-04</small> { id="1.6.0-beta03" }
+
+### Added
+* Add blurredEdgeTreatment property in #625
+
+### Changed
+* Noise fixes for Android in #626
+
+### Fixed
+* Fix clamping blur effect on edges in #629
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.6.0-beta02...1.6.0-beta03
+
+## 1.6.0-beta02 <small>2025-04-29</small> { id="1.6.0-beta02" }
+
+### Added
+* Add trace functions in #615
+* Add support for content blurring in #616
+
+### Changed
+* Scale the noise texture appropriately in #613
+* Tweaks to Progressive support for RenderScript in #621
+
+### Fixed
+* Fix masking for content blurring in #619
+* Fix input scaled content being 1px smaller in #622
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.6.0-beta01...1.6.0-beta02
+
+## 1.6.0-beta01 <small>2025-04-23</small> { id="1.6.0-beta01" }
+
+### Highlights
+
+#### 🆕 Support for all Android devices
+
+We now support for older Android versions, using an implementation of blurring which uses [RenderScript](https://developer.android.com/guide/topics/renderscript/compute). You can read the new [Platforms](https://chrisbanes.github.io/haze/latest/platforms/) documentation for more information on how to try it.
+
+Big thanks to @desugar-64 for the help on this.
+
+#### Android 12 is now enabled by default
+
+We have now identified a fix for the issues which meant that blurring was disabled on Android 12, and it is now enabled by default.
+
+### Added
+* Add RenderScript backed blur implementation in #590
+* Add `HazeState.blurEnabled` in #602
+* Update docs for 1.6.0 in #603
+* Add new platform docs in #605
+
+### Changed
+* Remove the final withSaveLayer call in #601
+* Tidy up HazeProgressive drawing in #604
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.5.4...1.6.0-beta01
+
+## 1.5.4 <small>2025-04-17</small> { id="1.5.4" }
+
+### Changed
+* Re-use BlurEffect instances in #600
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.5.3...1.5.4
+
+## 1.5.3 <small>2025-04-13</small> { id="1.5.3" }
+
+### Changed
+* Reduce scope of consumer R8 rules in #579
+* Extract BlurEffect interface in #589
+* Use `Sample` as routes directly by @Goooler in #593
+
+### Fixed
+* Fix links on docs site in #581
+* Fix haze effects inside of of pagers by @Monkopedia in #594
+
+### New Contributors
+* @Goooler made their first contribution in #593
+* @Monkopedia made their first contribution in #594
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.5.2...1.5.3
+
+## 1.5.2 <small>2025-03-23</small> { id="1.5.2" }
+
+### Changed
+* Migrate samples to AndroidX Navigation in #563
+* Disable context-receivers compiler flag in #564
+* Update baseline profile in #568
+
+### Fixed
+* Fix flicker when using AndroidX Navigation in #566
+* Fix wrong blur rect after rotating in #567
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.5.1...1.5.2
+
+## 1.5.1 <small>2025-03-19</small> { id="1.5.1" }
+
+### Fixed
+* Fix compilation failure of iOS sample by @keta1 in #553
+* [Skiko] Fix noise effect not being masked for progressive effect in #555
+
+### New Contributors
+* @keta1 made their first contribution in #553
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.5.0...1.5.1
+
+## 1.5.0 <small>2025-03-06</small> { id="1.5.0" }
+
+### Highlights
+
+- Optimised blurring shader for progressive effects. Thanks to @Kyant0 in #537
+- HazeProgressive.Brush. You can now supply completely custom masks (via a shader) for progressive effects.
+- Added `HazeLogger`. You can now turn on Haze's internal logging. Handy for debugging and reporting issues.
+- Various bug fixes. Thanks to everyone who reported issues.
+
+### Added
+* Add iOS sample in #532
+* Add HazeLogger in #534
+* Add HazeProgressive.Brush in #542
+* Add HazeProgressive.forShader in #546
+
+### Changed
+* Optimize Gaussian blur shader by @Kyant0 in #537
+
+### Fixed
+* Fix progressive effect being drawn incorrectly  in #538
+* Don't create GraphicsLayer if dimension is zero in #540
+* Fix support for nested Haze hierarchies in #545
+* Fix baseline profile generation in #550
+
+### New Contributors
+* @Kyant0 made their first contribution in #537
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.4.0...1.5.0
+
+## 1.4.0 <small>2025-02-28</small> { id="1.4.0" }
+
+### Added
+* Add HazeDialog composable in #513
+
+### Changed
+* Bump Android Compile SDK to 35 in #512
+* Re-introduce expanded layer size in #522
+* Use high-precision types in blurring shader in #530
+
+### Fixed
+* Fix default style to include blurring in #527
+* Fix progressive effect on certain OEMs in #528
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.3.1...1.4.0
+
+## 1.3.1 <small>2025-02-09</small> { id="1.3.1" }
+
+### Changed
+* Move Lifecycle usage to androidMain in #500
+* Only use positionOnScreen on Android in #503
+
+### Fixed
+* Release GraphicsLayer when stopped in #499
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.3.0...1.3.1
+
+## 1.3.0 <small>2025-01-27</small> { id="1.3.0" }
+
+### Added
+* Add Brush support to HazeTint in #481
+* Add Bottom Sheet sample in #485
+* Add support for radial progressive effects in #491
+* Adds section on using Haze in deep UI hierarchies. by @StylingAndroid in #494
+
+### Changed
+* Move all samples to `shared` in #484
+
+### Fixed
+* Fix alpha property changes not invalidating in #490
+
+### New Contributors
+* @StylingAndroid made their first contribution in #494
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.2.2...1.3.0
+
+## 1.2.2 <small>2025-01-16</small> { id="1.2.2" }
+
+### Fixed
+* Add workaround for positionOnScreen throwing in #472
+* [Skia] Fix hazeSource content changes not updating hazeEffects in #476
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.2.1...1.2.2
+
+## 1.2.1 <small>2025-01-13</small> { id="1.2.1" }
+
+### Fixed
+* Fix Haze not drawing any effects in previews in #470
+* Fix issues with missing effects in LazyLayouts in #469
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.2.0...1.2.1
+
+## 1.2.0 <small>2025-01-09</small> { id="1.2.0" }
+
+### Highlights
+
+#### API renames
+
+I have renamed a number of the APIs in this release to better reflect what they actually do these days:
+
+- `Modifier.haze` -> `Modifier.hazeSource`
+- `Modifier.hazeChild` -> `Modifier.hazeEffect`
+- `HazeChildScope` -> `HazeEffectScope`
+
+I've kept the old APIs around and deprecated them for easy migration.
+
+#### Overlapping blurred areas
+
+Haze now supports different `hazeEffect` areas which overlap. See [here](https://chrisbanes.github.io/haze/1.2.0/usage/#overlapping-blurred-layouts) for more information.
+
+#### Versioned documentation
+
+A small quality of life change, but the documentation website is now versioned: https://chrisbanes.github.io/haze/
+
+### Changed
+* Stop using synchronized lazy in #446
+* Add support for multiple Haze nodes attached to a HazeState in #441
+* Rename modifiers for clarity in #452
+* [Sample] Hook up back button on Android in #459
+* Remove expanded layer size in #461
+* Small tidy ups ready for release in #463
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.1.1...1.2.0
+
+## 1.1.1 <small>2024-12-04</small> { id="1.1.1" }
+
+### Changed
+* Use onPlaced for screenshot tests in #433
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.1.0...1.1.1
+
+## 1.1.0 <small>2024-12-02</small> { id="1.1.0" }
+
+### Highlights
+
+🆕 Input Scale - A new feature in this release is being able to set the [input scale](https://chrisbanes.github.io/haze/latest/usage/#input-scale), allowing you to downscale content for _potential_ performance gains.
+
+### Added
+* Add inputScale in #416
+* Improve HazeInputScale API in #423
+* Add automatic HazeInputScale in #427
+
+### Changed
+* Reduce variance in benchmarks in #418
+* More benchmark consistency work in #424
+* Remove noise scaling on Android in #428
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.0.2...1.1.0
+
+## 1.0.2 <small>2024-11-15</small> { id="1.0.2" }
+
+### Highlights
+
+🆕 Ability to control where the blurring effect is used - You can now control where the blur effect is used. Specifically for Android, there's more information [here](https://chrisbanes.github.io/haze/faq/#what-versions-of-android-does-haze-work-on).
+
+### Added
+* Add blurEnabled on HazeChildScope property in #408
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.0.1...1.0.2
+
+## 1.0.1 <small>2024-11-11</small> { id="1.0.1" }
+
+### Added
+* Add `preferPerformance` flag on HazeProgressive in #401
+
+### Changed
+* Cache RenderEffects in #402
+
+### Fixed
+* Implement fallback for HazeProgressive in #400
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/1.0.0...1.0.1
+
+## 1.0.0 <small>2024-11-07</small> { id="1.0.0" }
+
+This is the first stable 1.0.0 release! 🎉
+
+For a full list of changes since 0.7.3, see the [migration guide](https://chrisbanes.github.io/haze/migrating-1.0/).
+
+### New Contributors
+* @Sanlorng made their first contribution in #306
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.7.3...1.0.0
+
+## 0.9.0-rc03 <small>2024-11-02</small> { id="0.9.0-rc03" }
+
+### Changed
+* Remove LayoutAwareModifierNode and onPlaced again in #383
+
+### Fixed
+* Fix crashes caused by blurRadius of 0px in #382
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.9.0-rc02...0.9.0-rc03
+
+## 0.9.0-rc02 <small>2024-10-26</small> { id="0.9.0-rc02" }
+
+### Changed
+* Doc updates for Haze v0.9 in #369
+* Upgrade to Robolectric 4.14-beta-1 in #370
+* Start using LayoutAwareModifierNode and onPlaced again in #372
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.9.0-rc01...0.9.0-rc02
+
+## 0.9.0-rc01 <small>2024-10-21</small> { id="0.9.0-rc01" }
+
+### Highlights
+
+Performance improvements for progressive blur - On platforms which support runtime shaders (everything other than Android SDK < 33), progressive is ~1.9x faster than before, through the usage of a new (custom) runtime shader.
+
+### Added
+* Add runtime shader for progressive blur in #368
+
+### Changed
+* Small micro optimizations in #364
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.9.0-beta04.1...0.9.0-rc01
+
+## 0.9.0-beta04.1 <small>2024-10-16</small> { id="0.9.0-beta04.1" }
+
+### Fixed
+* Fix defaults for blurRadius and noiseFactor in #361
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.9.0-beta04...0.9.0-beta04.1
+
+## 0.9.0-beta04 <small>2024-10-16</small> { id="0.9.0-beta04" }
+
+### Highlights
+
+#### Compose Multiplatform 1.7.0
+
+CMP 1.7.0 has gone stable. Go and upgrade.
+
+#### Progressive blurs (aka gradient blurs)
+
+We now have access to progressive blurring with an API very similar to the `Brush` gradient APIs.
+
+> [!CAUTION]
+> The performance of progressive blurring is untested as yet, but for sure it's going to be slower than without. I also haven't put any performance work into this as yet. That will come for the next release (hopefully rc01).
+
+#### Tweaked styling APIs (again)
+
+The styling APIs have changed again (sorry about that), but I'm feeling much better about the new API. We now have a the LocalHazeStyle composition local (for global styling), `style` parameter on hazeChild for node-specific, and then the individual properties on hazeChild `block`.
+
+### Added
+* Progressive blur in #346
+* Add ExoPlayer sample in #356
+
+### Changed
+* More benchmark tests (and perf improvements) in #349
+* Throw error on descendant layouts in #357
+* Style improvements for 0.9.x in #360
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.9.0-beta03...0.9.0-beta04
+
+## 0.9.0-beta03 <small>2024-10-04</small> { id="0.9.0-beta03" }
+
+### Changed
+* Only use a GraphicsLayer on Android on hw-accel canvases in #341
+* Remove the unused defaultStyle vars in #342
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.9.0-beta02...0.9.0-beta03
+
+## 0.9.0-beta02 <small>2024-10-01</small> { id="0.9.0-beta02" }
+
+### Highlights
+
+- We now depend on Compose Multiplatform 1.7.0-rc01
+- Lots of API tweaks!
+
+### Added
+* Add alpha param to hazeChild in #313
+
+### Changed
+* Tidy up API for v0.9.0 in #330
+* Disable invalidation tick in #331
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.9.0-beta01...0.9.0-beta02
+
+## 0.9.0-beta01 <small>2024-09-05</small> { id="0.9.0-beta01" }
+
+### Highlights
+
+- New version of `hazeChild` which takes lambda parameters. Should be a lot more efficient if you need to animate properties.
+- Using Jetpack Compose 1.7.0 (GA)
+- Using Compose Multiplatform 1.7.0-beta01
+- (New) FluentMaterials class, which mimics Windows blurring styles. Thanks @Sanlorng!
+
+### Added
+* Add FluentMaterials by @Sanlorng in #306
+* Add lambda version of HazeChild in #309
+
+### New Contributors
+* @Sanlorng made their first contribution in #306
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.9.0-alpha08...0.9.0-beta01
+
+## 0.9.0-alpha08 <small>2024-08-21</small> { id="0.9.0-alpha08" }
+
+### Added
+* Add Brush suppport for tints in #298
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.9.0-alpha07...0.9.0-alpha08
+
+## 0.9.0-alpha07 <small>2024-08-15</small> { id="0.9.0-alpha07" }
+
+### Fixed
+* Add workaround for invalidations not happening on Skia backed platforms in #296
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.9.0-alpha06...0.9.0-alpha07
+
+## 0.9.0-alpha06 <small>2024-08-07</small> { id="0.9.0-alpha06" }
+
+### Fixed
+* Fix clipping size in #288
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.9.0-alpha05...0.9.0-alpha06
+
+## 0.9.0-alpha05 <small>2024-08-01</small> { id="0.9.0-alpha05" }
+
+### Changed
+* Remove shape clipping in #287
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.9.0-alpha04...0.9.0-alpha05
+
+## 0.9.0-alpha04 <small>2024-07-23</small> { id="0.9.0-alpha04" }
+
+### Changed
+* Implement better edges in #275
+* Invalidate the render effect on size changes in #278
+
+### Fixed
+* Fix clipping for rectangles in #279
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.9.0-alpha03...0.9.0-alpha04
+
+## 0.9.0-alpha03 <small>2024-07-19</small> { id="0.9.0-alpha03" }
+
+### Highlights
+
+🆕 Masks - You can now supply a `Brush` to `hazeChild` which will act as a mask. The mask allows things like gradient blurs, by supplying a `Brush.verticalGradient` or similar.
+
+### Added
+* Add ability to provide mask for blurred areas in #267
+
+### Changed
+* Revert usage of Poko in #268
+* Turn off auto invalidation in #271
+* Revert "Update plugin mavenpublish to v0.29.0" in #273
+
+### Fixed
+* Throw error when background color is not specified in #265
+* Fix samples crashing in #270
+* Fix content node being placed at incorrect position in #272
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.9.0-alpha02...0.9.0-alpha03
+
+## 0.9.0-alpha02 <small>2024-07-17</small> { id="0.9.0-alpha02" }
+
+### Fixed
+* Fix NPE from missing content layer in #263
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.9.0-alpha01...0.9.0-alpha02
+
+## 0.9.0-alpha01 <small>2024-07-16</small> { id="0.9.0-alpha01" }
+
+For more information, see https://chrisbanes.github.io/haze/migrating-0.9/
+
+### Changed
+* [next] Initial upgrade to Compose Multiplatform 1.7.0-alpha in #250
+* New rendering mode in #259
+* Add some docs for 0.9 in #261
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.7.3...0.9.0-alpha01
+
+## 0.7.3 <small>2024-07-08</small> { id="0.7.3" }
+
+### Changed
+* Integrate GlobalPositionAwareModifierNode into Haze modifiers in #246
+* Add ListOverImage sample in #248
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.7.2...0.7.3
+
+## 0.7.2 <small>2024-06-17</small> { id="0.7.2" }
+
+### Changed
+* Web updates (JS/Canvas) by @nevrozza in #228
+
+### Fixed
+* Fix sample code in usage docs by @lhoyong in #211
+* Fix typo in naming of "lorem ipsum" placeholder value by @twyatt in #215
+* Fix CI and docs build in #237
+
+### New Contributors
+* @lhoyong made their first contribution in #211
+* @twyatt made their first contribution in #215
+* @nevrozza made their first contribution in #228
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.7.1...0.7.2
+
+## 0.7.1 <small>2024-05-01</small> { id="0.7.1" }
+
+### Changed
+* Remove usage of LFS in #198
+* Kotlin 1.9.23 + CMP 1.6.2 in #199
+* Don't include test sources in API files in #204
+
+### Added
+* Add scroll behavior to Scaffold sample in #197
+
+### Fixed
+* Fix glitch with clipping content out in #205
+* Reset state when LazyLayout reuses node in #203
+* [Android] Fix dialog being offset for non edge-to-edge windows in #206
+* Fix content clip path at edges in #207
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.7.0...0.7.1
+
+## 0.7.0 <small>2024-04-12</small> { id="0.7.0" }
+
+### Changed
+* Enable Robolectric hardware rendering in #147
+* Tidy up settings.gradle.kts in #181
+* Remove deprecated library and APIs in #182
+
+### Fixed
+* Fix HazeChild being conditionally added in #174
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.6.2...0.7.0
+
+## 0.6.2 <small>2024-03-10</small> { id="0.6.2" }
+
+### Fixed
+* Fix corner radius not applying to the correct corners by @mikepenz in #162
+
+### Added
+* [Test] Add test-case to verify rounded corners by @mikepenz in #163
+
+### New Contributors
+* @mikepenz made their first contribution in #162
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.6.1...0.6.2
+
+## 0.6.1 <small>2024-03-09</small> { id="0.6.1" }
+
+### Changed
+* Migrate samples to use Coil in #154
+
+### Added
+* Add Kotlin WebAssembly support in #153
+
+### Fixed
+* [Android] Fix empty bounds handling in #160
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.6.0...0.6.1
+
+## 0.6.0 <small>2024-03-06</small> { id="0.6.0" }
+
+### Highlights
+- [iOS and Desktop] Fix edges not being blurred uniformly (#142). Big thanks to @Dynaruid for contributing this!
+- [Android] Fix artifacts on rounded edges (#132)
+
+### Changed
+* Use Poppins in screenshot testing in #144
+
+### Fixed
+* Fixed where the edges appeared as if they were not properly blurred by @Dynaruid in #142
+* Fix Android clip/rounding issue in #133
+* Correct default value for Noise in Usage.md by @dev-weiqi in #149
+
+### New Contributors
+* @Dynaruid made their first contribution in #142
+* @dev-weiqi made their first contribution in #149
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.5.4...0.6.0
+
+## 0.5.4 <small>2024-02-27</small> { id="0.5.4" }
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.5.3...0.5.4
+
+## 0.5.3 <small>2024-02-18</small> { id="0.5.3" }
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.5.2...0.5.3
+
+## 0.5.2 <small>2024-02-14</small> { id="0.5.2" }
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.5.1...0.5.2
+
+## 0.5.1 <small>2024-02-07</small> { id="0.5.1" }
+
+### Fixed
+* Fix Android noise texture changing luminance in #126
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.5.0...0.5.1
+
+## 0.5.0 <small>2024-01-31</small> { id="0.5.0" }
+
+### Highlights
+
+- 🏃 Optimizations and performance increases (see [performance docs](https://chrisbanes.github.io/haze/performance/))
+- 🌫️ New Materials library (see [materials docs](https://chrisbanes.github.io/haze/materials/))
+- 🆕 Tidied up styling API
+- ✨ Updated to Compose Multiplatform 1.6.0-beta01 (and Jetpack Compose 1.6.0)
+- 🔁 Merged haze and haze-jetpack-compose
+- 📜 (Android) New baseline profiles bundled in library. Thanks to @simonlebras for this.
+
+### Changed
+* Merge :haze and :haze-jetpack-compose in #106
+* Lots of small fixes in #113
+* Optimize Android implementations in #115
+
+### Added
+* Baseline profile by @simonlebras in #93
+* Baseline Profile tweaks in #95
+* Add HazeStyle class in #110
+* Add Haze Materials in #111
+* Add macrobenchmark tests in #116
+
+### Fixed
+* Fix Small Typo in Docs by @jorgedotcom in #100
+
+### New Contributors
+* @simonlebras made their first contribution in #93
+* @jorgedotcom made their first contribution in #100
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.4.5...0.5.0
+
+## 0.4.5 <small>2024-01-12</small> { id="0.4.5" }
+
+### Changes
+* Android Previews (and screenshot tests) now display a scrim, rather than nothing.
+* Haze children from different Android windows (i.e. Dialogs) now work
+
+### Fixed
+* Calculate areas in screen coordinates in #88
+* Merge Android implementations in #91
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.4.4...0.4.5
+
+## 0.4.4 <small>2024-01-08</small> { id="0.4.4" }
+
+### Fixed
+* Fix hazeChild tint not updating on Android base in #83
+
+### Added
+* Add screenshot tests to verify `hazeChild` tint changes in #85
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.4.3...0.4.4
+
+## 0.4.3 <small>2024-01-05</small> { id="0.4.3" }
+
+### Fixed
+* Avoid using `RenderNode` blur implementation on API 31 for now. See #77
+* Transparent tints now work everywhere.
+
+### Added
+* Allow setting a tint on each `hazeChild`
+
+### Changed
+* Fix transparent tints causing crash on Android in #74
+* Skip RenderNode impl on API 31 in #79
+* Allow override tint on `hazeChild` in #81
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.4.2...0.4.3
+
+## 0.4.2 <small>2024-01-03</small> { id="0.4.2" }
+
+### Fixed
+* Android minimum SDK is now 21 to match Compose.
+* `haze` and `hazeChild` causing previews to crash.
+
+### Changed
+* Drop Android minimum sdk version to 21 in #61
+* No-op on Android impl when LocalInspectionMode is true in #72
+
+### Added
+* Add screenshot testing with Roborazzi in #70
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.4.1...0.4.2
+
+## 0.4.1 <small>2023-12-12</small> { id="0.4.1" }
+
+### Fixed
+* Apply Jetpack Compose Shape to HazeChild.kt on init by @almozavr in #55
+* Port #55 to :haze in #56
+
+### New Contributors
+* @almozavr made their first contribution in #55
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.4.0...0.4.1
+
+## 0.4.0 <small>2023-12-11</small> { id="0.4.0" }
+
+### New API!
+
+I have broken the existing API, but hopefully you can see why. You no longer need to manually calculate bounds. `HazeState` + `Modifier.haze()` + `Modifier.hazeChild()` is all you need.
+
+``` kotlin
+val hazeState = remember { HazeState() }
+
+Box {
+  LazyColumn(
+    modifier = Modifier
+      .fillMaxSize()
+      .haze(
+        // Pass it the HazeState we stored above
+        state = hazeState,
+        // Need to provide background color of the content
+        backgroundColor = MaterialTheme.colorScheme.surface,
+      ),
+  ) {
+    // todo
+  }
+
+  Text(
+    text = "Content will be blurred behind this",
+    modifier = Modifier
+      // We use hazeChild on anything where we want the background
+      // blurred. We can even provide a shape.
+      .hazeChild(
+        state = hazeState,
+        shape = RoundedCornerShape(16.dp),
+      ),
+  )
+}
+```
+
+### Changed
+* Update to Kotlin 1.9.20 in #27
+* API refactor in #36
+* Small API tidy-ups in #53
+* More API tweaks in #54
+
+### Fixed
+* Fix position issue by @MohamedRejeb in #52
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.3.1...0.4.0
+
+## 0.3.1 <small>2023-11-10</small> { id="0.3.1" }
+
+Small hotfix. We now build Android and JVM targets outputting Java 11 bytecode.
+
+### Fixed
+* Fix JVM targets in #28
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/0.3.0...0.3.1
+
+## 0.3.0 <small>2023-11-08</small> { id="0.3.0" }
+
+### Added
+* 🆕 Round Rect support - We now have support for rounded rectangles, thanks to @MohamedRejeb.
+* Add RoundRect support by @MohamedRejeb in #16
+
+### Changed
+* Apply noise texture using HARD_LIGHT in #21
+* Use Metalava to track public API in #23
+* Provide more customization in the API in #22
+
+### New Contributors
+* @MohamedRejeb made their first contribution in #16
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/v0.2.0...0.3.0
+
+## 0.2.0 <small>2023-11-01</small> { id="0.2.0" }
+
+### Changed
+* Update Android sample to use haze-jetpack-compose in #9
+* Use NodeElement instead of composed by @qdsfdhvh in #13
+* Migrate Android implementations to Modifier.Node in #15
+
+### Added
+* Add noise to Android implementation in #12
+
+### Fixed
+* Fix Skiko backed Haze not displaying multiple Rects in #17
+
+### New Contributors
+* @qdsfdhvh made their first contribution in #13
+
+**Full Changelog**: https://github.com/chrisbanes/haze/compare/v0.1.0...v0.2.0
+
+## 0.1.0 <small>2023-10-30</small> { id="0.1.0" }
+
+First release!
+
+**Full Changelog**: https://github.com/chrisbanes/haze/commits/v0.1.0

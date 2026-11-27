@@ -1,0 +1,121 @@
+// Copyright 2024, Christopher Banes and the Haze project contributors
+// SPDX-License-Identifier: Apache-2.0
+
+package dev.chrisbanes.haze.test
+
+import android.content.res.Configuration
+import android.os.Build
+import androidx.activity.ComponentActivity
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.PixelMap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.junit4.AndroidComposeTestRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
+import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
+import com.github.takahirom.roborazzi.InternalRoborazziApi
+import com.github.takahirom.roborazzi.RoboComponent
+import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
+import com.github.takahirom.roborazzi.RoborazziRule
+import com.github.takahirom.roborazzi.captureRoboImage
+import com.github.takahirom.roborazzi.provideRoborazziContext
+import com.github.takahirom.roborazzi.roboOutputName
+import org.junit.Rule
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [28, 32, 35], qualifiers = RobolectricDeviceQualifiers.Pixel5)
+actual abstract class ScreenshotTest : ContextTest() {
+  @get:Rule
+  val composeTestRule = createAndroidComposeRule<ComponentActivity>()
+
+  @get:Rule
+  val roborazziRule = RoborazziRule(
+    composeRule = composeTestRule,
+    captureRoot = composeTestRule.onRoot(),
+    options = RoborazziRule.Options(
+      outputDirectoryPath = "screenshots/android",
+      roborazziOptions = HazeRoborazziDefaults.roborazziOptions,
+    ),
+  )
+}
+
+@OptIn(ExperimentalTestApi::class, ExperimentalRoborazziApi::class, InternalRoborazziApi::class)
+actual fun ScreenshotTest.runScreenshotTest(
+  size: Size,
+  block: ScreenshotUiTest.() -> Unit,
+) {
+  provideRoborazziContext().setRuleOverrideRoborazziOptions(HazeRoborazziDefaults.roborazziOptions)
+  createScreenshotUiTest(composeTestRule).block()
+}
+
+@OptIn(ExperimentalRoborazziApi::class, InternalRoborazziApi::class)
+private fun createScreenshotUiTest(rule: AndroidComposeTestRule<*, *>) =
+  object : ScreenshotUiTest {
+    override val supportsRuntimeBlur: Boolean = Build.VERSION.SDK_INT >= 31
+    override val mainClock get() = rule.mainClock
+
+    override fun setContent(content: @Composable () -> Unit) {
+      rule.setContent {
+        // Keep Glass snapshots independent from the host OS appearance. Nested providers still win.
+        val configuration = Configuration(LocalConfiguration.current).apply {
+          uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
+            Configuration.UI_MODE_NIGHT_NO
+        }
+        CompositionLocalProvider(LocalConfiguration provides configuration, content = content)
+      }
+      rule.waitForIdle()
+    }
+
+    override fun captureRoot(
+      nameSuffix: String?,
+      unmatchedPixelThreshold: Float?,
+      artifactPath: String?,
+    ) {
+      val output = artifactPath?.substringAfterLast('/') ?: when {
+        nameSuffix.isNullOrEmpty() -> "${roboOutputName()}.webp"
+        else -> "${roboOutputName()}_$nameSuffix.webp"
+      }
+      val options = unmatchedPixelThreshold
+        ?.let(HazeRoborazziDefaults::roborazziOptions)
+        ?: HazeRoborazziDefaults.roborazziOptions
+      val context = provideRoborazziContext()
+      val previousOutputDirectory = context.outputDirectory
+      artifactPath?.substringBeforeLast('/', missingDelimiterValue = "")?.takeIf(String::isNotEmpty)
+        ?.let { provideRoborazziContext().setRuleOverrideOutputDirectory(it) }
+      try {
+        rule.onRoot().captureRoboImage(output, options)
+      } finally {
+        if (artifactPath != null) context.setRuleOverrideOutputDirectory(previousOutputDirectory)
+      }
+    }
+
+    override fun captureRootPixels(): PixelMap {
+      val bitmap = RoboComponent.Compose(
+        node = rule.onRoot().fetchSemanticsNode("Failed to capture root pixels"),
+        roborazziOptions = HazeRoborazziDefaults.roborazziOptions,
+      ).image
+      return requireNotNull(bitmap).asImageBitmap().toPixelMap()
+    }
+
+    override fun onNodeWithTag(testTag: String) = rule.onNodeWithTag(testTag)
+
+    override fun waitForIdle() {
+      rule.waitForIdle()
+    }
+
+    override fun swipeUpOnRoot() {
+      rule.onRoot().performTouchInput {
+        swipeUp()
+      }
+    }
+  }

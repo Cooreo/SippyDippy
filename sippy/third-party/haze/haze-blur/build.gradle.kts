@@ -1,0 +1,122 @@
+// Copyright 2025, Christopher Banes and the Haze project contributors
+// SPDX-License-Identifier: Apache-2.0
+
+
+import dev.chrisbanes.gradle.addDefaultHazeTargets
+import dev.chrisbanes.gradle.checkPublishedDependencies
+import java.time.Duration
+import org.gradle.api.tasks.testing.AbstractTestTask
+
+plugins {
+  id("dev.chrisbanes.android.library")
+  id("dev.chrisbanes.android.managed-devices")
+  id("dev.chrisbanes.kotlin.multiplatform")
+  id("dev.chrisbanes.compose")
+  id("org.jetbrains.dokka")
+  id("com.vanniktech.maven.publish")
+  id("dev.chrisbanes.metalava")
+  id("dev.drewhamilton.poko")
+}
+
+checkPublishedDependencies()
+
+kotlin {
+  android {
+    namespace = "dev.chrisbanes.haze.blur"
+    androidResources.enable = true
+
+    withHostTest {
+      isIncludeAndroidResources = true
+    }
+  }
+
+  addDefaultHazeTargets(project, withSkikoMain = true)
+  explicitApi()
+
+  sourceSets {
+    val javaTest = create("javaTest") {
+      dependsOn(commonTest.get())
+    }
+
+    commonMain {
+      dependencies {
+        api(projects.haze)
+        api(libs.compose.ui)
+        implementation(libs.compose.animation.core)
+        implementation(libs.androidx.collection)
+        implementation(projects.hazeUtils)
+      }
+    }
+
+    androidMain {
+      dependencies {
+        implementation(libs.androidx.core)
+      }
+    }
+
+    named("androidDeviceTest") {
+      dependencies {
+        implementation(libs.assertk)
+        implementation(libs.androidx.activity)
+        implementation(libs.androidx.activity.compose)
+        implementation(libs.androidx.compose.ui.test.junit4)
+        implementation(libs.androidx.compose.ui.test.manifest)
+        implementation(libs.androidx.test.espresso.core)
+        implementation(libs.androidx.test.runner)
+        implementation(libs.compose.foundation)
+        implementation(projects.internal.contextTest) {
+          exclude(group = "org.robolectric", module = "robolectric")
+        }
+        implementation(projects.hazeGlass)
+      }
+    }
+
+    named("androidHostTest") {
+      dependsOn(javaTest)
+      dependencies {
+        implementation(projects.internal.screenshotTest)
+        implementation(libs.androidx.activity)
+        implementation(libs.androidx.compose.ui.test.junit4)
+        implementation(libs.compose.foundation)
+        implementation(libs.compose.material3)
+      }
+    }
+
+    commonTest {
+      dependencies {
+        implementation(libs.assertk)
+        implementation(kotlin("test"))
+
+        implementation(libs.compose.foundation)
+        implementation(libs.compose.ui.test)
+
+        implementation(projects.internal.contextTest)
+      }
+    }
+
+    jvmTest {
+      dependsOn(javaTest)
+      dependencies {
+        implementation(compose.desktop.currentOs)
+      }
+    }
+  }
+
+  compilerOptions {
+    optIn.add("dev.chrisbanes.haze.ExperimentalHazeApi")
+    optIn.add("dev.chrisbanes.haze.InternalHazeApi")
+  }
+}
+
+poko {
+  pokoAnnotation.set("dev/chrisbanes/haze/Poko")
+}
+
+tasks.withType<Test>().matching { it.name == "testAndroidHostTest" }.configureEach {
+  systemProperty("robolectric.pixelCopyRenderMode", "hardware")
+}
+
+// A process deadline also stops synchronous UI idling that coroutine cancellation cannot preempt.
+tasks.withType<AbstractTestTask>().configureEach {
+  timeout.convention(Duration.ofMinutes(5))
+}

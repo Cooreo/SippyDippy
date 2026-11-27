@@ -1,0 +1,34 @@
+// Copyright 2024, Christopher Banes and the Haze project contributors
+// SPDX-License-Identifier: Apache-2.0
+
+package dev.chrisbanes.haze.test
+
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.PixelMap
+import androidx.compose.ui.test.MainTestClock
+import androidx.compose.ui.test.SemanticsNodeInteraction
+
+expect abstract class ScreenshotTest()
+
+expect fun ScreenshotTest.runScreenshotTest(
+  size: Size = Size(1080f, 1920f),
+  block: ScreenshotUiTest.() -> Unit,
+)
+
+interface ScreenshotUiTest {
+  val supportsRuntimeBlur: Boolean
+
+  /** Steps animations explicitly when [MainTestClock.autoAdvance] is off. */
+  val mainClock: MainTestClock
+  fun setContent(content: @Composable () -> Unit)
+  fun captureRoot(
+    nameSuffix: String? = null,
+    unmatchedPixelThreshold: Float? = null,
+    artifactPath: String? = null,
+  )
+  fun captureRootPixels(): PixelMap
+  fun onNodeWithTag(testTag: String): SemanticsNodeInteraction
+  fun waitForIdle()
+  fun swipeUpOnRoot()
+}

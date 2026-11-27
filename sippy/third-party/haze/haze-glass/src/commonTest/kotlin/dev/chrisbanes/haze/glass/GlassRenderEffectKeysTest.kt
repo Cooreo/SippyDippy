@@ -1,0 +1,720 @@
+// Copyright 2026, Christopher Banes and the Haze project contributors
+// SPDX-License-Identifier: Apache-2.0
+
+package dev.chrisbanes.haze.glass
+
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.roundToIntSize
+import assertk.assertThat
+import assertk.assertions.contains
+import assertk.assertions.containsExactly
+import assertk.assertions.doesNotContain
+import assertk.assertions.isCloseTo
+import assertk.assertions.isEqualTo
+import assertk.assertions.isFalse
+import assertk.assertions.isGreaterThan
+import assertk.assertions.isLessThan
+import assertk.assertions.isNotEqualTo
+import assertk.assertions.isNotNull
+import assertk.assertions.isNull
+import assertk.assertions.isSameInstanceAs
+import assertk.assertions.isTrue
+import dev.chrisbanes.haze.HazeProgressive
+import kotlin.test.Test
+
+class GlassRenderEffectKeysTest {
+  @Test
+  fun blurKey_normalizesOnlyKnownOpaqueSources() {
+    val base = params()
+    assertThat(base.copy(backgroundColor = Color.Transparent).blurEffectKey().sourceIsOpaque).isFalse()
+    assertThat(base.copy(backgroundColor = Color.White.copy(alpha = 254f / 255f)).blurEffectKey().sourceIsOpaque).isFalse()
+    val opaque = base.copy(backgroundColor = Color.White).blurEffectKey()
+    assertThat(opaque.sourceIsOpaque).isTrue()
+    assertThat(base.copy(backgroundColor = Color.Black).blurEffectKey()).isEqualTo(opaque)
+  }
+
+  @Test
+  fun edgeWidth_invalidatesOpticsAndDetailOnlyAndZeroDisablesDetail() {
+    val base = params()
+    val edge = base.copy(edgeRefractionWidthPx = 28f)
+    assertThat(base.opticalEffectKey()).isNotEqualTo(edge.opticalEffectKey())
+    assertThat(base.refractionDetailEffectKey()).isNotEqualTo(edge.refractionDetailEffectKey())
+    assertThat(base.blurEffectKey()).isEqualTo(edge.blurEffectKey())
+    assertThat(base.rimEffectKey()).isEqualTo(edge.rimEffectKey())
+    assertThat(edge.copy(edgeRefractionWidthPx = 0f).activeRefractionDetailEffectKey()).isNull()
+    assertThat(edge.copy(refractionHeightPx = 0f).activeRefractionDetailEffectKey()).isNotNull()
+  }
+
+  @Test
+  fun blurKey_ignoresUnrelatedOpticalDepthAndRimChanges() {
+    val base = params()
+    val unrelated = base.copy(
+      depth = 0.25f,
+      tint = Color.Magenta,
+      specularIntensity = 0.9f,
+      refractionStrength = 0.8f,
+    )
+
+    assertThat(base.blurEffectKey()).isEqualTo(unrelated.blurEffectKey())
+  }
+
+  @Test
+  fun blurKey_changesForRadiusAndSizeButIgnoresUnusedCoordinates() {
+    val base = params()
+
+    assertThat(base.blurEffectKey()).isNotEqualTo(
+      base.copy(
+        blurRadiusPx = 30f,
+        blurSigmaPx = SemanticBlurKernel.radiusToSigma(30f),
+      ).blurEffectKey(),
+    )
+    assertThat(base.blurEffectKey()).isNotEqualTo(
+      base.copy(coordinates = base.coordinates.copy(sampleSize = Size(800f, 600f))).blurEffectKey(),
+    )
+    assertThat(base.blurEffectKey()).isEqualTo(
+      base.copy(
+        coordinates = base.coordinates.copy(materialOrigin = Offset(12f, 8f)),
+      ).blurEffectKey(),
+    )
+  }
+
+  @Test
+  fun progressivePresence_selectsFullResolutionPlanAndChangesKey() {
+    val uniform = params().copy(
+      blurRadiusPx = 38.5f,
+      blurSigmaPx = SemanticBlurKernel.radiusToSigma(38.5f),
+    ).blurEffectKey()
+    val progressive = params().copy(
+      blurRadiusPx = 38.5f,
+      blurSigmaPx = SemanticBlurKernel.radiusToSigma(38.5f),
+      progressive = HazeProgressive.verticalGradient(startIntensity = 0f, endIntensity = 1f),
+    ).blurEffectKey()
+
+    assertThat(uniform.plan.usesNativeWideBlur).isTrue()
+    assertThat(progressive.plan.usesNativeWideBlur).isFalse()
+    assertThat(progressive).isNotEqualTo(uniform)
+  }
+
+  @Test
+  fun progressiveBlur_capsAtLegacyRadiusAndRetainsSemanticKernel() {
+    val key = params().copy(
+      blurRadiusPx = 84f,
+      blurSigmaPx = SemanticBlurKernel.radiusToSigma(84f),
+      progressive = HazeProgressive.verticalGradient(startIntensity = 0f, endIntensity = 1f),
+    ).blurEffectKey()
+
+    assertThat(key.plan.effectiveRadiusPx)
+      .isEqualTo(SemanticBlurKernel.MAX_PROGRESSIVE_RADIUS_PX)
+    assertThat(key.plan.usesNativeWideBlur).isEqualTo(false)
+  }
+
+  @Test
+  fun progressiveKey_convertsWorkingCoordinatesBackToLogicalMaskCoordinates() {
+    val base = params()
+    val key = base.copy(
+      coordinates = GlassCoordinates(
+        sampleSize = Size(480f, 360f),
+        materialOrigin = Offset(6f, 3f),
+        materialSize = Size(240f, 180f),
+        scaleFactor = 0.75f,
+      ),
+      progressive = HazeProgressive.verticalGradient(
+        startY = 40f,
+        endY = 80f,
+      ),
+    ).blurEffectKey()
+
+    assertThat(key.maskOrigin).isEqualTo(Offset(6f, 3f))
+    assertThat(key.maskSize).isEqualTo(Size(320f, 240f))
+    assertThat(key.maskCoordinateScale).isEqualTo(1f / 0.75f)
+  }
+
+  @Test
+  fun opticalAndRimKeys_onlyTrackConsumedUniforms() {
+    val base = params()
+
+    assertThat(base.opticalEffectKey()).isEqualTo(
+      base.copy(depth = 0.2f, blurRadiusPx = 80f, specularIntensity = 1f).opticalEffectKey(),
+    )
+    assertThat(base.rimEffectKey()).isEqualTo(
+      base.copy(depth = 0.2f, blurRadiusPx = 80f, tint = Color.Red).rimEffectKey(),
+    )
+    assertThat(base.opticalEffectKey()).isNotEqualTo(base.copy(tint = Color.Red).opticalEffectKey())
+    assertThat(base.opticalEffectKey()).isNotEqualTo(
+      base.copy(refractionFoldStrength = 0.5f).opticalEffectKey(),
+    )
+    assertThat(base.rimEffectKey()).isNotEqualTo(base.copy(specularIntensity = 1f).rimEffectKey())
+    assertThat(base.rimEffectKey()).isNotEqualTo(
+      base.copy(edgeShadow = Color.Black.copy(alpha = 0.32f)).rimEffectKey(),
+    )
+  }
+
+  @Test
+  fun interactionValues_doNotChangeBaseStageKeys() {
+    val params = params()
+    val idle = params.interactionUniforms(
+      GlassInteractionRenderState(position = Offset(20f, 20f)),
+      radiusFraction = 0.7f,
+    )
+    val pressed = params.interactionUniforms(
+      GlassInteractionRenderState(
+        position = Offset(80f, 60f),
+        lightingIntensity = 1f,
+        refractionMultiplier = 1.08f,
+        whitePointDelta = 0.04f,
+        scaleX = 0.98f,
+        scaleY = 0.98f,
+      ),
+      radiusFraction = 0.7f,
+    )
+    val topology = GlassInteractionTopology(
+      hasOptics = true,
+      hasLighting = true,
+      maxRefractionMultiplier = 1.08f,
+    )
+    val first = buildGlassPreparedRender(
+      params = params,
+      interactionUniforms = idle,
+      interactionTopology = topology,
+      interactionRadiusFraction = 0.7f,
+      alpha = 1f,
+      outputSize = IntSize(640, 480),
+    )
+    val updated = buildGlassPreparedRender(
+      params = params,
+      interactionUniforms = pressed,
+      interactionTopology = topology,
+      interactionRadiusFraction = 0.7f,
+      alpha = 1f,
+      outputSize = IntSize(640, 480),
+      previous = first,
+    )
+
+    assertThat(idle).isNotEqualTo(pressed)
+    assertThat(updated.interactionUniforms).isEqualTo(pressed)
+    assertThat(first.blurKey).isNotNull()
+    assertThat(first.refractionDetailKey).isNotNull()
+    assertThat(first.rimKey).isNotNull()
+    assertThat(updated.blurKey).isSameInstanceAs(first.blurKey)
+    assertThat(updated.opticalKey).isSameInstanceAs(first.opticalKey)
+    assertThat(updated.refractionDetailKey).isSameInstanceAs(first.refractionDetailKey)
+    assertThat(updated.rimKey).isSameInstanceAs(first.rimKey)
+    assertThat(updated.plan).isSameInstanceAs(first.plan)
+  }
+
+  @Test
+  fun refractionDetailKey_onlyTracksConsumedUniforms() {
+    val base = params()
+    val key = base.refractionDetailEffectKey()
+
+    assertThat(key).isEqualTo(
+      base.copy(
+        blurRadiusPx = 80f,
+        blurSigmaPx = 20f,
+        progressive = HazeProgressive.verticalGradient(startIntensity = 0f, endIntensity = 1f),
+        depth = 0.2f,
+        tint = Color.Red,
+        ambientResponse = 0.8f,
+        chromaticAberrationStrength = 0.9f,
+        chromaticAberrationMode = 1f,
+        contrast = 0.4f,
+        whitePoint = 0.3f,
+        chromaMultiplier = 0.5f,
+        contentNormalBlend = 0.7f,
+        fresnelExponent = 8f,
+        specularIntensity = 1f,
+        specularExponent = 32f,
+        lightPosition = Offset(100f, 80f),
+      ).refractionDetailEffectKey(),
+    )
+
+    listOf(
+      base.copy(coordinates = base.coordinates.copy(materialOrigin = Offset(12f, 8f))),
+      base.copy(refractionStrength = 0.8f),
+      base.copy(refractionFoldStrength = 0.5f),
+      base.copy(refractionHeightPx = 30f),
+      base.copy(refractionScalePx = 24f),
+      base.copy(surfaceProfile = 1f),
+      base.copy(edgeSoftnessPx = 6f),
+      base.copy(cornerRadii = CornerRadii(8f, 4f, 2f, 1f)),
+    ).forEach { changed ->
+      assertThat(key).isNotEqualTo(changed.refractionDetailEffectKey())
+    }
+    assertThat(key).isNotEqualTo(key.copy(detailIntensity = key.detailIntensity * 0.5f))
+    assertThat(key).isNotEqualTo(key.copy(detailVisibility = key.detailVisibility * 0.5f))
+  }
+
+  @Test
+  fun refractionDetailKey_ignoresCoordinateScaleFactor() {
+    val base = params()
+
+    assertThat(base.refractionDetailEffectKey()).isEqualTo(
+      base.copy(
+        coordinates = base.coordinates.copy(scaleFactor = 0.5f),
+      ).refractionDetailEffectKey(),
+    )
+  }
+
+  @Test
+  fun refractionDetailKey_hasProfileIndependentDetailWidth() {
+    val base = params().copy(
+      refractionHeightPx = 20f,
+      edgeSoftnessPx = 3f,
+      sampleStepPx = 2f,
+    )
+    val keys = SurfaceProfile.entries.map { profile ->
+      base.copy(surfaceProfile = profile.ordinal.toFloat()).refractionDetailEffectKey()
+    }
+
+    assertThat(keys.map { it.detailWidthPx }.toSet()).isEqualTo(setOf(20f))
+    assertThat(keys.map { it.surfaceProfile }.toSet().size).isEqualTo(SurfaceProfile.entries.size)
+  }
+
+  @Test
+  fun refractionDetailKey_tracksConsumedSampleStepUniformWidthAndVisibility() {
+    val base = params().copy(refractionHeightPx = 100f, edgeSoftnessPx = 20f)
+
+    assertThat(base.refractionDetailEffectKey())
+      .isNotEqualTo(base.copy(sampleStepPx = 1f).refractionDetailEffectKey())
+    assertThat(base.refractionDetailEffectKey())
+      .isNotEqualTo(base.copy(sampleStepPx = 11f).refractionDetailEffectKey())
+
+    val weak = base.copy(refractionStrength = .05f)
+    val onePixelStep = weak.copy(sampleStepPx = 1f).refractionDetailEffectKey()
+    val twoPixelStep = weak.copy(sampleStepPx = 2f).refractionDetailEffectKey()
+    assertThat(onePixelStep.detailWidthPx).isEqualTo(twoPixelStep.detailWidthPx)
+    assertThat(onePixelStep.detailVisibility).isNotEqualTo(twoPixelStep.detailVisibility)
+    assertThat(onePixelStep).isNotEqualTo(twoPixelStep)
+  }
+
+  @Test
+  fun activeRefractionDetailKey_requiresStrengthScaleWidthAndIntensity() {
+    val base = params()
+
+    assertThat(base.activeRefractionDetailEffectKey()).isNotNull()
+    assertThat(base.copy(refractionStrength = 0f).activeRefractionDetailEffectKey()).isNull()
+    assertThat(base.copy(refractionScalePx = 0f).activeRefractionDetailEffectKey()).isNull()
+    assertThat(base.copy(refractionHeightPx = 0f).activeRefractionDetailEffectKey()).isNull()
+    assertThat(base.activeRefractionDetailEffectKey(detailIntensity = 0f)).isNull()
+  }
+
+  @Test
+  fun refractionDetailVisibility_isZeroMonotonicAndSaturatesAtOneSampleStep() {
+    val zero = calculateRefractionDetailVisibility(0f, refractionScalePx = 20f, sampleStepPx = 2f)
+    val quarter = calculateRefractionDetailVisibility(.025f, refractionScalePx = 20f, sampleStepPx = 2f)
+    val half = calculateRefractionDetailVisibility(.05f, refractionScalePx = 20f, sampleStepPx = 2f)
+    val full = calculateRefractionDetailVisibility(.1f, refractionScalePx = 20f, sampleStepPx = 2f)
+    val beyond = calculateRefractionDetailVisibility(1f, refractionScalePx = 20f, sampleStepPx = 2f)
+
+    assertThat(zero).isEqualTo(0f)
+    assertThat(quarter).isGreaterThan(zero)
+    assertThat(quarter).isLessThan(half)
+    assertThat(half).isLessThan(full)
+    assertThat(full).isEqualTo(1f)
+    assertThat(beyond).isEqualTo(1f)
+    assertThat(calculateRefractionDetailVisibility(-.05f, 20f, 2f)).isEqualTo(half)
+    assertThat(calculateRefractionDetailVisibility(.05f, 20f, 0f))
+      .isEqualTo(calculateRefractionDetailVisibility(.05f, 20f, 1f))
+  }
+
+  @Test
+  fun activeRefractionDetailKey_skipsImperceptibleContributionContinuously() {
+    val base = params()
+    val below = base.copy(refractionStrength = .008f).refractionDetailEffectKey()
+    val above = base.copy(refractionStrength = .009f).refractionDetailEffectKey()
+    val halfVisible = base.copy(refractionStrength = .05f)
+    val exactThresholdIntensity = 2f / 255f
+
+    assertThat(base.copy(refractionStrength = 0f).activeRefractionDetailEffectKey()).isNull()
+    assertThat(base.copy(refractionStrength = 1e-6f).activeRefractionDetailEffectKey()).isNull()
+    assertThat(base.copy(refractionStrength = .008f).activeRefractionDetailEffectKey()).isNull()
+    assertThat(base.copy(refractionStrength = .009f).activeRefractionDetailEffectKey()).isNotNull()
+    assertThat(halfVisible.activeRefractionDetailEffectKey(exactThresholdIntensity)).isNull()
+    assertThat(halfVisible.activeRefractionDetailEffectKey(exactThresholdIntensity + 1e-5f)).isNotNull()
+    assertThat(above.detailVisibility).isGreaterThan(below.detailVisibility)
+    assertThat(
+      above.detailIntensity * above.detailVisibility - below.detailIntensity * below.detailVisibility,
+    ).isLessThan(1f / 255f)
+  }
+
+  @Test
+  fun defaultRefractionDetailVisibility_isFullySaturated() {
+    val regularBaseline = GlassOptics()
+    assertThat(
+      calculateRefractionDetailVisibility(
+        refractionStrength = regularBaseline.refractionStrength,
+        refractionScalePx = regularBaseline.refractionDisplacement.value,
+        sampleStepPx = 2f,
+      ),
+    ).isEqualTo(1f)
+  }
+
+  @Test
+  fun mergedField_invalidatesOpticalDetailAndRimKeysButNotBlur() {
+    val base = params()
+    val field = mergedField(mergedMember(0f, 0f, 100f, 40f), mergedMember(110f, 0f, 100f, 40f))
+    val merged = base.copy(mergedField = field)
+    val moved = base.copy(
+      mergedField = mergedField(mergedMember(0f, 0f, 100f, 40f), mergedMember(115f, 0f, 100f, 40f)),
+    )
+    for (next in listOf(merged, moved)) {
+      val previous = if (next === merged) base else merged
+      assertThat(previous.opticalEffectKey()).isNotEqualTo(next.opticalEffectKey())
+      assertThat(previous.refractionDetailEffectKey()).isNotEqualTo(next.refractionDetailEffectKey())
+      assertThat(previous.rimEffectKey()).isNotEqualTo(next.rimEffectKey())
+      assertThat(previous.blurEffectKey()).isEqualTo(next.blurEffectKey())
+    }
+  }
+
+  @Test
+  fun mergedField_blurKeyTracksOnlyMemberBackgroundOpacity() {
+    val opaque = params().copy(
+      backgroundColor = Color.White,
+      mergedField = mergedField(
+        mergedMember(0f, 0f, 100f, 40f, backgroundColor = Color.White),
+        mergedMember(110f, 0f, 100f, 40f, backgroundColor = Color.Black),
+      ),
+    )
+    assertThat(opaque.blurEffectKey().sourceIsOpaque).isTrue()
+    val translucent = opaque.copy(
+      mergedField = mergedField(
+        mergedMember(0f, 0f, 100f, 40f, backgroundColor = Color.White),
+        mergedMember(110f, 0f, 100f, 40f, backgroundColor = Color.Black.copy(alpha = 0.5f)),
+      ),
+    )
+    // The members' backgrounds replace the single background colour.
+    assertThat(translucent.blurEffectKey().sourceIsOpaque).isFalse()
+    assertThat(opaque.blurEffectKey()).isNotEqualTo(translucent.blurEffectKey())
+  }
+
+  @Test
+  fun mergedField_preparedRenderReusesKeysOnlyWhileFieldIsUnchanged() {
+    val base = params()
+    val first = preparedRender(base)
+    val unchanged = preparedRender(base.copy(), previous = first)
+    assertThat(unchanged.opticalKey).isSameInstanceAs(first.opticalKey)
+    assertThat(unchanged.refractionDetailKey).isSameInstanceAs(first.refractionDetailKey)
+    assertThat(unchanged.rimKey).isSameInstanceAs(first.rimKey)
+    assertThat(unchanged.blurKey).isSameInstanceAs(first.blurKey)
+
+    val merged = preparedRender(
+      base.copy(mergedField = mergedField(mergedMember(0f, 0f, 100f, 40f))),
+      previous = first,
+    )
+    assertThat(merged.opticalKey.mergedField).isNotNull()
+    assertThat(merged.refractionDetailKey?.mergedField).isNotNull()
+    assertThat(merged.rimKey?.mergedField).isNotNull()
+    assertThat(merged.blurKey).isSameInstanceAs(first.blurKey)
+  }
+
+  @Test
+  fun depthInputKey_mergedBackdropBackgroundTracksMaterialOrigin() {
+    val field = mergedField(mergedMember(0f, 0f, 100f, 40f, backgroundColor = Color.White))
+    val base = params().copy(mergedField = field)
+    val moved = base.copy(coordinates = base.coordinates.copy(materialOrigin = Offset(20f, 12f)))
+    fun fusedKey(params: GlassRenderParams, backdrop: Boolean) = GlassFusedEffectKey(
+      blur = params.blurEffectKey(),
+      depth = params.depth,
+      optical = params.opticalEffectKey(),
+      detail = null,
+      interaction = null,
+      backdropBackground = null,
+      backdropMergedBackground = params.mergedBackground.takeIf { backdrop },
+    )
+    // The background shader samples the field from the material origin, so moving it rebuilds
+    // the backdrop input even though blur, depth and the field are unchanged.
+    assertThat(fusedKey(moved, backdrop = true).depthInputKey(interactionOptics = false))
+      .isNotEqualTo(fusedKey(base, backdrop = true).depthInputKey(interactionOptics = false))
+    // Without a backdrop background, the origin is not an input.
+    assertThat(fusedKey(moved, backdrop = false).depthInputKey(interactionOptics = false))
+      .isEqualTo(fusedKey(base, backdrop = false).depthInputKey(interactionOptics = false))
+  }
+
+  @Test
+  fun fusedKeyMatches_agreesWithEqualityForEveryComponent() {
+    val params = params()
+    val field = mergedField(mergedMember(0f, 0f, 100f, 40f, backgroundColor = Color.White))
+    val base = FusedInputs(
+      blur = params.blurEffectKey(),
+      depth = params.depth,
+      optical = params.opticalEffectKey(),
+      detail = params.activeRefractionDetailEffectKey(params.refractionDetailIntensity),
+      interaction = GlassInteractionUniforms(Offset(1f, 2f), 10f, 0.5f, 1.5f, 0.1f),
+      backdropBackground = Color.White,
+      backdropMergedBackground = field,
+    )
+    val key = base.toKey()
+    assertThat(base.detail).isNotNull()
+
+    val changes = mapOf(
+      "blur" to base.copy(blur = params.copy(blurRadiusPx = 30f).blurEffectKey()),
+      "blur removed" to base.copy(blur = null),
+      "depth" to base.copy(depth = 0.5f),
+      "optical" to base.copy(optical = params.copy(refractionStrength = 0.9f).opticalEffectKey()),
+      "detail" to base.copy(detail = null),
+      "interaction" to base.copy(interaction = base.interaction?.copy(radiusPx = 11f)),
+      "interaction removed" to base.copy(interaction = null),
+      "backdropBackground" to base.copy(backdropBackground = Color.Black),
+      "backdropBackground removed" to base.copy(backdropBackground = null),
+      "backdropMergedBackground" to base.copy(
+        backdropMergedBackground = mergedField(mergedMember(0f, 0f, 100f, 40f, backgroundColor = Color.Black)),
+      ),
+      "backdropMergedBackground removed" to base.copy(backdropMergedBackground = null),
+    )
+    // Unchanged components match, including a NaN depth, which the generated equals treats as equal to itself.
+    assertThat(key.matches(base)).isTrue()
+    val nan = base.copy(depth = Float.NaN)
+    assertThat(nan.toKey().matches(nan)).isTrue()
+    assertThat(nan.toKey()).isEqualTo(nan.toKey())
+    val zero = base.copy(depth = 0f)
+    val negativeZero = base.copy(depth = -0f)
+    assertThat(zero.toKey().matches(negativeZero)).isEqualTo(zero.toKey() == negativeZero.toKey())
+    for ((name, changed) in changes) {
+      val expected = key == changed.toKey()
+      assertThat(key.matches(changed), name).isEqualTo(expected)
+      // Each change is one the key can see, so a rebuild is required.
+      assertThat(expected, name).isFalse()
+    }
+  }
+
+  @Test
+  fun retainedLayerPlan_detailLayersFollowActiveRefractionDetailKey() {
+    val idle = GlassInteractionUniforms(Offset.Zero, 0f, 0f, 1f, 0f)
+
+    listOf(0f to false, .008f to false, .009f to true).forEach { (strength, expectedActive) ->
+      val params = params().copy(refractionStrength = strength)
+      val kinds = buildGlassRetainedLayerPlan(params, idle).layers.map { it.kind }
+
+      val key = assertThat(params.activeRefractionDetailEffectKey(params.refractionDetailIntensity))
+      if (expectedActive) key.isNotNull() else key.isNull()
+      listOf(
+        GlassRetainedLayerKind.RefractionDetail,
+        GlassRetainedLayerKind.RefractionDetailCoverage,
+        GlassRetainedLayerKind.RefractionComposite,
+      ).forEach { kind ->
+        if (expectedActive) assertThat(kinds).contains(kind) else assertThat(kinds).doesNotContain(kind)
+      }
+    }
+  }
+
+  @Test
+  fun preparedRender_rimKeyFollowsRimActivity() {
+    val base = params()
+
+    assertThat(
+      preparedRender(base.copy(specularIntensity = 0f, edgeShadow = Color.Transparent)).rimKey,
+    ).isNull()
+    assertThat(
+      preparedRender(base.copy(specularIntensity = 0.5f, edgeShadow = Color.Transparent)).rimKey,
+    ).isNotNull()
+    assertThat(
+      preparedRender(
+        base.copy(specularIntensity = 0f, edgeShadow = Color.Black.copy(alpha = 0.14f)),
+      ).rimKey,
+    ).isNotNull()
+    assertThat(
+      preparedRender(
+        base.copy(
+          specularIntensity = 0f,
+          edgeShadow = Color.Transparent,
+          rimHighlight = GlassRimHighlight(0.8f, 3f, 0f),
+        ),
+      ).rimKey,
+    ).isNotNull()
+  }
+
+  @Test
+  fun rimHighlightChange_invalidatesRimKeyOnly() {
+    val base = params()
+    val first = preparedRender(base)
+    val updated = preparedRender(
+      base.copy(rimHighlight = GlassRimHighlight(0.8f, 3f, 0f)),
+      previous = first,
+    )
+
+    assertThat(updated.opticalKey).isSameInstanceAs(first.opticalKey)
+    assertThat(updated.refractionDetailKey).isSameInstanceAs(first.refractionDetailKey)
+    assertThat(updated.blurKey).isSameInstanceAs(first.blurKey)
+    assertThat(updated.rimKey).isNotEqualTo(first.rimKey)
+    assertThat(updated.rimKey?.rimHighlight).isEqualTo(GlassRimHighlight(0.8f, 3f, 0f))
+  }
+
+  @Test
+  fun preparedRender_reuseMatchesFreshPreparationAcrossInputChanges() {
+    val base = params()
+    val first = preparedRender(base)
+    val changes = mapOf(
+      "sample size" to base.copy(coordinates = base.coordinates.copy(sampleSize = Size(800f, 600f))),
+      "material origin" to base.copy(coordinates = base.coordinates.copy(materialOrigin = Offset(10.5f, 7.5f))),
+      "material size" to base.copy(coordinates = base.coordinates.copy(materialSize = Size(300f, 200f))),
+      "scale" to base.copy(coordinates = base.coordinates.copy(scaleFactor = 0.5f)),
+      "coverage" to base.copy(coordinates = base.coordinates.copy(pixelAligned = true)),
+      "refractionStrength" to base.copy(refractionStrength = 0.9f),
+      "refractionFoldStrength" to base.copy(refractionFoldStrength = 0.2f),
+      "specularIntensity" to base.copy(specularIntensity = 0.8f),
+      "edgeShadow" to base.copy(edgeShadow = Color.Red),
+      "depth" to base.copy(depth = 0.5f),
+      "ambientResponse" to base.copy(ambientResponse = 0.8f),
+      "backgroundColor" to base.copy(backgroundColor = Color.White),
+      "tint" to base.copy(tint = Color.Red),
+      "edgeSoftnessPx" to base.copy(edgeSoftnessPx = 8f),
+      "blurRadiusPx" to base.copy(blurRadiusPx = 40f),
+      "blurSigmaPx" to base.copy(blurSigmaPx = 12f),
+      "progressive" to base.copy(progressive = HazeProgressive.verticalGradient()),
+      "refractionHeightPx" to base.copy(refractionHeightPx = 30f),
+      "chromaticAberrationStrength" to base.copy(chromaticAberrationStrength = 0.4f),
+      "surfaceProfile" to base.copy(surfaceProfile = 1f),
+      "chromaticAberrationMode" to base.copy(chromaticAberrationMode = 1f),
+      "contrast" to base.copy(contrast = 0.5f),
+      "whitePoint" to base.copy(whitePoint = 0.5f),
+      "chromaMultiplier" to base.copy(chromaMultiplier = 0.5f),
+      "refractionScalePx" to base.copy(refractionScalePx = 30f),
+      "contentNormalBlend" to base.copy(contentNormalBlend = 0.5f),
+      "specularExponent" to base.copy(specularExponent = 32f),
+      "fresnelExponent" to base.copy(fresnelExponent = 4f),
+      "cornerRadii" to base.copy(cornerRadii = CornerRadii(16f, 16f, 16f, 16f, 0.6f, 0.6f, 0.6f, 0.6f)),
+      "lightPosition" to base.copy(lightPosition = Offset(30f, 20f)),
+      "sampleStepPx" to base.copy(sampleStepPx = 3f),
+      "refractionDetailIntensity" to base.copy(refractionDetailIntensity = 0f),
+      "edgeRefractionWidthPx" to base.copy(edgeRefractionWidthPx = 24f),
+      "mergedField" to base.copy(mergedField = mergedField(mergedMember(0f, 0f, 100f, 40f))),
+      "rimHighlight" to base.copy(rimHighlight = GlassRimHighlight(0.8f, 3f, 0f)),
+      "edgeOutline" to base.copy(edgeOutline = GlassEdgeOutline(Color.Black, 3f)),
+      "circularCornerOptics" to base.copy(circularCornerOptics = true),
+      "blur disabled" to base.copy(blurRadiusPx = 0f),
+      "depth disabled" to base.copy(depth = 0f),
+      "rim disabled" to base.copy(specularIntensity = 0f, edgeShadow = Color.Transparent),
+    )
+    for ((name, changed) in changes) {
+      val reused = preparedRender(changed, previous = first)
+      assertSamePreparation(reused, preparedRender(changed), name)
+      assertSamePreparation(preparedRender(base, previous = reused), first, "$name restored")
+    }
+    val unchanged = preparedRender(base.copy(), previous = first)
+    assertThat(unchanged.blurKey).isSameInstanceAs(first.blurKey)
+    assertThat(unchanged.opticalKey).isSameInstanceAs(first.opticalKey)
+    assertThat(unchanged.refractionDetailKey).isSameInstanceAs(first.refractionDetailKey)
+    assertThat(unchanged.rimKey).isSameInstanceAs(first.rimKey)
+    assertThat(unchanged.plan).isSameInstanceAs(first.plan)
+  }
+
+  private fun assertSamePreparation(actual: GlassPreparedRender, expected: GlassPreparedRender, name: String) {
+    assertThat(actual.blurKey, "$name blur").isEqualTo(expected.blurKey)
+    assertThat(actual.opticalKey, "$name optics").isEqualTo(expected.opticalKey)
+    assertThat(actual.refractionDetailKey, "$name detail").isEqualTo(expected.refractionDetailKey)
+    assertThat(actual.rimKey, "$name rim").isEqualTo(expected.rimKey)
+    assertThat(actual.plan, "$name plan").isEqualTo(expected.plan)
+    assertThat(actual.groupCompositeSize, "$name composite").isEqualTo(expected.groupCompositeSize)
+    assertThat(actual.interactionPatchSize, "$name patch").isEqualTo(expected.interactionPatchSize)
+    assertThat(actual.interactionUniforms, "$name interaction").isEqualTo(expected.interactionUniforms)
+  }
+
+  @Test
+  fun resolveLayerBlurFactor_reducesOnlyAWideBlurBelowQuality() {
+    val wide = params().copy(depth = 0.65f, refractionDetailIntensity = 0f, layerBlurSigmaPx = 3f)
+    val render = preparedRender(wide)
+    assertThat(render.refractionDetailKey).isNull()
+    assertThat(render.resolveLayerBlurFactor()).isCloseTo(wide.blurSigmaPx / 3f, 0.0001f)
+    // Quality, no depth and a blur too small to downsample keep the platform chain.
+    assertThat(preparedRender(wide.copy(layerBlurSigmaPx = 0f)).resolveLayerBlurFactor()).isEqualTo(0f)
+    assertThat(preparedRender(wide.copy(depth = 0f)).resolveLayerBlurFactor()).isEqualTo(0f)
+    val narrow = wide.copy(blurRadiusPx = 3f, blurSigmaPx = SemanticBlurKernel.radiusToSigma(3f))
+    assertThat(preparedRender(narrow).resolveLayerBlurFactor()).isEqualTo(0f)
+    // A sample whose capture leaves an edge margin repeats that margin from the full-resolution capture.
+    val margin = resolveGlassCoordinates(Size(202f, 102f), Offset(1f, 1f), Size(200f, 100f), 1f, alignToPixels = true)
+    assertThat(margin.capturesWholeSample()).isFalse()
+    assertThat(preparedRender(wide.copy(coordinates = margin)).resolveLayerBlurFactor()).isEqualTo(0f)
+  }
+
+  @Test
+  fun layerBlurPlan_budgetsTheReducedBlurredLayer() {
+    val wide = params().copy(depth = 0.65f, refractionDetailIntensity = 0f, layerBlurSigmaPx = 3f)
+    val render = preparedRender(wide)
+    val blurred = render.plan.layers.filter { it.kind == GlassRetainedLayerKind.Blurred }.map { it.size }
+    if (supportsFusedGlassRenderEffect) {
+      val expected = wide.coordinates.sampleSize.roundToIntSize().reducedForLayerBlur(render.layerBlurFactor)
+      assertThat(blurred).containsExactly(expected)
+      // A different factor changes the reduced layer, so the prepared plan is rebuilt.
+      val reused = preparedRender(wide.copy(layerBlurSigmaPx = 3.5f), previous = render)
+      assertThat(reused.plan.layers.single { it.kind == GlassRetainedLayerKind.Blurred }.size)
+        .isEqualTo(wide.coordinates.sampleSize.roundToIntSize().reducedForLayerBlur(reused.layerBlurFactor))
+    } else {
+      assertThat(render.layerBlurFactor).isGreaterThan(0f)
+    }
+  }
+
+  private fun preparedRender(params: GlassRenderParams, previous: GlassPreparedRender? = null) =
+    buildGlassPreparedRender(
+      params = params,
+      interactionUniforms = resolveGlassInteraction(
+        state = GlassInteractionRenderState(Offset.Zero),
+        radiusFraction = 0f,
+      ).uniforms(params.coordinates),
+      alpha = 1f,
+      outputSize = IntSize(640, 480),
+      previous = previous,
+    )
+
+  private fun params() = GlassRenderParams(
+    coordinates = GlassCoordinates(Size(640f, 480f), Offset(8f, 4f), Size(320f, 240f), 1f),
+    refractionStrength = 0.5f,
+    refractionFoldStrength = 0f,
+    specularIntensity = 0.5f,
+    edgeShadow = GlassDefaults.edgeShadow,
+    depth = 1f,
+    ambientResponse = 0.5f,
+    backgroundColor = Color.Transparent,
+    tint = Color.Transparent,
+    edgeSoftnessPx = 4f,
+    blurRadiusPx = 20f,
+    blurSigmaPx = SemanticBlurKernel.radiusToSigma(20f),
+    progressive = null,
+    refractionHeightPx = 20f,
+    chromaticAberrationStrength = 0.2f,
+    surfaceProfile = 0f,
+    chromaticAberrationMode = 0f,
+    contrast = 0f,
+    whitePoint = 0f,
+    chromaMultiplier = 1f,
+    refractionScalePx = 20f,
+    contentNormalBlend = 0f,
+    specularExponent = 16f,
+    fresnelExponent = 2f,
+    cornerRadii = CornerRadii.zero,
+    lightPosition = Offset.Zero,
+    sampleStepPx = 2f,
+  )
+
+  private data class FusedInputs(
+    val blur: GlassBlurEffectKey?,
+    val depth: Float,
+    val optical: GlassOpticalEffectKey,
+    val detail: GlassRefractionDetailEffectKey?,
+    val interaction: GlassInteractionUniforms?,
+    val backdropBackground: Color?,
+    val backdropMergedBackground: GlassMergedField?,
+  ) {
+    fun toKey() = GlassFusedEffectKey(
+      blur = blur,
+      depth = depth,
+      optical = optical,
+      detail = detail,
+      interaction = interaction,
+      backdropBackground = backdropBackground,
+      backdropMergedBackground = backdropMergedBackground,
+    )
+  }
+
+  private fun GlassFusedEffectKey.matches(inputs: FusedInputs) = matches(
+    blur = inputs.blur,
+    depth = inputs.depth,
+    optical = inputs.optical,
+    detail = inputs.detail,
+    interaction = inputs.interaction,
+    backdropBackground = inputs.backdropBackground,
+    backdropMergedBackground = inputs.backdropMergedBackground,
+  )
+}

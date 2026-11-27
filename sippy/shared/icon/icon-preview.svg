@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Sippy app icon preview">
+  <defs>
+    <clipPath id="squircle"><rect width="512" height="512" rx="118" ry="118"/></clipPath>
+    <linearGradient id="iconBg" x1="256" y1="0" x2="256" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#123A75"/>
+      <stop offset="1" stop-color="#081630"/>
+    </linearGradient>
+    <linearGradient id="iconDrop" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
+      <stop offset="0" stop-color="#5B9BFF"/>
+      <stop offset="1" stop-color="#1D5FE0"/>
+    </linearGradient>
+  </defs>
+  <g clip-path="url(#squircle)">
+    <rect width="512" height="512" fill="url(#iconBg)"/>
+    <g transform="translate(132 132) scale(3.875)">
+      <path d="M32 7 C 26.5 15.5 16 27.5 16 39 A 16 16 0 0 0 48 39 C 48 27.5 37.5 15.5 32 7 Z" fill="url(#iconDrop)"/>
+      <path d="M23.5 33.5 Q 20.5 40 25 46.5" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" fill="none"/>
+    </g>
+  </g>
+</svg>

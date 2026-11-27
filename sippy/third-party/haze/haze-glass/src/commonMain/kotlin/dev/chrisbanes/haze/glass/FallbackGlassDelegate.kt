@@ -1,0 +1,751 @@
+// Copyright 2025, Christopher Banes and the Haze project contributors
+// SPDX-License-Identifier: Apache-2.0
+
+@file:OptIn(InternalHazeApi::class)
+
+package dev.chrisbanes.haze.glass
+
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.toRect
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.GraphicsContext
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.isSpecified
+import androidx.compose.ui.unit.IntSize
+import dev.chrisbanes.haze.ExperimentalHazeApi
+import dev.chrisbanes.haze.HazeEffectLifecycleScope
+import dev.chrisbanes.haze.HazeEffectRuntimeDrawScope
+import dev.chrisbanes.haze.InternalHazeApi
+import dev.chrisbanes.haze.TrimMemoryLevel
+import dev.chrisbanes.haze.trace
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.ceil
+import kotlin.math.cos
+import kotlin.math.floor
+import kotlin.math.max
+
+@OptIn(ExperimentalHazeApi::class)
+internal class FallbackGlassDelegate(
+  private val effect: GlassRuntimeEffect,
+) : GlassRuntimeEffect.Delegate {
+
+  private var preparedDraw: FallbackGlassPreparedDraw? = null
+  private val groupAlpha = RetainedGlassGroupAlphaLayer()
+  private val filteredInput = FallbackGlassInput()
+  internal val filteredInputLayerForTest get() = filteredInput.filtered
+  internal val filteredInputEffectForTest get() = filteredInput.lastEffectForTest
+  internal val filteredInputRecordCountForTest: Int get() = filteredInput.filteredRecordCount
+  internal var filteredInputDrawnForTest = false
+    private set
+
+  /** The size of the last recorded group-alpha layer. */
+  internal var groupAlphaSizeForTest: IntSize? = null
+    private set
+  private var graphicsContext: GraphicsContext? = null
+
+  override val drawsContentBehind: Boolean get() = true
+
+  override fun DrawScope.prepareDraw(context: HazeEffectRuntimeDrawScope) {
+    if (effect.alpha == 0f) return
+
+    val style = effect.resolvePreparedStyle(context)
+    val interaction = resolveFallbackGlassInteraction(
+      state = effect.currentInteractionState,
+      radiusFraction = effect.interactionLightRadiusFraction,
+      size = size,
+    )
+    val previous = preparedDraw
+    if (previous?.size != size || previous.style != style || previous.interaction != interaction) {
+      // Lights are not drawn here, so a light-only change keeps the member paths.
+      val mergedPaths = style.mergedField?.withoutInteractions?.let { field ->
+        previous?.mergedPaths?.takeIf { it.field == field } ?: FallbackMergedPaths(field)
+      }
+      val shapePath = mergedPaths?.union ?: previous
+        ?.takeIf { it.size == size && it.mergedPaths == null && it.style.cornerRadii == style.cornerRadii }
+        ?.shapePath
+        ?: style.cornerRadii.takeUnless { it.isZero() }?.toPath(size)
+
+      val highlightAlpha = 0.25f * style.specularIntensity * style.alpha
+      val highlightRadius = max(size.minDimension / 2f, style.edgeSoftnessPx * 4f)
+      val highlightBrush = when {
+        highlightAlpha <= 0f || highlightRadius <= 0f -> null
+        previous?.highlightAlpha == highlightAlpha &&
+          previous.style.lightPosition == style.lightPosition &&
+          previous.highlightRadius == highlightRadius -> previous.highlightBrush
+        else -> Brush.radialGradient(
+          colors = listOf(
+            Color.White.copy(alpha = highlightAlpha),
+            Color.Transparent,
+          ),
+          center = style.lightPosition,
+          radius = highlightRadius,
+        )
+      }
+
+      val edgeAlpha = fallbackEdgeAlpha(style.ambientResponse)
+      val edgeBrush = when {
+        style.edgeSoftnessPx <= 0f || edgeAlpha <= 0f || style.alpha <= 0f -> null
+        previous?.edgeBrush != null &&
+          previous.edgeAlpha == edgeAlpha &&
+          previous.size == size &&
+          previous.style.lightPosition == style.lightPosition -> previous.edgeBrush
+        else -> fallbackSweepBrush(size, style.lightPosition, edgeAlpha)
+      }
+      val edgeDirectAlpha = edgeAlpha * style.alpha
+      val edgeDirectBrush = when {
+        style.edgeSoftnessPx <= 0f || edgeDirectAlpha <= 0f -> null
+        previous?.edgeDirectBrush != null &&
+          previous.edgeDirectAlpha == edgeDirectAlpha &&
+          previous.size == size &&
+          previous.style.lightPosition == style.lightPosition -> {
+          previous.edgeDirectBrush
+        }
+        else -> fallbackSweepBrush(size, style.lightPosition, edgeDirectAlpha)
+      }
+
+      val edgeShadowAlpha = style.edgeShadow.alpha * style.alpha
+      val edgeStrokeSoftnessPx = when {
+        style.edgeSoftnessPx > 0f -> style.edgeSoftnessPx
+        edgeShadowAlpha > 0f -> FALLBACK_HARD_EDGE_SOFTNESS_PX
+        else -> 0f
+      }
+      val edgeStroke = when {
+        edgeStrokeSoftnessPx <= 0f -> null
+        previous?.edgeStroke != null &&
+          previous.style.edgeSoftnessPx == style.edgeSoftnessPx -> previous.edgeStroke
+        else -> Stroke(width = edgeStrokeSoftnessPx * 2f)
+      }
+      val edgeShadowBrush = when {
+        edgeShadowAlpha <= 0f -> null
+        previous?.edgeShadowAlpha == edgeShadowAlpha &&
+          previous.style.edgeShadow == style.edgeShadow -> previous.edgeShadowBrush
+        else -> SolidColor(style.edgeShadow.copy(alpha = edgeShadowAlpha))
+      }
+
+      val edgeOutline = style.edgeOutline
+      val edgeOutlineStroke = when {
+        !edgeOutline.isVisible -> null
+        previous?.edgeOutlineStroke != null &&
+          previous.style.edgeOutline.widthPx == edgeOutline.widthPx -> previous.edgeOutlineStroke
+        // Half the stroke lies outside the shape; the round join matches the SDF's outer corners.
+        else -> Stroke(width = 2f * edgeOutline.widthPx, join = StrokeJoin.Round)
+      }
+      val edgeOutlinePath = when {
+        edgeOutlineStroke == null -> null
+        shapePath != null -> shapePath
+        previous?.edgeOutlinePath != null && previous.shapePath == null && previous.size == size ->
+          previous.edgeOutlinePath
+        else -> Path().apply { addRect(Rect(Offset.Zero, size)) }
+      }
+
+      val interactionAlpha = 0.32f * interaction.lightingIntensity * style.alpha
+      val interactionBrush = when {
+        !interaction.hasLighting || interactionAlpha <= 0f -> null
+        previous?.interactionAlpha == interactionAlpha &&
+          previous.interaction.position == interaction.position &&
+          previous.interaction.radiusPx == interaction.radiusPx -> previous.interactionBrush
+        else -> Brush.radialGradient(
+          colors = listOf(
+            Color.White.copy(alpha = interactionAlpha),
+            Color.Transparent,
+          ),
+          center = interaction.position,
+          radius = interaction.radiusPx,
+        )
+      }
+
+      val rimHighlightWidthPx = style.rimHighlight.widthPx
+      val rimHighlightBands = when {
+        !style.rimHighlight.isVisible || style.alpha <= 0f -> null
+        previous?.rimHighlightBands != null &&
+          previous.size == size &&
+          previous.shapePath === shapePath &&
+          previous.style.rimHighlight.widthPx == rimHighlightWidthPx -> previous.rimHighlightBands
+        else -> fallbackRimHighlightBands(
+          shape = shapePath ?: Path().apply { addRect(size.toRect()) },
+          widthPx = rimHighlightWidthPx,
+        )
+      }
+
+      // The cluster runtime has no interaction source; each member carries its own light instead.
+      val memberLightBrushes = style.mergedField?.takeIf { it.hasInteractionLighting }?.members?.map { member ->
+        val alpha = 0.32f * member.lightIntensity * style.alpha
+        if (!member.hasLighting || alpha <= 0f) {
+          null
+        } else {
+          Brush.radialGradient(
+            colors = listOf(Color.White.copy(alpha = alpha), Color.Transparent),
+            center = member.lightPosition,
+            radius = member.lightRadius,
+          )
+        }
+      }
+
+      preparedDraw = FallbackGlassPreparedDraw(
+        size = size,
+        style = style,
+        shapePath = shapePath,
+        mergedPaths = mergedPaths,
+        highlightAlpha = highlightAlpha,
+        highlightRadius = highlightRadius,
+        highlightBrush = highlightBrush,
+        edgeAlpha = edgeAlpha,
+        edgeBrush = edgeBrush,
+        edgeDirectAlpha = edgeDirectAlpha,
+        edgeDirectBrush = edgeDirectBrush,
+        edgeStroke = edgeStroke,
+        edgeShadowAlpha = edgeShadowAlpha,
+        edgeShadowBrush = edgeShadowBrush,
+        interaction = interaction,
+        interactionAlpha = interactionAlpha,
+        interactionBrush = interactionBrush,
+        memberLightBrushes = memberLightBrushes,
+        rimHighlightBands = rimHighlightBands,
+        edgeOutlineStroke = edgeOutlineStroke,
+        edgeOutlinePath = edgeOutlinePath,
+      )
+    }
+
+    val groupSize = size.outsetToIntSize(effect.nodeClipOutsetPx())
+    val currentGraphicsContext = context.requireGraphicsContext()
+    graphicsContext = currentGraphicsContext
+    groupAlpha.prepare(
+      required = requiresGlassGroupAlpha(style.alpha) && groupSize.fitsGlassLayerBudget(),
+      graphicsContext = currentGraphicsContext,
+    )
+  }
+
+  override fun DrawScope.draw(context: HazeEffectRuntimeDrawScope) {
+    draw(context, forceInput = false)
+  }
+
+  internal fun DrawScope.draw(
+    context: HazeEffectRuntimeDrawScope,
+    forceInput: Boolean,
+  ) {
+    val prepared = preparedDraw ?: return
+    val style = prepared.style
+    val backgroundColor = style.backgroundColor
+    val tint = style.tint
+    if (!backgroundColor.isSpecified || !tint.isSpecified) return
+    if (style.alpha <= 0f) return
+    trace(GlassTraceSection.FallbackDraw) {
+      val shapePath = prepared.shapePath
+      val mergedPaths = prepared.mergedPaths
+      val visible = effect.windowBoundsInEffect()
+      val inputBounds = Rect(Offset.Zero, size).visiblePart(visible)
+      val groupSize = if (groupAlpha.isAvailable) size.outsetToIntSize(effect.nodeClipOutsetPx()) else null
+      val inputStyle = if (mergedPaths != null) style.copy(fallbackBaseColor = null) else style
+      val captureBounds = mergedPaths?.unionBounds?.visiblePart(visible) ?: inputBounds
+      val willProcess = !forceInput && (mergedPaths == null || mergedPaths.forceInputMask != null) &&
+        with(filteredInput) {
+          canDraw(context, inputStyle, captureBounds) && prepareForCapture(context, inputStyle, captureBounds, groupSize)
+        }
+      if (!willProcess) filteredInput.release()
+
+      if (forceInput && style.fallbackBaseColor == null && mergedPaths == null && backgroundColor.alpha <= 0f && !inputBounds.isEmpty) {
+        drawInputWithAlpha(context, alpha = 1f, bounds = inputBounds)
+      }
+
+      fun DrawScope.drawFallback(alphaMultiplier: Float) {
+        fun DrawScope.drawBase() {
+          val willBlur = willProcess && style.resolvedOptics.depth > 0f && style.resolvedOptics.blurRadiusPx > 0f
+          style.fallbackBaseColor?.let { drawRect(it.copy(alpha = it.alpha * alphaMultiplier)) }
+          if (!willBlur && style.fallbackBaseColor == null) {
+            drawRect(style.fallbackColor.copy(alpha = style.fallbackColor.alpha * alphaMultiplier))
+          }
+          // Processed input carries the background beneath it, filling the padded capture.
+          if (backgroundColor.alpha > 0f && !willProcess) {
+            drawRect(color = backgroundColor.copy(alpha = backgroundColor.alpha * alphaMultiplier))
+          }
+          val scrim: DrawScope.() -> Unit = {
+            drawRect(style.fallbackColor, blendMode = BlendMode.SrcAtop)
+          }
+          val filtered = willProcess && with(filteredInput) {
+            draw(context, style, alphaMultiplier, inputBounds, groupSize, if (willBlur) null else scrim) { _, _ ->
+              if (backgroundColor.alpha > 0f) drawRect(backgroundColor)
+            }
+          }
+          filteredInputDrawnForTest = filtered
+          if (!filtered && backgroundColor.alpha > 0f && style.fallbackBaseColor == null && !inputBounds.isEmpty) {
+            withLayerPaint(alphaMultiplier, BlendMode.SrcOver, inputBounds) {
+              drawInputWithAlpha(context, 1f, inputBounds)
+              scrim()
+            }
+          }
+          if (tint.alpha > 0f) {
+            drawRect(color = tint.copy(alpha = tint.alpha * alphaMultiplier))
+          }
+        }
+
+        when {
+          mergedPaths != null -> {
+            val willBlur = willProcess && style.resolvedOptics.depth > 0f && style.resolvedOptics.blurRadiusPx > 0f
+            drawMergedBase(context, mergedPaths, alphaMultiplier, forceInput, visible, willBlur, willProcess) { drawScrim, drawBackground ->
+              val filtered = willProcess && with(filteredInput) {
+                draw(context, inputStyle, alphaMultiplier, captureBounds, groupSize, drawScrim, drawBackground)
+              }
+              filteredInputDrawnForTest = filtered
+              filtered
+            }
+          }
+          shapePath != null -> clipPath(shapePath) { drawBase() }
+          else -> clipRect { drawBase() }
+        }
+
+        // The edge falloff is part of the base material and remains behind child content.
+        val edgeBrush = if (alphaMultiplier >= 1f) {
+          prepared.edgeBrush
+        } else {
+          prepared.edgeDirectBrush
+        }
+        edgeBrush?.let {
+          drawFallbackEdge(
+            brush = it,
+            stroke = checkNotNull(prepared.edgeStroke),
+            shapePath = shapePath,
+          )
+        }
+        glassOutsetDrawForTest?.invoke(this)
+      }
+
+      when {
+        style.alpha >= 1f -> drawFallback(alphaMultiplier = 1f)
+        groupAlpha.isAvailable -> {
+          val outset = effect.nodeClipOutsetPx()
+          val groupSize = size.outsetToIntSize(outset)
+          groupAlphaSizeForTest = groupSize
+          recordAndDrawGlassGroupAlpha(
+            layer = checkNotNull(groupAlpha.layer),
+            alpha = style.alpha,
+            size = groupSize,
+            outsetPx = outset,
+          ) { drawFallback(alphaMultiplier = 1f) }
+        }
+        else -> drawFallback(alphaMultiplier = style.alpha)
+      }
+    }
+  }
+
+  override fun DrawScope.drawForeground(context: HazeEffectRuntimeDrawScope) {
+    val prepared = preparedDraw ?: return
+    val style = prepared.style
+    val tint = style.tint
+    if (!tint.isSpecified) return
+    if (style.alpha <= 0f) return
+
+    trace(GlassTraceSection.FallbackForeground) {
+      val shapePath = prepared.shapePath
+
+      val mergedPaths = prepared.mergedPaths
+      if (mergedPaths != null) {
+        prepared.memberLightBrushes?.let {
+          drawMergedInteractionLighting(mergedPaths, it, effect.windowBoundsInEffect())
+        }
+      } else {
+        drawInteractionLighting(
+          interaction = prepared.interaction,
+          brush = prepared.interactionBrush,
+          shapePath = shapePath,
+        )
+      }
+
+      prepared.edgeShadowBrush?.let { edgeShadowBrush ->
+        drawFallbackEdge(
+          brush = edgeShadowBrush,
+          stroke = checkNotNull(prepared.edgeStroke),
+          shapePath = shapePath,
+        )
+      }
+
+      prepared.edgeOutlinePath?.let { path ->
+        clipPath(path, ClipOp.Difference) {
+          // A uniform stroke can't weight by direction, so it uses the sides' and top/bottom's mean.
+          val directionalMean = (1f + style.edgeOutline.topAndBottomStrength) / 2f
+          drawPath(
+            path = path,
+            color = style.edgeOutline.color.copy(
+              alpha = style.edgeOutline.color.alpha * directionalMean * style.alpha,
+            ),
+            style = checkNotNull(prepared.edgeOutlineStroke),
+          )
+        }
+      }
+
+      // Draw the fallback rim approximation above child content, matching the runtime path.
+      prepared.highlightBrush?.let { highlightBrush ->
+        if (shapePath != null) {
+          clipPath(shapePath) {
+            drawCircle(
+              brush = highlightBrush,
+              radius = prepared.highlightRadius,
+              center = style.lightPosition,
+            )
+          }
+        } else {
+          clipRect {
+            drawCircle(
+              brush = highlightBrush,
+              radius = prepared.highlightRadius,
+              center = style.lightPosition,
+            )
+          }
+        }
+      }
+
+      prepared.rimHighlightBands?.let { bands ->
+        val alpha = style.rimHighlight.intensity * style.alpha
+        drawPath(bands.vertical, Color.White, alpha = alpha)
+        if (style.rimHighlight.sides > 0f) {
+          drawPath(bands.horizontal, Color.White, alpha = alpha * style.rimHighlight.sides)
+        }
+      }
+    }
+  }
+
+  override fun onDrawSkipped() = clearRetainedOutput()
+
+  override fun clearRetainedOutput() {
+    filteredInput.release()
+  }
+
+  override fun detach() {
+    filteredInput.release()
+    groupAlpha.release(graphicsContext)
+    graphicsContext = null
+    preparedDraw = null
+  }
+
+  override fun onTrimMemory(context: HazeEffectLifecycleScope, level: TrimMemoryLevel) {
+    if (shouldReleaseRetainedGlass(level)) {
+      filteredInput.release()
+      groupAlpha.release(graphicsContext ?: context.requireGraphicsContext())
+      graphicsContext = null
+      context.invalidateDraw()
+    }
+  }
+}
+
+internal fun resolveFallbackGlassInteraction(
+  state: GlassInteractionRenderState,
+  radiusFraction: Float,
+  size: Size,
+): GlassInteractionUniforms = resolveGlassInteraction(state, radiusFraction).uniforms(
+  GlassCoordinates(
+    sampleSize = size,
+    materialOrigin = Offset.Zero,
+    materialSize = size,
+    scaleFactor = 1f,
+  ),
+)
+
+private fun DrawScope.drawInteractionLighting(
+  interaction: GlassInteractionUniforms,
+  brush: Brush?,
+  shapePath: Path?,
+) {
+  if (brush == null) return
+  val drawHighlight: DrawScope.() -> Unit = {
+    drawCircle(brush = brush, center = interaction.position, radius = interaction.radiusPx)
+  }
+  if (shapePath != null) {
+    clipPath(shapePath, block = drawHighlight)
+  } else {
+    clipRect(block = drawHighlight)
+  }
+}
+
+/**
+ * Draws each member's light over its shape where no earlier member covers it, like
+ * [drawMergedColours]: in a layer when the visible union fits, otherwise over exclusive paths.
+ */
+internal fun DrawScope.drawMergedInteractionLighting(
+  paths: FallbackMergedPaths,
+  brushes: List<Brush?>,
+  visible: Rect?,
+) {
+  if (paths.unionBounds.visiblePart(visible).isEmpty) return
+  val layerBounds = paths.layerBounds(visible)
+  if (layerBounds == null) {
+    brushes.forEachIndexed { index, brush ->
+      // The gradient is transparent beyond its radius, so filling the whole region is equivalent.
+      if (brush != null) drawPath(paths.exclusive[index], brush)
+    }
+    return
+  }
+  withLayerPaint(alpha = 1f, blendMode = BlendMode.SrcOver, bounds = layerBounds) {
+    for (index in brushes.indices.reversed()) {
+      // An unlit member still clears what it covers: the earliest member owns the overlap.
+      drawPath(paths.members[index], Color.Black, blendMode = BlendMode.DstOut)
+      brushes[index]?.let { drawPath(paths.members[index], it, blendMode = BlendMode.Plus) }
+    }
+  }
+}
+
+private fun fallbackSweepBrush(size: Size, light: Offset, alpha: Float): Brush {
+  val centre = Offset(size.width / 2f, size.height / 2f)
+  val delta = light - centre
+  val direction = if (delta == Offset.Zero) -PI.toFloat() / 2f else atan2(delta.y, delta.x)
+  val colors = List(33) { index ->
+    val angle = (2.0 * PI * index / 32).toFloat()
+    val alignment = cos(angle - direction)
+    val strength = if (alignment >= 0f) alignment else -alignment * 0.35f
+    Color.White.copy(alpha = alpha * strength * strength)
+  }
+  return Brush.sweepGradient(colors = colors, center = centre)
+}
+
+private fun DrawScope.drawFallbackEdge(
+  brush: Brush,
+  stroke: Stroke,
+  shapePath: Path?,
+) {
+  if (shapePath != null) {
+    clipPath(shapePath) {
+      drawPath(path = shapePath, brush = brush, style = stroke)
+    }
+  } else {
+    clipRect { drawRect(brush = brush, style = stroke) }
+  }
+}
+
+/** Draws a merged field's members as one surface, without a bridge. */
+private fun DrawScope.drawMergedBase(
+  context: HazeEffectRuntimeDrawScope,
+  paths: FallbackMergedPaths,
+  alphaMultiplier: Float,
+  forceInput: Boolean,
+  visible: Rect?,
+  willBlur: Boolean,
+  willProcess: Boolean,
+  drawFilteredInput: DrawScope.(
+    drawScrim: (DrawScope.() -> Unit)?,
+    drawBackground: (DrawScope.(effectOrigin: Offset, padding: Float) -> Unit)?,
+  ) -> Boolean,
+) {
+  val members = paths.field.members
+  if (members.any { it.fallbackBaseColor != null }) {
+    drawMergedColours(paths, alphaMultiplier, visible) { it.fallbackBaseColor ?: Color.Transparent }
+  }
+  if (!willBlur) {
+    drawMergedColours(paths, alphaMultiplier, visible) {
+      if (it.fallbackBaseColor == null) it.fallbackColor else Color.Transparent
+    }
+  }
+  // Processed input carries the backgrounds of members it covers; reduced members keep theirs here.
+  if (members.any { (!willProcess || it.fallbackBaseColor != null) && it.backgroundColor.alpha > 0f }) {
+    drawMergedColours(paths, alphaMultiplier, visible) {
+      if (willProcess && it.fallbackBaseColor == null) Color.Transparent else it.backgroundColor
+    }
+  }
+  // Every member's background fills the capture: the padding takes the earliest member whose
+  // square outset covers it, standing in for the nearest member, so blur never samples transparency.
+  val processedBackground: (DrawScope.(Offset, Float) -> Unit)? = if (paths.field.hasBackground) {
+    { origin, padding ->
+      translate(origin.x, origin.y) {
+        withLayerPaint(alpha = 1f, blendMode = BlendMode.SrcOver, bounds = Rect(-origin, size)) {
+          drawMemberColours(paths.outsetMembers(padding), members, 1f) { it.backgroundColor }
+          drawMemberColours(paths.members, members, 1f) { it.backgroundColor }
+        }
+      }
+    }
+  } else {
+    null
+  }
+  // Reduced members never replay captured input, including on the downgrade frame.
+  val scrim: DrawScope.() -> Unit = {
+    withLayerPaint(alpha = 1f, blendMode = BlendMode.SrcAtop, bounds = paths.unionBounds.visiblePart(visible)) {
+      drawMergedColours(paths, 1f, visible) {
+        if (it.fallbackBaseColor == null) it.fallbackColor else Color.Transparent
+      }
+    }
+  }
+  var filtered = false
+  if (!forceInput) {
+    paths.forceInputMask?.let { mask -> clipPath(mask) { filtered = drawFilteredInput(if (willBlur) null else scrim, processedBackground) } }
+  }
+  val inputPath = if (filtered) null else if (forceInput) paths.forceInputMask else paths.inputMask
+  // Both masks lie within the union, so its visible bounds hold the input.
+  val inputBounds = paths.unionBounds.visiblePart(visible)
+  if (!inputBounds.isEmpty) {
+    inputPath?.let { path ->
+      clipPath(path) {
+        withLayerPaint(alphaMultiplier, BlendMode.SrcOver, inputBounds) {
+          drawInputWithAlpha(context, 1f, inputBounds)
+          scrim()
+        }
+      }
+    }
+  }
+  if (members.any { it.tint.alpha > 0f }) drawMergedColours(paths, alphaMultiplier, visible) { it.tint }
+}
+
+/**
+ * Draws one colour stage in a layer bounded by the union within [visible], in which each member
+ * clears its own shape with [BlendMode.DstOut] and then adds its colour with [BlendMode.Plus], from
+ * last to first. Where members overlap the earliest member's colour applies once, and anti-aliased
+ * edges never composite twice. A null [visible] bounds the layer by the whole union.
+ */
+internal fun DrawScope.drawMergedColours(
+  paths: FallbackMergedPaths,
+  alphaMultiplier: Float,
+  visible: Rect? = null,
+  color: (GlassMergedMember) -> Color,
+) {
+  val members = paths.field.members
+  if (paths.unionBounds.visiblePart(visible).isEmpty) return
+  val layerBounds = paths.layerBounds(visible)
+  if (layerBounds == null) {
+    // ponytail: only when the visible union exceeds the layer budget (over 4096 px on a side, or
+    // over 16,777,216 px on screen). Each member then fills only what earlier members leave
+    // uncovered, so overlaps composite once, but curved internal edges show a faint seam.
+    members.forEachIndexed { index, member ->
+      val memberColor = color(member)
+      drawPath(paths.exclusive[index], memberColor.copy(alpha = memberColor.alpha * alphaMultiplier))
+    }
+    return
+  }
+  withLayerPaint(alpha = 1f, blendMode = BlendMode.SrcOver, bounds = layerBounds) {
+    drawMemberColours(paths.members, members, alphaMultiplier, color)
+  }
+}
+
+/** Clears and fills each of [paths] with its member's colour, last to first, inside a layer. */
+private fun DrawScope.drawMemberColours(
+  paths: List<Path>,
+  members: List<GlassMergedMember>,
+  alphaMultiplier: Float,
+  color: (GlassMergedMember) -> Color,
+) {
+  for (index in members.indices.reversed()) {
+    val memberColor = color(members[index])
+    // Src with path coverage wipes the member's whole bounding box on the API 23-27 renderer;
+    // DstOut then Plus is the same coverage blend without that.
+    drawPath(paths[index], Color.Black, blendMode = BlendMode.DstOut)
+    drawPath(
+      path = paths[index],
+      color = memberColor.copy(alpha = memberColor.alpha * alphaMultiplier),
+      blendMode = BlendMode.Plus,
+    )
+  }
+}
+
+/** A merged field's member paths and unions, rebuilt only when its shapes or colours change. */
+internal class FallbackMergedPaths(val field: GlassMergedField) {
+  val members: List<Path> = field.members.map { it.fallbackPath() }
+  val union: Path = unionOf(members)
+
+  /** Ordinary input and downgrade input both respect the winning member's fallback policy. */
+  val inputMask: Path? = inputMask { it.fallbackBaseColor == null && it.backgroundColor.alpha > 0f }
+  val forceInputMask: Path? = inputMask { it.fallbackBaseColor == null }
+
+  private fun inputMask(include: (GlassMergedMember) -> Boolean): Path? = when {
+    field.members.none(include) -> null
+    field.members.all(include) -> union
+    else -> members.indices.reversed().fold(Path()) { mask, index ->
+      val operation = if (include(field.members[index])) PathOperation.Union else PathOperation.Difference
+      Path().apply { op(mask, members[index], operation) }
+    }
+  }
+
+  /** Each member minus every earlier member, for drawing without a layer. */
+  val exclusive: List<Path> by lazy(LazyThreadSafetyMode.NONE) {
+    var covered = Path()
+    members.map { path ->
+      Path().apply { op(path, covered, PathOperation.Difference) }
+        .also { covered = Path().apply { op(covered, path, PathOperation.Union) } }
+    }
+  }
+
+  private var outset: Pair<Float, List<Path>>? = null
+
+  /**
+   * Each member's bounds outset by [padding] with square corners, so the padding band is filled
+   * at the corners too and blur never samples a transparent corner pocket.
+   */
+  fun outsetMembers(padding: Float): List<Path> {
+    if (padding <= 0f) return members
+    outset?.let { (cached, paths) -> if (cached == padding) return paths }
+    return field.members.map { member -> Path().apply { addRect(member.rect.inflate(padding)) } }
+      .also { outset = padding to it }
+  }
+
+  /** The pixel-aligned union bounds. */
+  val unionBounds: Rect = union.getBounds().let { bounds ->
+    Rect(floor(bounds.left), floor(bounds.top), ceil(bounds.right), ceil(bounds.bottom))
+  }
+
+  /** The union bounds within [visible] for a layer, or null when they exceed the layer budget. */
+  fun layerBounds(visible: Rect?): Rect? = unionBounds.visiblePart(visible)
+    .takeIf { IntSize(it.width.toInt(), it.height.toInt()).fitsGlassLayerBudget() }
+}
+
+private fun GlassMergedMember.fallbackPath(): Path = Path().apply {
+  addContinuousRoundRect(rect, cornerRadii)
+}
+
+private fun unionOf(paths: List<Path>): Path = paths.reduceOrNull { union, path ->
+  Path().apply { op(union, path, PathOperation.Union) }
+} ?: Path()
+
+internal class FallbackRimHighlightBands(
+  /** Bands along the top- and bottom-facing edges, thinning to nothing on vertical edges. */
+  val vertical: Path,
+  /** Bands along the left- and right-facing edges, excluding [vertical]. */
+  val horizontal: Path,
+)
+
+/** Approximates the runtime rim highlight with differences of [shape] and its translated copies. */
+internal fun fallbackRimHighlightBands(shape: Path, widthPx: Float): FallbackRimHighlightBands {
+  fun edge(dx: Float, dy: Float): Path = Path().apply {
+    op(shape, Path().apply { addPath(shape, Offset(dx, dy)) }, PathOperation.Difference)
+  }
+  val vertical = unionOf(listOf(edge(0f, widthPx), edge(0f, -widthPx)))
+  val horizontal = Path().apply {
+    op(unionOf(listOf(edge(widthPx, 0f), edge(-widthPx, 0f))), vertical, PathOperation.Difference)
+  }
+  return FallbackRimHighlightBands(vertical = vertical, horizontal = horizontal)
+}
+
+internal fun fallbackEdgeAlpha(ambientResponse: Float): Float = 0.18f * ambientResponse
+
+private const val FALLBACK_HARD_EDGE_SOFTNESS_PX = 2f
+
+private data class FallbackGlassPreparedDraw(
+  val size: Size,
+  val style: ResolvedGlassStyle,
+  val shapePath: Path?,
+  val mergedPaths: FallbackMergedPaths?,
+  val highlightAlpha: Float,
+  val highlightRadius: Float,
+  val highlightBrush: Brush?,
+  val edgeAlpha: Float,
+  val edgeBrush: Brush?,
+  val edgeDirectAlpha: Float,
+  val edgeDirectBrush: Brush?,
+  val edgeStroke: Stroke?,
+  val edgeShadowAlpha: Float,
+  val edgeShadowBrush: Brush?,
+  val interaction: GlassInteractionUniforms,
+  val interactionAlpha: Float,
+  val interactionBrush: Brush?,
+  val memberLightBrushes: List<Brush?>?,
+  val rimHighlightBands: FallbackRimHighlightBands?,
+  val edgeOutlineStroke: Stroke?,
+  /** The shape the outline strokes, or null when there is no outline. */
+  val edgeOutlinePath: Path?,
+)

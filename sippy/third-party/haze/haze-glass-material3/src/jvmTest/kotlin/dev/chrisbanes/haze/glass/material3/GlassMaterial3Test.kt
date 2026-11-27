@@ -1,0 +1,211 @@
+// Copyright 2026, Christopher Banes and the Haze project contributors
+// SPDX-License-Identifier: Apache-2.0
+
+@file:OptIn(androidx.compose.ui.InternalComposeUiApi::class)
+@file:Suppress("DEPRECATION")
+
+package dev.chrisbanes.haze.glass.material3
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.LocalSystemTheme
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.SystemTheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.v2.runComposeUiTest
+import androidx.compose.ui.unit.dp
+import assertk.assertThat
+import assertk.assertions.isEqualTo
+import assertk.assertions.isSameInstanceAs
+import dev.chrisbanes.haze.ExperimentalHazeApi
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.glass.GlassStyle
+import dev.chrisbanes.haze.glass.LocalGlassStyle
+import dev.chrisbanes.haze.glass.hazeGlass
+import kotlin.test.Test
+
+@OptIn(ExperimentalHazeApi::class, ExperimentalTestApi::class)
+class GlassMaterial3Test {
+
+  @Test
+  fun material3OnStyle_appliesSurfaceBeforeReceiverWrites() = runComposeUiTest {
+    setContent {
+      MaterialTheme(colorScheme = lightColorScheme(surface = Color.Red)) {
+        Column {
+          GlassMaterial3Content(
+            style = GlassStyle.regular.material3(),
+            testTag = "surface",
+          )
+          GlassMaterial3Content(
+            style = GlassStyle { backgroundColor(Color.Green) }.material3(),
+            testTag = "background",
+          )
+          GlassMaterial3Content(
+            style = GlassStyle { tint(Color.Blue) }.material3(),
+            testTag = "tint",
+          )
+        }
+      }
+    }
+
+    assertThat(onNodeWithTag("surface").captureToImage().toPixelMap()[20, 20])
+      .isEqualTo(Color.Red)
+    assertThat(onNodeWithTag("background").captureToImage().toPixelMap()[20, 20])
+      .isEqualTo(Color.Green)
+    assertThat(onNodeWithTag("tint").captureToImage().toPixelMap()[20, 20])
+      .isEqualTo(Color.Blue)
+  }
+
+  @Test
+  fun material3_updatesThemeSurfaceWithConstantSystemAppearance() = runComposeUiTest {
+    val colorScheme = mutableStateOf(lightColorScheme(surface = Color.Red))
+
+    setContent {
+      CompositionLocalProvider(LocalSystemTheme provides SystemTheme.Light) {
+        MaterialTheme(colorScheme = colorScheme.value) {
+          GlassMaterial3Content(GlassStyle.regular.material3())
+        }
+      }
+    }
+
+    assertThat(onNodeWithTag("material").captureToImage().toPixelMap()[20, 20]).isEqualTo(Color.Red)
+
+    colorScheme.value = lightColorScheme(surface = Color.Blue)
+    waitForIdle()
+
+    assertThat(onNodeWithTag("material").captureToImage().toPixelMap()[20, 20]).isEqualTo(Color.Blue)
+  }
+
+  @Test
+  fun material3_keepsSurfaceAndTintWithChangingSystemAppearance() = runComposeUiTest {
+    val appearance = mutableStateOf(SystemTheme.Light)
+    val surface = Color.Red
+    val tint = Color.Blue
+
+    setContent {
+      CompositionLocalProvider(LocalSystemTheme provides appearance.value) {
+        MaterialTheme(colorScheme = lightColorScheme(surface = surface)) {
+          Column {
+            GlassMaterial3Content(GlassStyle.regular.material3(), "surface-control")
+            GlassMaterial3Content(GlassStyle.regular.material3(tint = tint), "tint-control")
+          }
+        }
+      }
+    }
+
+    val surfaceControl = onNodeWithTag("surface-control").captureToImage().toPixelMap()[20, 20]
+    val tintControl = onNodeWithTag("tint-control").captureToImage().toPixelMap()[20, 20]
+    assertThat(surfaceControl).isEqualTo(surface)
+    assertThat(tintControl).isEqualTo(tint)
+
+    appearance.value = SystemTheme.Dark
+    waitForIdle()
+    assertThat(onNodeWithTag("surface-control").captureToImage().toPixelMap()[20, 20])
+      .isEqualTo(surfaceControl)
+    assertThat(onNodeWithTag("tint-control").captureToImage().toPixelMap()[20, 20])
+      .isEqualTo(tintControl)
+
+    appearance.value = SystemTheme.Light
+    waitForIdle()
+    assertThat(onNodeWithTag("surface-control").captureToImage().toPixelMap()[20, 20])
+      .isEqualTo(surfaceControl)
+    assertThat(onNodeWithTag("tint-control").captureToImage().toPixelMap()[20, 20])
+      .isEqualTo(tintControl)
+  }
+
+  @Test
+  fun material3_withoutBlockReusesStyleAcrossUnrelatedRecompositions() = runComposeUiTest {
+    val recomposed = mutableStateOf(false)
+    lateinit var initialStyle: GlassStyle
+    lateinit var recomposedStyle: GlassStyle
+
+    setContent {
+      val style = GlassStyle.material3()
+      val isRecomposed = recomposed.value
+      SideEffect {
+        if (isRecomposed) recomposedStyle = style else initialStyle = style
+      }
+      GlassMaterial3Content(style)
+    }
+
+    recomposed.value = true
+    waitForIdle()
+
+    assertThat(recomposedStyle).isSameInstanceAs(initialStyle)
+  }
+
+  @Test
+  fun material3_receiverWritesOverrideMaterial3Writes() = runComposeUiTest {
+    val blockOverridesTint = mutableStateOf(false)
+
+    setContent {
+      MaterialTheme(colorScheme = lightColorScheme(surface = Color.Green)) {
+        GlassMaterial3Content(
+          remember { GlassStyle { if (blockOverridesTint.value) tint(Color.Yellow) } }
+            .material3(containerColor = Color.Red, tint = Color.Blue),
+        )
+      }
+    }
+
+    assertThat(onNodeWithTag("material").captureToImage().toPixelMap()[20, 20]).isEqualTo(Color.Blue)
+
+    blockOverridesTint.value = true
+    waitForIdle()
+
+    assertThat(onNodeWithTag("material").captureToImage().toPixelMap()[20, 20]).isEqualTo(Color.Yellow)
+  }
+
+  @Test
+  fun material3_nullTintPreservesLocalTintWithoutReadingContentColor() = runComposeUiTest {
+    val localStyle = GlassStyle { tint(Color.Blue) }
+
+    setContent {
+      MaterialTheme(colorScheme = lightColorScheme(surface = Color.Red)) {
+        CompositionLocalProvider(
+          LocalGlassStyle provides localStyle,
+          LocalContentColor provides Color.Green,
+        ) {
+          GlassMaterial3Content(GlassStyle.material3(tint = null))
+        }
+      }
+    }
+
+    assertThat(onNodeWithTag("material").captureToImage().toPixelMap()[20, 20]).isEqualTo(Color.Blue)
+  }
+}
+
+@OptIn(ExperimentalHazeApi::class)
+@Composable
+private fun GlassMaterial3Content(
+  style: GlassStyle,
+  testTag: String = "material",
+) {
+  Box(
+    Modifier
+      .size(40.dp)
+      .testTag(testTag)
+      .hazeGlass(
+        input = HazeInput.Content,
+        // These tests isolate theme color precedence from the built-in material's tone.
+        style = style.then {
+          whitePoint(0f)
+          contrast(0f)
+          chromaMultiplier(1f)
+        },
+      ),
+  )
+}

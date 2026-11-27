@@ -1,0 +1,1467 @@
+// Copyright 2025, Christopher Banes and the Haze project contributors
+// SPDX-License-Identifier: Apache-2.0
+
+@file:OptIn(InternalHazeApi::class)
+
+package dev.chrisbanes.haze.glass
+
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.runtime.snapshots.SnapshotStateObserver
+import androidx.compose.ui.MotionDurationScale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.center
+import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.findRootCoordinates
+import androidx.compose.ui.node.requireLayoutCoordinates
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.roundToIntSize
+import dev.chrisbanes.haze.Bitmask
+import dev.chrisbanes.haze.HazeEffectBackdrop
+import dev.chrisbanes.haze.HazeEffectContentTransform
+import dev.chrisbanes.haze.HazeEffectDrawScope
+import dev.chrisbanes.haze.HazeEffectLayoutScope
+import dev.chrisbanes.haze.HazeEffectLifecycleScope
+import dev.chrisbanes.haze.HazeEffectRenderer
+import dev.chrisbanes.haze.HazeEffectRendererBackdrop
+import dev.chrisbanes.haze.HazeEffectRendererDrawHooks
+import dev.chrisbanes.haze.HazeEffectRendererInteraction
+import dev.chrisbanes.haze.HazeEffectRendererLifecycle
+import dev.chrisbanes.haze.HazeEffectRendererRetainedOutput
+import dev.chrisbanes.haze.HazeEffectRuntimeDrawScope
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazeLogger
+import dev.chrisbanes.haze.HazePerformanceMode
+import dev.chrisbanes.haze.HazeSampling
+import dev.chrisbanes.haze.InternalHazeApi
+import dev.chrisbanes.haze.LocalHazePerformanceMode
+import dev.chrisbanes.haze.PlatformRenderEffect
+import dev.chrisbanes.haze.RuntimeShaderRenderEffectException
+import dev.chrisbanes.haze.TrimMemoryLevel
+import dev.chrisbanes.haze.trace
+import kotlin.math.ceil
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
+
+private class GlassPreparedRenderCacheKey(
+  val style: ResolvedGlassStyle,
+  val coordinates: GlassCoordinates,
+  val interaction: ResolvedGlassInteraction,
+  val interactionTopology: GlassInteractionTopology,
+  val backdrop: Boolean,
+)
+
+private class GlassRenderBudgetCacheKey(
+  val style: ResolvedGlassStyle,
+  val inputScale: Float,
+  val layerSize: Size,
+  val materialSize: Size,
+  val interactionTopology: GlassInteractionTopology,
+  val interactionRadiusFraction: Float,
+  val backdrop: Boolean,
+  // Pixel-aligned placement sizes the capture from the layer offset too (#1775).
+  val alignToPixels: Boolean,
+  val layerOffset: Offset,
+)
+
+private class GlassPreparedDrawCacheKey(
+  val dirtyTrackerVersion: Int,
+  val size: Size,
+  val layerSize: Size,
+  val layerOffset: Offset,
+  val inputScale: Float,
+  val density: Density,
+  val layoutDirection: LayoutDirection,
+  val style: ResolvedGlassStyle?,
+  val interactionState: GlassInteractionRenderState,
+  val interactionTopology: GlassInteractionTopology,
+)
+
+private fun ResolvedGlassStyle.hasSameRenderParams(other: ResolvedGlassStyle): Boolean =
+  resolvedOptics == other.resolvedOptics &&
+    specularIntensity == other.specularIntensity &&
+    edgeShadow == other.edgeShadow &&
+    ambientResponse == other.ambientResponse &&
+    backgroundColor == other.backgroundColor &&
+    tint == other.tint &&
+    edgeSoftnessPx == other.edgeSoftnessPx &&
+    lightPosition == other.lightPosition &&
+    chromaticAberrationStrength == other.chromaticAberrationStrength &&
+    surfaceProfile == other.surfaceProfile &&
+    chromaticAberrationMode == other.chromaticAberrationMode &&
+    contrast == other.contrast &&
+    whitePoint == other.whitePoint &&
+    chromaMultiplier == other.chromaMultiplier &&
+    contentNormalBlend == other.contentNormalBlend &&
+    specularExponent == other.specularExponent &&
+    fresnelExponent == other.fresnelExponent &&
+    cornerRadii == other.cornerRadii &&
+    mergedField?.withoutFallbackBase == other.mergedField?.withoutFallbackBase &&
+    rimHighlight == other.rimHighlight &&
+    edgeOutline == other.edgeOutline
+
+private fun ResolvedGlassStyle.hasSameBudgetParams(other: ResolvedGlassStyle): Boolean =
+  requiresGlassGroupAlpha(alpha) == requiresGlassGroupAlpha(other.alpha) &&
+    resolvedOptics.blurRadiusPx == other.resolvedOptics.blurRadiusPx &&
+    resolvedOptics.depth == other.resolvedOptics.depth &&
+    (resolvedOptics.progressive == null) == (other.resolvedOptics.progressive == null) &&
+    resolvedOptics.refractionStrength == other.resolvedOptics.refractionStrength &&
+    resolvedOptics.refractionScalePx == other.resolvedOptics.refractionScalePx &&
+    resolvedOptics.refractionHeightPx == other.resolvedOptics.refractionHeightPx &&
+    resolvedOptics.edgeRefractionWidthPx == other.resolvedOptics.edgeRefractionWidthPx &&
+    resolvedOptics.refractionDetailIntensity == other.resolvedOptics.refractionDetailIntensity &&
+    chromaticAberrationStrength == other.chromaticAberrationStrength &&
+    edgeSoftnessPx == other.edgeSoftnessPx &&
+    drawOutsetPx == other.drawOutsetPx &&
+    hasGlassRim(specularIntensity, edgeShadow, rimHighlight, edgeOutline) ==
+    hasGlassRim(other.specularIntensity, other.edgeShadow, other.rimHighlight, other.edgeOutline)
+
+private val IdleInteractionState = GlassInteractionRenderState(Offset.Zero)
+private val IdleInteractionSignals = GlassInteractionSignals()
+
+/**
+ * Node-owned runtime for rendering a translucent refractive glass material.
+ *
+ * Style evaluation, attachment state, delegates, caches, controllers, and platform resources all
+ * belong to this instance.
+ */
+@Stable
+@OptIn(InternalHazeApi::class)
+internal class GlassRuntimeEffect() :
+  GlassRuntimeState(),
+  HazeEffectRenderer<GlassNodeConfiguration>,
+  HazeEffectRendererBackdrop<GlassNodeConfiguration>,
+  HazeEffectRendererLifecycle<GlassNodeConfiguration>,
+  HazeEffectRendererDrawHooks<GlassNodeConfiguration>,
+  HazeEffectRendererRetainedOutput,
+  HazeEffectRendererInteraction {
+
+  constructor(configuration: GlassNodeConfiguration) : this() {
+    applyConfiguration(configuration)
+  }
+
+  init {
+    onConfigurationChanged = ::onRuntimeConfigurationChanged
+  }
+
+  private fun applyConfiguration(
+    configuration: GlassNodeConfiguration,
+    performanceMode: HazePerformanceMode = configuration.performanceMode ?: HazePerformanceMode.Default,
+  ) {
+    style = configuration.style
+    this.performanceMode = performanceMode
+    interactionSource = configuration.interactionSource
+    interactionTransformTarget = configuration.interactionTransformTarget
+    interactionTransformPivot = configuration.interactionTransformPivot
+    interactionReducedMotionPolicy = configuration.interactionReducedMotionPolicy
+  }
+
+  private var isAttached: Boolean = false
+
+  internal var appearanceReader: (HazeEffectLifecycleScope) -> GlassSystemAppearance =
+    ::readPlatformGlassSystemAppearance
+
+  private var attachedContext: HazeEffectLifecycleScope? = null
+  private var memberBinding: GlassMemberBinding? = null
+  private var surfaceSnapshot: GlassSurfaceSnapshot? = null
+  override val alpha: Float get() = surfaceSnapshot?.material?.alpha ?: super.alpha
+  internal val memberBindingForTest: GlassMemberBinding? get() = memberBinding
+  internal var updateCallsForTest = 0
+
+  /** The container whose surface this cluster runtime draws in, and the cluster's origin there. */
+  internal var surfaceOwner: GlassContainerNode? = null
+  internal var surfaceOrigin: Offset = Offset.Zero
+
+  /**
+   * The window (root) bounds in the space this effect draws in, or null when unresolved. A cluster
+   * draws in its container's surface translated by [surfaceOrigin]; a member draws in its own
+   * layout space, scaled by its interaction transform.
+   */
+  // ponytail: window bounds only, not ancestor clips such as a scrolling viewport, because only
+  // the window cannot cut on-screen output. Tighten if window-sized layers prove costly. The root
+  // is the ComposeView, so glass drawn past it through a parent's clipChildren=false is cut.
+  internal fun windowBoundsInEffect(): Rect? {
+    val owner = surfaceOwner
+    val bounds = if (owner != null) {
+      owner.surfaceCoordinates?.windowBounds()?.translate(-surfaceOrigin)
+    } else {
+      val node = memberBinding?.node?.takeIf { it.isAttached } ?: return null
+      val size = attachedContext?.modifierSize ?: return null
+      val window = node.requireLayoutCoordinates().windowBounds() ?: return null
+      currentInteractionTransform(size).unmap(window)
+    }
+    return bounds?.takeIf { it.left.isFinite() && it.top.isFinite() && it.right.isFinite() && it.bottom.isFinite() }
+  }
+
+  /** Re-publishes the member material at a new container optical size before reclustering. */
+  internal fun refreshMemberMaterial() {
+    val context = attachedContext ?: return
+    if (surfaceSnapshot != null) return
+    publishMemberMaterial(resolveGlassStyle(this, context.modifierSize, context.requireDensity(), context.currentValueOf(LocalLayoutDirection)))
+  }
+
+  private fun publishMemberMaterial(material: ResolvedGlassStyle) {
+    val binding = memberBinding ?: return
+    val context = attachedContext ?: return
+
+    @Suppress("DEPRECATION")
+    val quality = when (val mode = performanceMode) {
+      is HazePerformanceMode.Fixed -> mode.qualityFraction
+      HazePerformanceMode.Adaptive -> (HazePerformanceMode.Default as HazePerformanceMode.Fixed).qualityFraction
+    }
+    binding.publish(
+      this,
+      context.surface,
+      material,
+      glassMergeKey(binding.input, binding.expandLayerBounds, quality, this, material, context.currentValueOf(LocalLayoutDirection)),
+      resolvedInteractionTopology.maxRefractionMultiplier,
+    )
+  }
+
+  private fun onRuntimeConfigurationChanged(fields: Int) {
+    markDirty(fields)
+    // update() syncs and invalidates once from dirtyTracker after resolving every slot.
+    if (isUpdating) return
+    val context = attachedContext ?: return
+    if ((fields and GlassDirtyFields.Interaction) != 0) {
+      syncInteractionController(context)
+    }
+    if ((fields and GlassDirtyFields.LayerBoundsFlags) != 0) {
+      context.invalidateLayerBounds()
+    }
+    if ((fields and GlassDirtyFields.InvalidateFlags) != 0) {
+      context.invalidateDraw()
+    }
+  }
+
+  private var interactionController: GlassInteractionController? = null
+  private var reconciledInteractionTopology: GlassInteractionTopology? = null
+
+  internal val interactionControllerForTest: GlassInteractionController?
+    get() = interactionController
+
+  internal val attachedContextForTest: HazeEffectLifecycleScope?
+    get() = attachedContext
+
+  internal val currentInteractionState: GlassInteractionRenderState
+    get() = interactionController?.renderState ?: IdleInteractionState
+
+  internal val currentInteractionSignals: GlassInteractionSignals
+    get() = interactionController?.currentSignals ?: IdleInteractionSignals
+
+  private var needsDelegateSelection: Boolean = true
+  private var runtimeShaderSupportedForDraw: Boolean? = null
+
+  internal var runtimeShaderIncompatible: Boolean = false
+    private set
+
+  internal var preparedRenderBudget: GlassRenderBudgetDecision =
+    GlassRenderBudgetDecision.Fallback(GlassRenderBudgetFallbackReason.InvalidGeometry)
+    private set
+
+  internal var preparedRender: GlassPreparedRender? = null
+    private set
+
+  private var preparedRenderCacheKey: GlassPreparedRenderCacheKey? = null
+  private var preparedRenderCache: GlassPreparedRender? = null
+
+  private var budgetCacheKey: GlassRenderBudgetCacheKey? = null
+  private var budgetCacheDecision: GlassRenderBudgetDecision? = null
+  private var resolvedInputScale: Float = GLASS_FULL_RESOLUTION_SCALE
+
+  private var performanceMode: HazePerformanceMode = HazePerformanceMode.Default
+    set(value) {
+      if (field != value) {
+        HazeLogger.d(TAG) { "performanceMode changed. Current: $field. New: $value" }
+        field = value
+        markDirty(GlassDirtyFields.PerformanceMode)
+      }
+    }
+
+  internal val performanceModeForTest: HazePerformanceMode
+    get() = performanceMode
+
+  private var preparedDrawCacheKey: GlassPreparedDrawCacheKey? = null
+
+  private var dirtyTrackerVersion: Int = 0
+
+  // Read by update() so changes from outside it re-run the node's update. Changes made during
+  // update() don't bump it, as that update already handles them (#1408).
+  private var dirtyTrackerSignal: Int by mutableIntStateOf(0)
+  private var isUpdating: Boolean = false
+  private var updateDirtyFields: Bitmask = Bitmask()
+  internal var dirtyTracker: Bitmask = Bitmask()
+    private set
+
+  private var resolvedStyleCache: ResolvedGlassStyle? = null
+  private var resolvedStyleCacheSize: Size = Size.Unspecified
+  private var resolvedStyleCacheDensity: Density? = null
+
+  private var resolvedStyleCacheLayoutDirection: LayoutDirection? = null
+
+  // Sample padding for calculateLayerBounds. Invalidated by LayerBoundsFlags in markDirty rather
+  // than keyed on dirtyTrackerVersion, which does not bump on repeat changes before a draw.
+  // The explicit flag avoids a Size sentinel: NaN sizes are bit-equal to Size.Unspecified. Density
+  // is keyed by value: layout passes a fresh Density delegate on every call, so == never matches.
+  private var layerPaddingCacheValid: Boolean = false
+  private var layerPaddingCacheSize: Size = Size.Unspecified
+  private var layerPaddingCacheDensity: Float = 0f
+  private var layerPaddingCacheFontScale: Float = 0f
+  private var layerPaddingCacheRefractionMultiplier: Float = 0f
+  private var layerPaddingCache: Float = 0f
+
+  internal var layerPaddingResolveCountForTest: Int = 0
+    private set
+
+  private var geometrySnapshotObserver: SnapshotStateObserver? = null
+  private var geometryObserverGeneration: Int = 0
+  private var geometryInvalidationJob: Job? = null
+  private val styleObservationScope = Any()
+  private val clipObservationScope = Any()
+  private val onObservedStyleChanged: (Any) -> Unit = {
+    scheduleObservedStyleInvalidation()
+  }
+
+  private var coordinatesCache: GlassCoordinates? = null
+  private var coordinatesCacheLayerSize: Size = Size.Unspecified
+  private var coordinatesCacheLayerOffset: Offset = Offset.Unspecified
+  private var coordinatesCacheMaterialSize: Size = Size.Unspecified
+  private var coordinatesCacheScaleFactor: Float = Float.NaN
+  private var coordinatesCacheAlignToPixels: Boolean = false
+
+  private var interactionRenderStateCache: GlassInteractionRenderState? = null
+  private var interactionRadiusFractionCache: Float = Float.NaN
+  private var resolvedInteractionCache: ResolvedGlassInteraction? = null
+  private var idleInteractionRenderStateSize: Size = Size.Unspecified
+  private var idleInteractionRenderState: GlassInteractionRenderState = IdleInteractionState
+
+  private var shouldClipToNodeBoundsCacheValid: Boolean = false
+  private var shouldClipToNodeBoundsCache: Boolean = false
+  private var clipCacheSize: Size = Size.Unspecified
+  private var clipCacheDensity: Float = 0f
+  private var clipCacheFontScale: Float = 0f
+  private var clipCacheLayoutDirection: LayoutDirection? = null
+
+  private val renderPreparation = GlassRenderPreparation(
+    decision = GlassRenderBudgetDecision.Fallback(
+      GlassRenderBudgetFallbackReason.InvalidGeometry,
+    ),
+    prepared = null,
+  )
+
+  internal val interactionSlots: GlassInteractionSlots
+    get() = resolvedInteractionSlots
+
+  private val interactionTopologySnapshot: GlassInteractionTopology
+    get() = interactionController?.renderTopology ?: resolvedInteractionTopology
+
+  /** The largest interaction scale this surface can draw at, latched while a scale animates. */
+  internal val maxInteractionScale: Float
+    get() = interactionTopologySnapshot.maxScale
+
+  override val observesPointerEvents: Boolean
+    get() = super.observesPointerEvents
+
+  // A software canvas cannot draw the runtime delegate. This draws instead, and the runtime delegate is kept.
+  private var softwareDrawDelegate: FallbackGlassDelegate? = null
+  private var drawsSoftwareFallback = false
+  private val drawDelegate: Delegate
+    get() = softwareDrawDelegate?.takeIf { drawsSoftwareFallback } ?: delegate
+  internal var lastDrawDelegateForTest: Delegate? = null
+
+  internal var delegate: Delegate = FallbackGlassDelegate(this)
+    set(value) {
+      if (value != field) {
+        HazeLogger.d(TAG) { "delegate changed. Current $field. New: $value" }
+        val old = field
+        field = value
+        if (isAttached) {
+          old.release()
+          value.attach()
+        }
+      }
+    }
+
+  override fun attach(scope: HazeEffectLifecycleScope) {
+    val context = scope
+    if (!isAttached) {
+      isAttached = true
+      attachedContext = context
+      val observerGeneration = ++geometryObserverGeneration
+      geometrySnapshotObserver = SnapshotStateObserver { command ->
+        context.coroutineScope.launch {
+          if (
+            isAttached &&
+            attachedContext === context &&
+            geometryObserverGeneration == observerGeneration
+          ) {
+            command()
+          }
+        }
+      }.also { it.start() }
+      resolvedStyleCache = null
+      layerPaddingCacheValid = false
+      shouldClipToNodeBoundsCacheValid = false
+      syncInteractionController(context)
+      delegate.attach()
+    }
+  }
+
+  override fun detach() {
+    memberBinding?.release(this)
+    memberBinding = null
+    if (isAttached) {
+      interactionController?.dispose()
+      interactionController = null
+      geometryObserverGeneration++
+      geometryInvalidationJob?.cancel()
+      geometryInvalidationJob = null
+      geometrySnapshotObserver?.stop()
+      geometrySnapshotObserver = null
+      attachedContext = null
+      isAttached = false
+      delegate.release()
+      softwareDrawDelegate?.release()
+    }
+    softwareDrawDelegate = null
+    drawsSoftwareFallback = false
+    runtimeShaderIncompatible = false
+    needsDelegateSelection = true
+    resolvedInputScale = GLASS_FULL_RESOLUTION_SCALE
+    preparedRender = null
+    clearPreparedRenderCache()
+  }
+
+  private fun scheduleObservedStyleInvalidation() {
+    if (geometryInvalidationJob?.isActive == true) return
+    val context = attachedContext ?: return
+    val observerGeneration = geometryObserverGeneration
+    geometryInvalidationJob = context.coroutineScope.launch {
+      yield()
+      if (
+        isAttached &&
+        attachedContext === context &&
+        geometryObserverGeneration == observerGeneration
+      ) {
+        resolvedStyleCache = null
+        shouldClipToNodeBoundsCacheValid = false
+        context.invalidateLayerBounds()
+        context.invalidateDraw()
+      }
+    }
+  }
+
+  override fun update(
+    scope: HazeEffectLifecycleScope,
+    style: GlassNodeConfiguration,
+    sampling: HazeSampling,
+  ) {
+    updateCallsForTest++
+    val context = scope
+    // An equal binding is the same membership, already handed over by GlassMemberNode.
+    if (memberBinding != style.member) memberBinding?.release(this)
+    memberBinding = style.member
+    updateDirtyFields = Bitmask()
+    isUpdating = true
+    try {
+      val snapshot = style.surfaceSnapshot
+      if (surfaceSnapshot != snapshot) {
+        surfaceSnapshot = snapshot
+        // The container sets the factory once, when it creates the slot. Only its setter may replace the delegate.
+        markDirty(GlassDirtyFields.All and GlassDirtyFields.RuntimeEffectFactory.inv())
+      }
+      // The Style, appearance and composition-local Style all feed one resolution, which runs once.
+      batchStyleResolution {
+        applyConfiguration(style, style.performanceMode ?: scope.currentValueOf(LocalHazePerformanceMode))
+        if (snapshot == null) {
+          dirtyTrackerSignal
+          systemAppearance = appearanceReader(context)
+          compositionLocalStyle = context.currentValueOf(LocalGlassStyle)
+        }
+      }
+      if (snapshot != null) {
+        // These values were evaluated in each member's observed context. Never replay a Style or
+        // composition-local appearance at the container-owned surface.
+        mergedField = snapshot.field
+        opticalSizeOverride = snapshot.opticalSize
+      } else {
+        accessibilitySettings = context.currentValueOf(LocalGlassAccessibilitySettings)
+        updateStyleInteractionSlots()
+        syncInteractionController(context)
+        publishMemberMaterial(resolveGlassStyle(this, scope.modifierSize, scope.requireDensity(), scope.currentValueOf(LocalLayoutDirection)))
+      }
+    } finally {
+      isUpdating = false
+    }
+
+    // Pending renderer work survives until prepare/draw, but an unchanged update must not
+    // invalidate the owner again (merged members may not draw their original renderer).
+    if (updateDirtyFields.any(GlassDirtyFields.LayerBoundsFlags)) {
+      context.invalidateLayerBounds()
+    }
+    if (dirtyTracker.any(GlassDirtyFields.InvalidateFlags)) needsDelegateSelection = true
+    if (updateDirtyFields.any(GlassDirtyFields.InvalidateFlags)) context.invalidateDraw()
+  }
+
+  override fun onPointerEvent(event: PointerEvent, scope: HazeEffectLifecycleScope) {
+    interactionController?.onPointerEvent(
+      event,
+      scope.modifierSize,
+      scope.currentValueOf(LocalViewConfiguration).touchSlop,
+    )
+  }
+
+  override fun onCancelPointerInput(scope: HazeEffectLifecycleScope) {
+    interactionController?.cancelPointerInput(scope.modifierSize)
+  }
+
+  internal fun setPressedForTest(position: Offset, pressed: Boolean = true) {
+    val context = attachedContext ?: return
+    interactionController?.setRawPressedForTest(pressed, position, context.modifierSize)
+  }
+
+  override fun HazeEffectRuntimeDrawScope.prepareDraw(style: GlassNodeConfiguration) {
+    val context = this
+    trace(GlassTraceSection.Prepare) {
+      attachedContext?.let(::reconcileInteractionCompletion)
+      val runtimeShaderSupported = resolveRuntimeShaderSupport(context)
+      drawsSoftwareFallback = !runtimeShaderSupported && delegate.usesRuntimeShader
+      if (drawsSoftwareFallback) {
+        val fallback = softwareDrawDelegate ?: FallbackGlassDelegate(this@GlassRuntimeEffect).also {
+          softwareDrawDelegate = it
+          if (isAttached) it.attach()
+        }
+        with(fallback) { prepareDraw(context) }
+        return@trace
+      }
+      if (canReusePreparedDraw(context)) return@trace
+      trace(GlassTraceSection.PrepareBudget) {
+        prepareRenderBudget(context, runtimeShaderSupported = runtimeShaderSupported)
+      }
+      trace(GlassTraceSection.SelectDelegate) {
+        selectDelegateForDraw()
+      }
+      trace(GlassTraceSection.DelegatePrepare) {
+        val selectedDelegate = delegate
+        try {
+          with(selectedDelegate) { prepareDraw(context) }
+        } catch (failure: RuntimeShaderRenderEffectException) {
+          if (!selectedDelegate.usesRuntimeShader) throw failure
+          downgradeRuntimeDelegate(context, failure)
+        }
+      }
+      cachePreparedDrawInputs(context)
+    }
+  }
+
+  override fun HazeEffectRuntimeDrawScope.backdropEffect(
+    style: GlassNodeConfiguration,
+  ): HazeEffectBackdrop? {
+    val context = this
+    // The native backdrop path never runs prepareDraw, so drop a flag left by a software draw.
+    drawsSoftwareFallback = false
+    return try {
+      attachedContext?.let(::reconcileInteractionCompletion)
+      prepareRenderBudget(
+        context = context,
+        runtimeShaderSupported = resolveRuntimeShaderSupport(context),
+        requestedScaleOverride = GLASS_FULL_RESOLUTION_SCALE,
+        backdrop = true,
+      )
+      selectDelegateForDraw()
+      val platformEffect = with(context as DrawScope) {
+        with(delegate) { prepareBackdrop(context) }
+      } ?: return null
+      HazeEffectBackdrop(
+        platformEffect = platformEffect,
+        alpha = checkNotNull(preparedRender).alpha,
+        materialTransform = currentMaterialTransform(context.modifierSize),
+      )
+    } catch (failure: RuntimeShaderRenderEffectException) {
+      if (!delegate.usesRuntimeShader) throw failure
+      recordRuntimeShaderFailure(failure, "Runtime shader backdrop rendering failed; using source fallback")
+      context.invalidateDraw()
+      null
+    } finally {
+      resetDirtyTracker()
+    }
+  }
+
+  override fun shouldPrepareDraw(style: GlassNodeConfiguration): Boolean {
+    if (alpha != 0f) return true
+    delegate.onDrawSkipped()
+    softwareDrawDelegate?.onDrawSkipped()
+    // No prepareDraw follows, so a previous software draw must not keep routing to the fallback.
+    drawsSoftwareFallback = false
+    resetDirtyTracker()
+    return false
+  }
+
+  private fun canReusePreparedDraw(context: HazeEffectRuntimeDrawScope): Boolean {
+    val key = preparedDrawCacheKey ?: return false
+    val style = resolvedStyleCache ?: return false
+    val interactionState = interactionRenderState(context.modifierSize)
+    return preparedRender != null &&
+      delegate.canDrawRetainedOutput() &&
+      key.dirtyTrackerVersion == dirtyTrackerVersion &&
+      key.size == context.modifierSize &&
+      key.layerSize == context.layerSize &&
+      key.layerOffset == context.layerOffset &&
+      key.inputScale == resolvedInputScale &&
+      key.density == context.requireDensity() &&
+      key.layoutDirection == context.currentValueOf(LocalLayoutDirection) &&
+      key.style === style &&
+      key.interactionState === interactionState &&
+      key.interactionTopology === interactionTopologySnapshot
+  }
+
+  private fun cachePreparedDrawInputs(context: HazeEffectRuntimeDrawScope) {
+    preparedDrawCacheKey = GlassPreparedDrawCacheKey(
+      dirtyTrackerVersion = dirtyTrackerVersion,
+      size = context.modifierSize,
+      layerSize = context.layerSize,
+      layerOffset = context.layerOffset,
+      inputScale = resolvedInputScale,
+      density = context.requireDensity(),
+      layoutDirection = context.currentValueOf(LocalLayoutDirection),
+      style = resolvedStyleCache,
+      interactionState = interactionRenderState(context.modifierSize),
+      interactionTopology = interactionTopologySnapshot,
+    )
+  }
+
+  override fun HazeEffectDrawScope.draw(style: GlassNodeConfiguration) {
+    val context = this as HazeEffectRuntimeDrawScope
+    try {
+      selectDelegateForDraw()
+      val selectedDelegate = drawDelegate
+      lastDrawDelegateForTest = selectedDelegate
+      try {
+        withMaterialTransform(context) {
+          with(selectedDelegate) { draw(context) }
+        }
+      } catch (failure: RuntimeShaderRenderEffectException) {
+        if (!selectedDelegate.usesRuntimeShader) throw failure
+        val fallback = downgradeRuntimeDelegate(context, failure)
+        withMaterialTransform(context) {
+          with(fallback) { draw(context, forceInput = true) }
+        }
+      }
+    } finally {
+      resetDirtyTracker()
+    }
+  }
+
+  private fun recordRuntimeShaderFailure(failure: RuntimeShaderRenderEffectException, what: String) {
+    runtimeShaderIncompatible = true
+    needsDelegateSelection = true
+    HazeLogger.d(TAG) { "$what: $failure" }
+  }
+
+  private fun DrawScope.downgradeRuntimeDelegate(
+    context: HazeEffectRuntimeDrawScope,
+    failure: RuntimeShaderRenderEffectException,
+  ): FallbackGlassDelegate {
+    recordRuntimeShaderFailure(failure, "Runtime shader rendering failed; using fallback until reattachment")
+    val fallback = FallbackGlassDelegate(this@GlassRuntimeEffect)
+    delegate = fallback
+    with(fallback) { prepareDraw(context) }
+    context.invalidateDraw()
+    return fallback
+  }
+
+  override fun HazeEffectRuntimeDrawScope.drawForeground(style: GlassNodeConfiguration) {
+    val context = this
+    withMaterialTransform(context) {
+      with(drawDelegate) { drawForeground(context) }
+    }
+  }
+
+  override fun currentContentTransform(): HazeEffectContentTransform {
+    val size = attachedContext?.modifierSize ?: return HazeEffectContentTransform.Identity
+    return resolveTransform(size, GlassTransformTarget.MaterialAndContent)
+  }
+
+  internal fun currentMaterialTransform(size: Size): HazeEffectContentTransform {
+    return resolveTransform(size, GlassTransformTarget.MaterialOnly)
+  }
+
+  /** The active interaction transform of either target, which scales this member's material. */
+  internal fun currentInteractionTransform(size: Size): HazeEffectContentTransform =
+    resolveTransform(size, interactionTransformTarget)
+
+  override fun shouldDrawContentBehind(): Boolean {
+    return drawDelegate.drawsContentBehind
+  }
+
+  internal fun controllerConfiguration(
+    systemMotionScale: Float,
+  ): GlassInteractionControllerConfiguration {
+    val (reduced, forceFull) = reducedMotion(
+      policy = interactionReducedMotionPolicy,
+      systemScale = systemMotionScale,
+    )
+    return GlassInteractionControllerConfiguration(
+      slots = interactionSlots,
+      positionAnimationSpec = interactionPositionAnimationSpec,
+      reducedMotion = reduced,
+      forceFullMotion = forceFull,
+    )
+  }
+
+  internal fun interactionRenderState(size: Size): GlassInteractionRenderState {
+    interactionController?.let { return it.renderState }
+    if (idleInteractionRenderStateSize != size) {
+      idleInteractionRenderStateSize = size
+      idleInteractionRenderState = GlassInteractionRenderState(position = size.center)
+    }
+    return idleInteractionRenderState
+  }
+
+  private fun resolveTransform(
+    size: Size,
+    target: GlassTransformTarget,
+  ): HazeEffectContentTransform {
+    if (interactionTransformTarget != target) return HazeEffectContentTransform.Identity
+    // A member without a scale transform skips reading its position and lighting channels.
+    if (interactionController?.hasTransform == false) return HazeEffectContentTransform.Identity
+    val state = currentInteractionState
+    if (!state.hasTransform || !size.isDrawable()) return HazeEffectContentTransform.Identity
+    val pivot = when (interactionTransformPivot) {
+      GlassTransformPivot.Pointer -> state.position.clampTo(size)
+      GlassTransformPivot.Center -> size.center
+    }
+    return HazeEffectContentTransform(state.scaleX, state.scaleY, pivot)
+  }
+
+  private inline fun DrawScope.withMaterialTransform(
+    context: HazeEffectRuntimeDrawScope,
+    block: DrawScope.() -> Unit,
+  ) {
+    val transform = currentMaterialTransform(context.modifierSize)
+    if (transform == HazeEffectContentTransform.Identity) {
+      block()
+    } else {
+      scale(
+        scaleX = transform.scaleX,
+        scaleY = transform.scaleY,
+        pivot = transform.pivot,
+        block = block,
+      )
+    }
+  }
+
+  private val hasDeclaredInteractions: Boolean
+    get() = interactionSlots.hovered != null || interactionSlots.focused != null ||
+      interactionSlots.pressed != null
+
+  private fun syncInteractionController(context: HazeEffectLifecycleScope) {
+    if (!hasDeclaredInteractions && interactionController == null) return
+    val controller = interactionController ?: GlassInteractionController(
+      context,
+      onResponseCompleted = ::onInteractionResponseCompleted,
+    ).also { interactionController = it }
+    controller.updateConfiguration(controllerConfiguration(systemMotionScale(context)))
+    // update() observes reads; animated channel and pointer position state must not re-run it
+    // every frame.
+    Snapshot.withoutReadObservation {
+      controller.updateInteractionSource(interactionSource, context.modifierSize)
+      reconcileInteractionCompletion(context)
+    }
+  }
+
+  private fun onInteractionResponseCompleted(controller: GlassInteractionController) {
+    val context = attachedContext ?: return
+    if (!isAttached || controller !== interactionController) return
+    // A settle redraws only when the topology changed (stages to release, bounds), the controller
+    // was disposed (invalidated in reconcile), or hidden output was released.
+    var redraw = reconcileInteractionCompletion(context)
+    if (alpha == 0f && !controller.hasRunningResponseAnimations) {
+      delegate.releaseObsoleteInteractionOutput(interactionTopologySnapshot)
+      clearPreparedRenderCache()
+      redraw = true
+    }
+    if (redraw) context.invalidateDraw()
+  }
+
+  /** Returns whether the interaction topology changed since the last reconcile. */
+  private fun reconcileInteractionCompletion(context: HazeEffectLifecycleScope): Boolean {
+    val topology = interactionTopologySnapshot
+    val previous = reconciledInteractionTopology
+    val topologyChanged = topology !== previous
+    reconciledInteractionTopology = topology
+    if (
+      topology.maxRefractionMultiplier != (previous?.maxRefractionMultiplier ?: 1f) ||
+      topology.maxScale != (previous?.maxScale ?: 1f)
+    ) {
+      context.invalidateLayerBounds()
+      memberBinding?.node?.changed()
+    }
+    val controller = interactionController ?: return topologyChanged
+    if (!hasDeclaredInteractions && !controller.hasPendingResponseWork) {
+      controller.dispose()
+      interactionController = null
+      context.invalidateDraw()
+    }
+    return topologyChanged
+  }
+
+  private fun systemMotionScale(context: HazeEffectLifecycleScope): Float {
+    return context.coroutineScope.coroutineContext[MotionDurationScale]?.scaleFactor ?: 1f
+  }
+
+  override fun onTrimMemory(level: TrimMemoryLevel) {
+    attachedContext?.let {
+      delegate.onTrimMemory(it, level)
+      softwareDrawDelegate?.onTrimMemory(it, level)
+    }
+  }
+
+  override fun canDrawRetainedOutput(): Boolean {
+    return delegate.canDrawRetainedOutput()
+  }
+
+  override fun shouldDrawRetainedOutput(): Boolean {
+    return delegate.shouldDrawRetainedOutput()
+  }
+
+  override fun invalidateRetainedOutput() {
+    delegate.invalidateRetainedOutput()
+  }
+
+  override fun clearRetainedOutput() {
+    delegate.clearRetainedOutput()
+  }
+
+  // Keyed by geometry and re-checked per query. A density or direction change re-places the node,
+  // which recomputes its layer bounds with this answer, so no separate invalidation is needed.
+  override fun shouldClipToNodeBounds(): Boolean {
+    // Without drawable geometry, keep the node clip rather than risk cropping to the input.
+    val context = attachedContext ?: return true
+    val size = context.modifierSize
+    if (!size.isSpecified || size.isEmpty()) return true
+    val density = context.requireDensity()
+    val layoutDirection = context.currentValueOf(LocalLayoutDirection)
+    if (
+      !shouldClipToNodeBoundsCacheValid ||
+      clipCacheSize != size ||
+      clipCacheDensity != density.density ||
+      clipCacheFontScale != density.fontScale ||
+      clipCacheLayoutDirection != layoutDirection
+    ) {
+      val observer = geometrySnapshotObserver
+      if (observer != null) {
+        observer.observeReads(clipObservationScope, onObservedStyleChanged) {
+          updateClipCache(size, density, layoutDirection)
+        }
+      } else {
+        updateClipCache(size, density, layoutDirection)
+      }
+      clipCacheSize = size
+      clipCacheDensity = density.density
+      clipCacheFontScale = density.fontScale
+      clipCacheLayoutDirection = layoutDirection
+      shouldClipToNodeBoundsCacheValid = true
+    }
+    return shouldClipToNodeBoundsCache
+  }
+
+  // Resolved as the renderer resolves them, so square clipping matches the drawn corners (#1808).
+  private fun updateClipCache(size: Size, density: Density, layoutDirection: LayoutDirection) {
+    shouldClipToNodeBoundsCache = edgeSoftness > 0.dp ||
+      !shape.resolveCornerRadiiPx(size, density, layoutDirection).isZero()
+  }
+
+  /** Renders this surface as one that does not cover its node-bound edges, for comparison in tests. */
+  internal var nodeBoundEdgeCoverageDisabledForTest: Boolean = false
+
+  /**
+   * Whether this surface fully covers its node-bound edges, the straight parts of its silhouette
+   * that lie on its node bounds (#1775, #1785). Their outermost pixels would otherwise be only
+   * partly covered, by the shape's anti-aliasing, a fractional sample origin or an upscaled
+   * reduced-scale layer, showing whatever lies beneath. It places its material on whole pixels and
+   * extends coverage past those edges, clipped to the node. Containers draw merged shapes, so
+   * their surfaces do not.
+   */
+  internal fun coversNodeBoundEdges(): Boolean =
+    !nodeBoundEdgeCoverageDisabledForTest && surfaceSnapshot == null &&
+      // The platform captures a backdrop itself, so its placement and presentation stay as they are.
+      memberBinding?.input !is HazeInput.Backdrop
+
+  internal fun resolvePreparedStyle(context: HazeEffectRuntimeDrawScope): ResolvedGlassStyle {
+    val density = context.requireDensity()
+    val layoutDirection = context.currentValueOf(LocalLayoutDirection)
+    resolvedStyleCache?.takeIf {
+      resolvedStyleCacheSize == context.modifierSize &&
+        resolvedStyleCacheDensity == density &&
+        resolvedStyleCacheLayoutDirection == layoutDirection
+    }?.let { return it }
+
+    val resolvedStyle = surfaceSnapshot?.let { snapshot ->
+      snapshot.material.copy(
+        mergedField = snapshot.field,
+        lightPosition = snapshot.key.lightAlignment.resolveLightPosition(context.modifierSize, layoutDirection),
+      )
+    } ?: geometrySnapshotObserver?.let { observer ->
+      lateinit var observedStyle: ResolvedGlassStyle
+      observer.observeReads(styleObservationScope, onObservedStyleChanged) {
+        observedStyle = resolveGlassStyle(this, context.modifierSize, density, layoutDirection)
+      }
+      observedStyle
+    } ?: resolveGlassStyle(this, context.modifierSize, density, layoutDirection)
+
+    return resolvedStyle.also {
+      publishMemberMaterial(it)
+      resolvedStyleCache = it
+      resolvedStyleCacheSize = context.modifierSize
+      resolvedStyleCacheDensity = density
+      resolvedStyleCacheLayoutDirection = layoutDirection
+    }
+  }
+
+  private fun resolvePreparedInteraction(
+    context: HazeEffectRuntimeDrawScope,
+  ): ResolvedGlassInteraction {
+    val state = interactionRenderState(context.modifierSize)
+    resolvedInteractionCache?.takeIf {
+      interactionRenderStateCache === state &&
+        interactionRadiusFractionCache == interactionLightRadiusFraction
+    }?.let { return it }
+
+    return resolveGlassInteraction(
+      state = state,
+      radiusFraction = interactionLightRadiusFraction,
+    ).also {
+      interactionRenderStateCache = state
+      interactionRadiusFractionCache = interactionLightRadiusFraction
+      resolvedInteractionCache = it
+    }
+  }
+
+  private fun resolvePreparedCoordinates(
+    layerSize: Size,
+    layerOffset: Offset,
+    materialSize: Size,
+    scaleFactor: Float,
+    alignToPixels: Boolean,
+  ): GlassCoordinates {
+    coordinatesCache?.takeIf {
+      coordinatesCacheLayerSize == layerSize &&
+        coordinatesCacheLayerOffset == layerOffset &&
+        coordinatesCacheMaterialSize == materialSize &&
+        coordinatesCacheScaleFactor == scaleFactor &&
+        coordinatesCacheAlignToPixels == alignToPixels
+    }?.let { return it }
+
+    return resolveGlassCoordinates(
+      layerSize = layerSize,
+      layerOffset = layerOffset,
+      materialSize = materialSize,
+      scaleFactor = scaleFactor,
+      alignToPixels = alignToPixels,
+    ).withRoundedSampleSize().also {
+      coordinatesCache = it
+      coordinatesCacheLayerSize = layerSize
+      coordinatesCacheLayerOffset = layerOffset
+      coordinatesCacheMaterialSize = materialSize
+      coordinatesCacheScaleFactor = scaleFactor
+      coordinatesCacheAlignToPixels = alignToPixels
+    }
+  }
+
+  private fun resolveGlassRenderPreparation(
+    context: HazeEffectRuntimeDrawScope,
+    runtimeShaderSupported: Boolean,
+    requestedScaleOverride: Float? = null,
+    backdrop: Boolean = false,
+  ): GlassRenderPreparation {
+    if (
+      !context.modifierSize.isDrawable() || !context.layerSize.isDrawable()
+    ) {
+      clearPreparedRenderCache()
+      return updateRenderPreparation(
+        GlassRenderBudgetDecision.Fallback(GlassRenderBudgetFallbackReason.InvalidGeometry),
+        null,
+      )
+    }
+    // Evaluated once, so the budget plan and the prepared coordinates agree on the placement.
+    val alignToPixels = coversNodeBoundEdges()
+    val style = resolvePreparedStyle(context)
+    val interaction = resolvePreparedInteraction(context)
+    // Budget for the layers buildGlassPreparedRender keeps, which merges only interaction lighting.
+    val interactionTopology = style.mergedField?.interactionTopology ?: interactionTopologySnapshot
+    val requestedScale = requestedScaleOverride ?: performanceMode.resolveGlassInputScale()
+    if (requestedScale != resolvedInputScale) {
+      HazeLogger.d(TAG) {
+        "Glass input scale changed from $resolvedInputScale to $requestedScale"
+      }
+    }
+    resolvedInputScale = requestedScale
+    if (!requestedScale.isFinite() || requestedScale <= 0f) {
+      clearPreparedRenderCache()
+      return updateRenderPreparation(
+        GlassRenderBudgetDecision.Fallback(GlassRenderBudgetFallbackReason.InvalidGeometry),
+        null,
+      )
+    }
+    val budgetKey = budgetCacheKey
+    val decision = if (
+      budgetKey != null &&
+      budgetKey.style.hasSameBudgetParams(style) &&
+      budgetKey.inputScale == requestedScale &&
+      budgetKey.layerSize == context.layerSize &&
+      budgetKey.materialSize == context.modifierSize &&
+      budgetKey.interactionTopology === interactionTopology &&
+      budgetKey.interactionRadiusFraction == interaction.radiusFraction &&
+      budgetKey.backdrop == backdrop &&
+      budgetKey.alignToPixels == alignToPixels &&
+      (!alignToPixels || budgetKey.layerOffset == context.layerOffset)
+    ) {
+      checkNotNull(budgetCacheDecision)
+    } else {
+      val buildPlan: (Float) -> GlassRetainedLayerPlan = buildPlan@{ scaleFactor ->
+        val rawCoordinates = resolveGlassCoordinates(
+          layerSize = context.layerSize,
+          layerOffset = context.layerOffset,
+          materialSize = context.modifierSize,
+          scaleFactor = scaleFactor,
+          alignToPixels = alignToPixels,
+        )
+        if (!rawCoordinates.materialSize.isDrawable() || !rawCoordinates.sampleSize.isDrawable()) {
+          return@buildPlan GlassRetainedLayerPlan(emptyList())
+        }
+        val coordinates = rawCoordinates.withRoundedSampleSize()
+        if (!coordinates.materialSize.isDrawable() || !coordinates.sampleSize.isDrawable()) {
+          return@buildPlan GlassRetainedLayerPlan(emptyList())
+        }
+        val outputSize = context.modifierSize.outsetToIntSize(nodeClipOutsetPx())
+        val params = buildGlassRenderParams(style, coordinates, performanceMode.usesCircularCornerOptics(), performanceMode.resolveGlassLayerBlurSigma())
+        val interactionPatchSize = resolveGlassInteractionPatchSize(
+          params,
+          radiusFraction = interaction.radiusFraction,
+          topology = interactionTopology,
+        )
+        val interactionLayersActive =
+          interactionPatchSize.width > 0 && interactionPatchSize.height > 0
+        if (backdrop) {
+          buildGlassBackdropLayerPlan(
+            sampleSize = coordinates.sampleSize.roundToIntSize(),
+            rimActive = hasGlassRim(params.specularIntensity, params.edgeShadow, params.rimHighlight, params.edgeOutline),
+            interactionPatchSize = interactionPatchSize,
+            interactionLightingActive = interactionTopology.hasLighting,
+          )
+        } else {
+          val refractionDetailActive =
+            params.activeRefractionDetailEffectKey(params.refractionDetailIntensity) != null
+          buildGlassLayerPlan(
+            sampleSize = coordinates.sampleSize.roundToIntSize(),
+            groupCompositeSize = resolveGlassGroupCompositeSize(
+              outputSize = outputSize,
+              alpha = style.alpha,
+              interactionLayersActive = interactionLayersActive,
+              interactionTopology = interactionTopology,
+            ),
+            blurRadiusPx = params.blurRadiusPx,
+            depth = params.depth,
+            allowNativeWideBlur = params.progressive == null,
+            refractionDetailActive = refractionDetailActive,
+            rimActive = hasGlassRim(params.specularIntensity, params.edgeShadow, params.rimHighlight, params.edgeOutline),
+            interactionPatchSize = interactionPatchSize,
+            interactionOpticsActive = interactionTopology.hasOptics,
+            interactionLightingActive = interactionTopology.hasLighting,
+            layerBlurSize = params.layerBlurSize(
+              blurPlan = if (params.depth > 0f && params.blurRadiusPx > 0f) params.blurEffectKey().plan else null,
+              refractionDetailActive = refractionDetailActive,
+            ),
+          )
+        }
+      }
+      val resolvedDecision = if (requestedScaleOverride != null) {
+        val forcedPlan = buildPlan(requestedScale)
+        when {
+          forcedPlan.fitsGlassRenderBudget() ->
+            GlassRenderBudgetDecision.Runtime(requestedScale, forcedPlan)
+          forcedPlan.layers.isEmpty() ->
+            GlassRenderBudgetDecision.Fallback(GlassRenderBudgetFallbackReason.InvalidGeometry)
+          else -> GlassRenderBudgetDecision.Fallback(GlassRenderBudgetFallbackReason.ExceedsLimits)
+        }
+      } else {
+        resolveGlassRenderBudget(
+          requestedScale = requestedScale,
+          buildPlan = buildPlan,
+        )
+      }
+      resolvedDecision.also {
+        budgetCacheKey = GlassRenderBudgetCacheKey(
+          style = style,
+          inputScale = requestedScale,
+          layerSize = context.layerSize,
+          materialSize = context.modifierSize,
+          interactionTopology = interactionTopology,
+          interactionRadiusFraction = interaction.radiusFraction,
+          backdrop = backdrop,
+          alignToPixels = alignToPixels,
+          layerOffset = context.layerOffset,
+        )
+        budgetCacheDecision = it
+      }
+    }
+    if (decision !is GlassRenderBudgetDecision.Runtime) {
+      clearPreparedRenderCache()
+      return updateRenderPreparation(decision, null)
+    }
+    if (!runtimeShaderSupported) {
+      return updateRenderPreparation(decision, null)
+    }
+    val coordinates = resolvePreparedCoordinates(
+      layerSize = context.layerSize,
+      layerOffset = context.layerOffset,
+      materialSize = context.size,
+      scaleFactor = decision.scaleFactor,
+      alignToPixels = alignToPixels,
+    )
+    val preparedCacheKey = preparedRenderCacheKey
+    if (
+      preparedCacheKey != null &&
+      style === preparedCacheKey.style &&
+      coordinates === preparedCacheKey.coordinates &&
+      interaction === preparedCacheKey.interaction &&
+      interactionTopology === preparedCacheKey.interactionTopology &&
+      preparedCacheKey.backdrop == backdrop
+    ) {
+      return updateRenderPreparation(decision, checkNotNull(preparedRenderCache))
+    }
+    val previousStyle = preparedCacheKey?.style
+    val previousCoordinates = preparedCacheKey?.coordinates
+    val previousInteraction = preparedCacheKey?.interaction
+    val previousPrepared = preparedRenderCache.takeIf { preparedCacheKey?.backdrop == backdrop }
+    val circularCornerOptics = performanceMode.usesCircularCornerOptics()
+    val layerBlurSigma = performanceMode.resolveGlassLayerBlurSigma()
+    val params = if (
+      previousStyle != null && previousCoordinates != null && previousPrepared != null &&
+      coordinates === previousCoordinates &&
+      style.hasSameRenderParams(previousStyle) &&
+      previousPrepared.params.circularCornerOptics == circularCornerOptics &&
+      previousPrepared.params.layerBlurSigmaPx == layerBlurSigma
+    ) {
+      previousPrepared.params
+    } else {
+      buildGlassRenderParams(style, coordinates, circularCornerOptics, layerBlurSigma)
+    }
+    val interactionUniforms = if (
+      previousCoordinates != null && previousInteraction != null && previousPrepared != null &&
+      coordinates === previousCoordinates &&
+      interaction === previousInteraction
+    ) {
+      previousPrepared.interactionUniforms
+    } else {
+      interaction.uniforms(coordinates)
+    }
+    val sourcePrepared = buildGlassPreparedRender(
+      params = params,
+      interactionUniforms = interactionUniforms,
+      interactionTopology = interactionTopology,
+      interactionRadiusFraction = interaction.radiusFraction,
+      alpha = style.alpha,
+      outputSize = context.modifierSize.outsetToIntSize(nodeClipOutsetPx()),
+      previous = previousPrepared,
+    )
+    val exactPrepared = if (backdrop) {
+      sourcePrepared.copy(
+        plan = buildGlassBackdropLayerPlan(
+          sampleSize = params.coordinates.sampleSize.roundToIntSize(),
+          rimActive = sourcePrepared.rimKey != null,
+          interactionPatchSize = sourcePrepared.interactionPatchSize,
+          interactionLightingActive = sourcePrepared.interactionTopology.hasLighting,
+        ),
+        groupCompositeSize = null,
+      )
+    } else {
+      sourcePrepared
+    }
+    if (!exactPrepared.plan.fitsGlassRenderBudget()) {
+      val fallback = GlassRenderBudgetDecision.Fallback(
+        GlassRenderBudgetFallbackReason.ExceedsLimits,
+      )
+      budgetCacheDecision = fallback
+      clearPreparedRenderCache()
+      return updateRenderPreparation(fallback, null)
+    }
+    val validatedDecision = if (decision.plan == exactPrepared.plan) {
+      decision
+    } else {
+      GlassRenderBudgetDecision.Runtime(decision.scaleFactor, exactPrepared.plan)
+        .also { budgetCacheDecision = it }
+    }
+    val prepared = if (exactPrepared.plan === validatedDecision.plan) {
+      exactPrepared
+    } else {
+      exactPrepared.copy(plan = validatedDecision.plan)
+    }
+    preparedRenderCacheKey = GlassPreparedRenderCacheKey(
+      style = style,
+      coordinates = coordinates,
+      interaction = interaction,
+      interactionTopology = interactionTopology,
+      backdrop = backdrop,
+    )
+    preparedRenderCache = prepared
+    return updateRenderPreparation(validatedDecision, prepared)
+  }
+
+  private fun updateRenderPreparation(
+    decision: GlassRenderBudgetDecision,
+    prepared: GlassPreparedRender?,
+  ): GlassRenderPreparation {
+    renderPreparation.decision = decision
+    renderPreparation.prepared = prepared
+    return renderPreparation
+  }
+
+  private fun clearPreparedRenderCache() {
+    preparedRenderCacheKey = null
+    preparedRenderCache = null
+  }
+
+  internal fun prepareRenderBudget(
+    context: HazeEffectRuntimeDrawScope,
+    runtimeShaderSupported: Boolean,
+    requestedScaleOverride: Float? = null,
+    backdrop: Boolean = false,
+  ): GlassRenderBudgetDecision {
+    val previousBudget = preparedRenderBudget
+    val preparation = resolveGlassRenderPreparation(
+      context = context,
+      runtimeShaderSupported = runtimeShaderSupported,
+      requestedScaleOverride = requestedScaleOverride,
+      backdrop = backdrop,
+    )
+    preparedRenderBudget = preparation.decision
+    preparedRender = preparation.prepared
+    // A change between runtime and fallback budgets means the delegate may need replacing.
+    if (previousBudget::class != preparation.decision::class) {
+      needsDelegateSelection = true
+    }
+    if (previousBudget != preparation.decision) {
+      when (val decision = preparation.decision) {
+        is GlassRenderBudgetDecision.Fallback -> HazeLogger.d(TAG) {
+          "Glass render budget selected fallback: ${decision.reason}"
+        }
+        is GlassRenderBudgetDecision.Runtime -> {
+          if (decision.scaleFactor < resolvedInputScale) {
+            HazeLogger.d(TAG) {
+              "Glass render budget reduced scale from $resolvedInputScale to ${decision.scaleFactor}"
+            }
+          }
+        }
+      }
+    }
+    return preparation.decision
+  }
+
+  override fun HazeEffectLayoutScope.calculateLayerBounds(style: GlassNodeConfiguration): Rect {
+    return calculateLayerBounds(modifierBounds, this)
+  }
+
+  internal fun calculateLayerBounds(rect: Rect, density: Density): Rect {
+    // Containers draw the snapshot material, so there is nothing of ours to cache.
+    // Cluster bounds already include every member's draw outset, so the surface pads none.
+    surfaceSnapshot?.let { return rect.inflate(samplePaddingPx(it.material, it.maxRefractionMultiplier, drawOutsetPx = 0f)) }
+    val multiplier = maximumInteractionRefractionMultiplier()
+    if (
+      !layerPaddingCacheValid ||
+      layerPaddingCacheSize != rect.size ||
+      layerPaddingCacheDensity != density.density ||
+      layerPaddingCacheFontScale != density.fontScale ||
+      layerPaddingCacheRefractionMultiplier != multiplier
+    ) {
+      layerPaddingResolveCountForTest++
+      layerPaddingCache = samplePaddingPx(
+        resolveGlassStyle(
+          effect = this@GlassRuntimeEffect,
+          materialSizePx = rect.size,
+          density = density,
+          layoutDirection = LayoutDirection.Ltr,
+        ),
+        multiplier,
+      )
+      layerPaddingCacheSize = rect.size
+      layerPaddingCacheDensity = density.density
+      layerPaddingCacheFontScale = density.fontScale
+      layerPaddingCacheRefractionMultiplier = multiplier
+      layerPaddingCacheValid = true
+    }
+    // A surface covering its node-bound edges keeps its material on whole layer pixels at full
+    // scale, so its capture needs no sub-pixel shift (#1775). Rounding up keeps the sampling reach.
+    return rect.inflate(if (coversNodeBoundEdges()) ceil(layerPaddingCache) else layerPaddingCache)
+  }
+
+  private fun samplePaddingPx(
+    style: ResolvedGlassStyle,
+    refractionMultiplier: Float,
+    drawOutsetPx: Float = style.drawOutsetPx,
+  ): Float {
+    val resolved = style.resolvedOptics
+    return calculateGlassSamplePaddingPx(
+      blurRadiusPx = if (resolved.depth <= 0f) 0f else resolved.blurRadiusPx,
+      refractionScale = resolved.refractionScalePx,
+      refractionStrength = (resolved.refractionStrength * refractionMultiplier).coerceIn(0f, 1f),
+      chromaticAberrationStrength = style.chromaticAberrationStrength,
+      edgeSoftnessPx = style.edgeSoftnessPx,
+      foregroundOutsetPx = drawOutsetPx,
+    )
+  }
+
+  /**
+   * Reserves whole pixels for a single surface's [drawExtent] beyond its node on every side.
+   * A container surface's bounds already include every member's outset, so it adds none.
+   */
+  override fun nodeClipOutsetPx(): Float {
+    if (surfaceSnapshot != null) return 0f
+    val density = attachedContext?.requireDensity() ?: return 0f
+    // A fractional capture origin resamples the material even when only the outline adds padding.
+    return with(density) { ceil(drawExtent.toPx()) }
+  }
+
+  // Output drawn beyond the shape, such as an edge outline, would be lost to a layer cut to the input.
+  override fun shouldPreferClipToInputBounds(): Boolean = !shouldClipToNodeBounds() && nodeClipOutsetPx() <= 0f
+
+  private fun maximumInteractionRefractionMultiplier(): Float =
+    interactionTopologySnapshot.maxRefractionMultiplier
+
+  internal interface Delegate {
+    fun attach() = Unit
+    fun DrawScope.prepareDraw(context: HazeEffectRuntimeDrawScope) = Unit
+    fun onDrawSkipped() = Unit
+    fun DrawScope.draw(context: HazeEffectRuntimeDrawScope)
+    fun DrawScope.drawForeground(context: HazeEffectRuntimeDrawScope) = Unit
+    fun detach() = Unit
+    fun release() = detach()
+    fun onTrimMemory(context: HazeEffectLifecycleScope, level: TrimMemoryLevel) = Unit
+
+    /** Whether this delegate draws the content behind the glass itself, rather than the node. */
+    val drawsContentBehind: Boolean get() = false
+
+    /** Whether a [RuntimeShaderRenderEffectException] from this delegate can be recovered by downgrading. */
+    val usesRuntimeShader: Boolean get() = false
+
+    /** The platform effect for the backdrop path, or null when this delegate has none. */
+    fun DrawScope.prepareBackdrop(context: HazeEffectRuntimeDrawScope): PlatformRenderEffect? = null
+
+    fun canDrawRetainedOutput(): Boolean = false
+    fun shouldDrawRetainedOutput(): Boolean = canDrawRetainedOutput()
+    fun clearRetainedOutput() = Unit
+    fun invalidateRetainedOutput() = clearRetainedOutput()
+    fun releaseObsoleteInteractionOutput(topology: GlassInteractionTopology) = Unit
+  }
+
+  internal fun resetDirtyTracker() {
+    dirtyTracker = Bitmask()
+  }
+
+  private fun markDirty(fields: Int) {
+    if (isUpdating) updateDirtyFields += fields
+    val updated = dirtyTracker + fields
+    if (updated != dirtyTracker) {
+      dirtyTracker = updated
+      dirtyTrackerVersion++
+      if (!isUpdating) dirtyTrackerSignal++
+    }
+    if (fields and GlassDirtyFields.StyleResolutionFlags != 0) {
+      resolvedStyleCache = null
+    }
+    if (fields and GlassDirtyFields.LayerBoundsFlags != 0) {
+      layerPaddingCacheValid = false
+    }
+    if (fields and GlassDirtyFields.ClipDecisionFlags != 0) {
+      shouldClipToNodeBoundsCacheValid = false
+    }
+  }
+
+  /** Runtime shaders need platform support and a hardware canvas, which can change between draws. */
+  private fun resolveRuntimeShaderSupport(context: DrawScope): Boolean {
+    val supported = isRuntimeShaderGlassSupported() && context.isGlassHardwareCanvas()
+    if (supported != runtimeShaderSupportedForDraw) {
+      runtimeShaderSupportedForDraw = supported
+      needsDelegateSelection = true
+    }
+    return supported
+  }
+
+  private fun selectDelegateForDraw() {
+    if (needsDelegateSelection) {
+      delegate = updateDelegate()
+      needsDelegateSelection = false
+    }
+  }
+
+  internal companion object {
+    const val TAG = "GlassRuntimeEffect"
+  }
+}
+
+private class GlassRenderPreparation(
+  var decision: GlassRenderBudgetDecision,
+  var prepared: GlassPreparedRender?,
+)
+
+internal fun GlassRuntimeEffect.updateDelegate(): GlassRuntimeEffect.Delegate {
+  val wantsRuntime =
+    preparedRenderBudget is GlassRenderBudgetDecision.Runtime &&
+      preparedRender != null &&
+      !runtimeShaderIncompatible
+  return when {
+    wantsRuntime &&
+      (
+        delegate !is RuntimeShaderGlassDelegate ||
+          GlassDirtyFields.RuntimeEffectFactory in dirtyTracker
+        ) ->
+      RuntimeShaderGlassDelegate(this, runtimeEffectFactory)
+    !wantsRuntime && delegate !is FallbackGlassDelegate -> FallbackGlassDelegate(this)
+    else -> delegate
+  }
+}
+
+internal expect fun isRuntimeShaderGlassSupported(): Boolean
+
+/** Whether this scope draws into a hardware canvas, the only canvas a runtime shader can render on. */
+internal expect fun DrawScope.isGlassHardwareCanvas(): Boolean
+
+internal fun reducedMotion(
+  policy: GlassReducedMotionPolicy,
+  systemScale: Float,
+): Pair<Boolean, Boolean> = when (policy) {
+  GlassReducedMotionPolicy.System -> (systemScale == 0f) to false
+  GlassReducedMotionPolicy.Reduced -> true to false
+  GlassReducedMotionPolicy.Full -> false to true
+}
+
+/** The root's bounds in these coordinates; under rotation or skew, their bounding box. */
+private fun LayoutCoordinates.windowBounds(): Rect? =
+  takeIf { it.isAttached }?.let { it.localBoundingBoxOf(it.findRootCoordinates(), clipBounds = false) }
+
+/** Maps [rect] from the space this transform draws into back to the space drawn in. */
+internal fun HazeEffectContentTransform.unmap(rect: Rect): Rect {
+  if (this == HazeEffectContentTransform.Identity) return rect
+  // A point p draws at pivot + scale * (p - pivot). Scales are positive, so edges keep their order.
+  return Rect(
+    left = pivot.x + (rect.left - pivot.x) / scaleX,
+    top = pivot.y + (rect.top - pivot.y) / scaleY,
+    right = pivot.x + (rect.right - pivot.x) / scaleX,
+    bottom = pivot.y + (rect.bottom - pivot.y) / scaleY,
+  )
+}

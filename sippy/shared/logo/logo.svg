@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="Sippy logo — a glass droplet">
+  <defs>
+    <linearGradient id="sippyFill" x1="32" y1="7" x2="32" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5B9BFF"/>
+      <stop offset="1" stop-color="#1D5FE0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- fill layer: revealed after the stroke draws itself (intro beat 3) -->
+  <path class="logo-fill"
+        d="M32 7 C 26.5 15.5 16 27.5 16 39 A 16 16 0 0 0 48 39 C 48 27.5 37.5 15.5 32 7 Z"
+        fill="url(#sippyFill)" opacity="0"/>
+
+  <!-- droplet outline: single continuous path, stroke-animatable (pathLength normalised to 100) -->
+  <path class="logo-stroke"
+        d="M32 7 C 26.5 15.5 16 27.5 16 39 A 16 16 0 0 0 48 39 C 48 27.5 37.5 15.5 32 7 Z"
+        stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"
+        pathLength="100"/>
+
+  <!-- inner highlight glint -->
+  <path class="logo-glint"
+        d="M23.5 33.5 Q 20.5 40 25 46.5"
+        stroke="currentColor" stroke-width="3" stroke-linecap="round"
+        pathLength="100"/>
+</svg>

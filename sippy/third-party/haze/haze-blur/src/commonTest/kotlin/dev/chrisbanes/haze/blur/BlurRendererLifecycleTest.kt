@@ -1,0 +1,247 @@
+// Copyright 2026, Christopher Banes and the Haze project contributors
+// SPDX-License-Identifier: Apache-2.0
+
+@file:OptIn(dev.chrisbanes.haze.InternalHazeApi::class)
+
+package dev.chrisbanes.haze.blur
+
+import androidx.compose.runtime.CompositionLocal
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.GraphicsContext
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import assertk.assertThat
+import assertk.assertions.isEqualTo
+import assertk.assertions.isFalse
+import assertk.assertions.isSameInstanceAs
+import assertk.assertions.isTrue
+import dev.chrisbanes.haze.HazeEffectLifecycleScope
+import dev.chrisbanes.haze.HazeEffectRuntimeDrawScope
+import dev.chrisbanes.haze.HazePerformanceMode
+import dev.chrisbanes.haze.HazeSampling
+import dev.chrisbanes.haze.LocalHazePerformanceMode
+import dev.chrisbanes.haze.PlatformContext
+import dev.chrisbanes.haze.TrimMemoryLevel
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.test.Test
+import kotlinx.coroutines.CoroutineScope
+
+class BlurRendererLifecycleTest {
+
+  @Test
+  fun performanceMode_inheritsLocalUpdatesAndPreservesExplicitOverride() {
+    var localMode: HazePerformanceMode = HazePerformanceMode.Default
+    var drawInvalidations = 0
+    val scope = object : HazeEffectLifecycleScope by BlurTestLifecycleScope {
+      override fun invalidateDraw() {
+        drawInvalidations++
+      }
+
+      @Suppress("UNCHECKED_CAST")
+      override fun <T> currentValueOf(local: CompositionLocal<T>): T =
+        if (local === LocalHazePerformanceMode) localMode as T else BlurTestLifecycleScope.currentValueOf(local)
+    }
+    val renderer = BlurVisualEffect()
+    val inherited = BlurConfiguration(HazeBlurStyle, null)
+    renderer.update(scope, inherited, HazeSampling.Default)
+    assertThat(renderer.performanceMode).isEqualTo(HazePerformanceMode.Default)
+    assertThat(renderer.styleChanged).isFalse()
+    drawInvalidations = 0
+    localMode = HazePerformanceMode.Quality
+    renderer.update(scope, inherited, HazeSampling.Default)
+    assertThat(renderer.performanceMode).isEqualTo(HazePerformanceMode.Quality)
+    assertThat(drawInvalidations).isEqualTo(1)
+    renderer.update(scope, BlurConfiguration(HazeBlurStyle, HazePerformanceMode.Balanced), HazeSampling.Default)
+    assertThat(renderer.performanceMode).isEqualTo(HazePerformanceMode.Balanced)
+    assertThat(drawInvalidations).isEqualTo(2)
+    localMode = HazePerformanceMode.Performance
+    renderer.update(scope, BlurConfiguration(HazeBlurStyle, HazePerformanceMode.Balanced), HazeSampling.Default)
+    assertThat(drawInvalidations).isEqualTo(2)
+  }
+
+  @Test
+  fun styleReplacement_reusesRendererAndReconfiguresResolvedStyle() {
+    val renderer = HazeBlurFactory.createRenderer() as BlurVisualEffect
+    renderer.update(
+      BlurTestLifecycleScope,
+      BlurConfiguration(HazeBlurStyle { blurRadius(12.dp) }, HazePerformanceMode.Default),
+      HazeSampling.Default,
+    )
+
+    val original = renderer
+    renderer.update(
+      BlurTestLifecycleScope,
+      BlurConfiguration(HazeBlurStyle { blurRadius(24.dp) }, HazePerformanceMode.Quality),
+      HazeSampling.FullResolution,
+    )
+
+    assertThat(renderer).isSameInstanceAs(original)
+    assertThat(renderer.blurRadius).isEqualTo(24.dp)
+  }
+
+  @Test
+  fun performanceModeReplacement_reusesRenderer() {
+    val renderer = HazeBlurFactory.createRenderer() as BlurVisualEffect
+    renderer.update(
+      BlurTestLifecycleScope,
+      BlurConfiguration(HazeBlurStyle, HazePerformanceMode.Default),
+      HazeSampling.Default,
+    )
+
+    val original = renderer
+    renderer.update(
+      BlurTestLifecycleScope,
+      BlurConfiguration(HazeBlurStyle, HazePerformanceMode.Performance),
+      HazeSampling.Default,
+    )
+
+    assertThat(renderer).isSameInstanceAs(original)
+  }
+
+  @Test
+  fun attachmentTrimAndDisposal_reachOnlyTheOwnedDelegate() {
+    val renderer = HazeBlurFactory.createRenderer() as BlurVisualEffect
+    val delegate = RecordingBlurDelegate()
+    renderer.delegate = delegate
+
+    renderer.attach(BlurTestLifecycleScope)
+    renderer.onTrimMemory(TrimMemoryLevel.MODERATE)
+    renderer.detach()
+    renderer.dispose()
+
+    assertThat(delegate.attachCalls).isEqualTo(1)
+    assertThat(delegate.trimCalls).isEqualTo(1)
+    assertThat(delegate.detachCalls).isEqualTo(1)
+  }
+
+  @Test
+  fun retainedOutput_capabilityClearsDelegateState() {
+    val renderer = HazeBlurFactory.createRenderer() as BlurVisualEffect
+    val delegate = RecordingBlurDelegate(retained = true)
+    renderer.delegate = delegate
+
+    assertThat(renderer.canDrawRetainedOutput()).isTrue()
+    assertThat(renderer.shouldDrawRetainedOutput()).isTrue()
+
+    renderer.clearRetainedOutput()
+
+    assertThat(renderer.canDrawRetainedOutput()).isFalse()
+    assertThat(renderer.shouldDrawRetainedOutput()).isFalse()
+  }
+
+  @Test
+  fun plainDelegate_retainedOutputDefaultsAreNoOps() {
+    val renderer = HazeBlurFactory.createRenderer() as BlurVisualEffect
+    val delegate = PlainBlurDelegate()
+    renderer.delegate = delegate
+
+    assertThat(delegate.drawsContentBehind).isFalse()
+    assertThat(delegate.supportsBackdropRenderEffect).isFalse()
+    assertThat(renderer.canDrawRetainedOutput()).isFalse()
+    assertThat(renderer.shouldDrawRetainedOutput()).isFalse()
+    renderer.clearRetainedOutput()
+    renderer.invalidateRetainedOutput()
+  }
+
+  @Test
+  fun renderer_forwardsContentBehindToAnyDelegate() {
+    val renderer = HazeBlurFactory.createRenderer() as BlurVisualEffect
+
+    renderer.delegate = PlainBlurDelegate(drawsContentBehind = true)
+    assertThat(renderer.shouldDrawContentBehind()).isTrue()
+
+    renderer.delegate = RecordingBlurDelegate()
+    assertThat(renderer.shouldDrawContentBehind()).isFalse()
+  }
+
+  @Test
+  fun scrimDelegate_declaresItsCapabilities() {
+    val delegate = ScrimBlurVisualEffectDelegate(BlurVisualEffect())
+
+    assertThat(delegate.drawsContentBehind).isTrue()
+    assertThat(delegate.supportsBackdropRenderEffect).isFalse()
+  }
+
+  @Test
+  fun invalidateRetainedOutput_reachesTheDelegateAndDefaultsToClear() {
+    val renderer = HazeBlurFactory.createRenderer() as BlurVisualEffect
+    val invalidating = RecordingBlurDelegate(retained = true)
+    renderer.delegate = invalidating
+
+    renderer.invalidateRetainedOutput()
+
+    assertThat(invalidating.invalidateCalls).isEqualTo(1)
+
+    val defaulting = PlainBlurDelegate(retained = true)
+    renderer.delegate = defaulting
+    renderer.invalidateRetainedOutput()
+
+    assertThat(defaulting.clearCalls).isEqualTo(1)
+  }
+}
+
+private class PlainBlurDelegate(
+  override val drawsContentBehind: Boolean = false,
+  private val retained: Boolean = false,
+) : BlurVisualEffect.Delegate {
+  var clearCalls = 0
+    private set
+
+  override fun DrawScope.draw(context: HazeEffectRuntimeDrawScope) = Unit
+
+  override fun canDrawRetainedOutput(): Boolean = retained
+
+  override fun clearRetainedOutput() {
+    clearCalls++
+  }
+}
+
+private class RecordingBlurDelegate(
+  retained: Boolean = false,
+) : BlurVisualEffect.Delegate {
+  var attachCalls = 0
+  var trimCalls = 0
+  var detachCalls = 0
+  var invalidateCalls = 0
+  private var retained = retained
+
+  override fun attach() {
+    attachCalls++
+  }
+
+  override fun DrawScope.draw(context: HazeEffectRuntimeDrawScope) = Unit
+
+  override fun onTrimMemory(context: HazeEffectLifecycleScope, level: TrimMemoryLevel) {
+    trimCalls++
+  }
+
+  override fun detach() {
+    detachCalls++
+  }
+
+  override fun canDrawRetainedOutput(): Boolean = retained
+
+  override fun clearRetainedOutput() {
+    retained = false
+  }
+
+  override fun invalidateRetainedOutput() {
+    invalidateCalls++
+  }
+}
+
+internal data object BlurTestLifecycleScope : HazeEffectLifecycleScope {
+  override val modifierSize: Size = Size.Zero
+  override val coroutineScope: CoroutineScope = CoroutineScope(EmptyCoroutineContext)
+  override fun requirePlatformContext(): PlatformContext = error("Unused")
+  override fun requireGraphicsContext(): GraphicsContext = error("Unused")
+  override fun requireDensity(): Density = Density(1f)
+
+  @Suppress("UNCHECKED_CAST")
+  override fun <T> currentValueOf(local: CompositionLocal<T>): T =
+    if (local === LocalHazeBlurStyle) HazeBlurStyle as T else error("Unused local")
+
+  override fun invalidateDraw() = Unit
+  override fun invalidateLayerBounds() = Unit
+}
