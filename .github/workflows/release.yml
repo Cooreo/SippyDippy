@@ -221,11 +221,47 @@ jobs:
           # Trust on first use: the APK's own certificate is the truth. If
           # releases/latest.json already pins a certificate, this build must
           # match it — otherwise an update would install as a different app.
-          cert="$("$apksigner" verify --print-certs "dist/$apk_name" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr 'A-F' 'a-f' | tr -d ': ')"
-          if [ -z "$cert" ]; then
-            echo "::error::The APK has no signer certificate — refuses to publish an unsigned build."
+          #
+          # The digest is read the dumb, tolerant way on purpose: apksigner's
+          # signer label changes between build-tools releases ("Signer #1" vs
+          # "Signer (minSdkVersion …) #1"), so match any "SHA-256 digest:" tail
+          # and then validate the value is 64 hex digits. Because we sign v1+v2,
+          # the JAR signature is a second, independent source via keytool.
+          digest_from() {
+            # $1 = text, $2 = label to cut at ("SHA-256 digest:" or "SHA256:")
+            printf '%s\n' "$1" | sed -n "s/.*$2 *//p" | head -1 | tr -d ':' | tr 'A-F' 'a-f' | tr -d ' '
+          }
+          is_digest() { printf '%s' "$1" | grep -qE '^[0-9a-f]{64}$'; }
+
+          cert=""
+          apksigner_out=""
+          if [ -x "$apksigner" ]; then
+            apksigner_out="$("$apksigner" verify --print-certs "dist/$apk_name" 2>&1 || true)"
+            cert="$(digest_from "$apksigner_out" 'SHA-256 digest:')"
+          else
+            echo "::warning::apksigner is not executable at $apksigner"
+          fi
+
+          keytool_out=""
+          if ! is_digest "$cert"; then
+            # Surface the tool output as annotations: the job log lives on a
+            # host some readers cannot reach, annotations always arrive.
+            printf '%s\n' "$apksigner_out" | head -25 | while IFS= read -r line; do
+              echo "::warning::apksigner: ${line}"
+            done
+            echo "apksigner gave no usable digest — reading the v1 JAR signature with keytool"
+            keytool_out="$(keytool -printcert -jarfile "dist/$apk_name" 2>&1 || true)"
+            cert="$(digest_from "$keytool_out" 'SHA256:')"
+          fi
+
+          if ! is_digest "$cert"; then
+            printf '%s\n' "$keytool_out" | head -25 | while IFS= read -r line; do
+              echo "::warning::keytool: ${line}"
+            done
+            echo "::error::No signer certificate could be read from dist/$apk_name (tried apksigner --print-certs and keytool -printcert -jarfile). Refusing to publish."
             exit 1
           fi
+          echo "signer certificate SHA-256: $cert"
           latest="../../releases/latest.json"
           pinned=""
           if [ -f "$latest" ]; then
