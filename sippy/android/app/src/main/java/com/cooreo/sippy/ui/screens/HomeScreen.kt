@@ -62,6 +62,7 @@ import com.cooreo.sippy.model.LogEntry
 import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.ui.components.DrinkIcon
 import com.cooreo.sippy.ui.components.FriendAvatar
+import com.cooreo.sippy.ui.components.ShareBar
 import com.cooreo.sippy.ui.components.WaterOrb
 import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassChip
@@ -607,6 +608,12 @@ private fun LogRow(entry: LogEntry, goalMl: Int, onClick: () -> Unit) {
                 text = "${entry.volumeMl} ml · $time",
                 style = SippyType.caption,
                 color = c.text2,
+            )
+            Spacer(Modifier.height(6.dp))
+            // B4: the row's share of the goal, in the drink's own colour.
+            ShareBar(
+                fraction = if (goalMl > 0) entry.hydratedMl.toFloat() / goalMl else 0f,
+                color = DrinkTints.of(DrinkCategory.of(entry.drinkId)),
             )
         }
         Spacer(Modifier.width(8.dp))

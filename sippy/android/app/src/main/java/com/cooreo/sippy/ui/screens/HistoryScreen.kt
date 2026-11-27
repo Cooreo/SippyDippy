@@ -37,6 +37,7 @@ import com.cooreo.sippy.domain.log.LogGroups
 import com.cooreo.sippy.model.LogEntry
 import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.ui.components.DrinkIcon
+import com.cooreo.sippy.ui.components.ShareBar
 import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.glass.GlassSurface
 import com.cooreo.sippy.ui.theme.Dimens
@@ -83,7 +84,7 @@ fun HistoryScreen(
         item(key = "header") {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("History", style = SippyType.display, color = c.text1)
+                    Text("History", style = SippyType.title, color = c.text1)
                     Text(
                         text = "${state.log.size} ${if (state.log.size == 1) "entry" else "entries"} · " +
                             "${groups.size} ${if (groups.size == 1) "day" else "days"}",
@@ -221,6 +222,11 @@ private fun HistoryRow(entry: LogEntry, goalMl: Int, onClick: () -> Unit) {
                     text = "${entry.volumeMl} ml · ${entry.hydratedMl} counted · $percent% of goal",
                     style = SippyType.caption,
                     color = c.text2,
+                )
+                Spacer(Modifier.height(6.dp))
+                ShareBar(
+                    fraction = if (goalMl > 0) entry.hydratedMl.toFloat() / goalMl else 0f,
+                    color = DrinkTints.of(DrinkCategory.of(entry.drinkId)),
                 )
             }
             Text("Edit", style = SippyType.caption, color = c.text3)

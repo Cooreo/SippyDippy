@@ -75,9 +75,9 @@ val DarkColors = SippyColors(
     ok = Color(0xFF3ECF8E),
     warn = Color(0xFFF5B84D),
     danger = Color(0xFFF26D6D),
-    glassTint = Color(0x14FFFFFF),
-    glassRimStart = Color(0x66FFFFFF),
-    glassRimEnd = Color(0x2EFFFFFF),
+    glassTint = Color(0x1AFFFFFF),
+    glassRimStart = Color(0x73FFFFFF),
+    glassRimEnd = Color(0x33FFFFFF),
     glassInner = Color(0x1AFFFFFF),
     scrim = Color(0x59000000),
 )
@@ -110,9 +110,17 @@ object Dimens {
     val pill = 999.dp
     val card = 28.dp
     val inner = 20.dp
+
+    /** B4: screen margin 20dp on the 8dp rhythm; cards sit on it, never off it. */
     val screenPadding = 20.dp
+
+    /** B4: the rhythm itself — every stack gap is a multiple of this. */
+    val rhythm = 8.dp
     val gap = 12.dp
     val touch = 48.dp
+
+    /** B4: card padding 16 to 20. */
+    val cardPadding = 18.dp
 }
 
 @Composable

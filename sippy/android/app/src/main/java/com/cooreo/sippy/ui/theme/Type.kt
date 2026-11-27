@@ -31,19 +31,25 @@ object SippyType {
         lineHeight = 38.sp,
         letterSpacing = (-0.8).sp,
     )
+    /** B4: screen titles — 28sp, semibold, tight tracking. */
     val title = TextStyle(
         fontFamily = Inter,
-        fontWeight = FontWeight.Bold,
-        fontSize = 22.sp,
-        lineHeight = 27.sp,
-        letterSpacing = (-0.3).sp,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 28.sp,
+        lineHeight = 32.sp,
+        letterSpacing = (-0.6).sp,
     )
+    /**
+     * B4: the orb number — 56sp light with tabular figures, so a counting number
+     * does not jitter sideways while it climbs.
+     */
     val value = TextStyle(
         fontFamily = Inter,
-        fontWeight = FontWeight.Bold,
-        fontSize = 44.sp,
-        lineHeight = 46.sp,
-        letterSpacing = (-1.4).sp,
+        fontWeight = FontWeight.Light,
+        fontSize = 56.sp,
+        lineHeight = 58.sp,
+        letterSpacing = (-1.6).sp,
+        fontFeatureSettings = "tnum",
     )
     val emphasis = TextStyle(
         fontFamily = Inter,
@@ -63,12 +69,13 @@ object SippyType {
         fontSize = 12.sp,
         lineHeight = 16.sp,
     )
+    /** B4: small labels — 12sp medium, wide tracking. */
     val label = TextStyle(
         fontFamily = Inter,
-        fontWeight = FontWeight.Bold,
-        fontSize = 11.sp,
-        lineHeight = 14.sp,
-        letterSpacing = 0.4.sp,
+        fontWeight = FontWeight.Medium,
+        fontSize = 12.sp,
+        lineHeight = 15.sp,
+        letterSpacing = 0.8.sp,
     )
 }
 

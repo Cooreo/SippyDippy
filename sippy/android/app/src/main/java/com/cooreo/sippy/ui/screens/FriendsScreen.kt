@@ -40,6 +40,7 @@ import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.state.SippyController
 import com.cooreo.sippy.ui.theme.LocalSippyColors
+import com.cooreo.sippy.ui.theme.SippyType
 
 @Composable
 fun FriendsScreen(
@@ -66,7 +67,7 @@ fun FriendsScreen(
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Friends", color = c.text1, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                    Text("Friends", style = SippyType.title, color = c.text1)
                     Text(
                         text = "Dippy and up to four friends. They grow with your streak.",
                         color = c.text2,
