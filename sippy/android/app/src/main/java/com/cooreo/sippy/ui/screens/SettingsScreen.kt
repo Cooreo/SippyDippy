@@ -7,6 +7,8 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +23,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cooreo.sippy.BuildConfig
@@ -51,11 +55,24 @@ fun SettingsScreen(
     state: StoredState,
     controller: SippyController,
     onOpenDeveloper: () -> Unit,
+    bottomPadding: Dp = 24.dp,
+    /** Increments when another screen asks Settings to show Reminders. */
+    remindersPrompt: Int = 0,
 ) {
     val c = LocalSippyColors.current
     val context = LocalContext.current
     var versionTaps by remember { mutableIntStateOf(0) }
     var notice by remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    var name by remember(state.settings.displayName) {
+        androidx.compose.runtime.mutableStateOf(state.settings.displayName)
+    }
+    val remindersRequester = remember { BringIntoViewRequester() }
+
+    // The bell on Home lands here with the Reminders card in view. The card may
+    // still be outside the lazy viewport, so the request never gets in the way.
+    LaunchedEffect(remindersPrompt) {
+        if (remindersPrompt > 0) runCatching { remindersRequester.bringIntoView() }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -77,7 +94,7 @@ fun SettingsScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 28.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 28.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
@@ -149,6 +166,32 @@ fun SettingsScreen(
 
         item {
             GlassCard {
+                SectionTitle("Your name")
+                Text(
+                    text = "Only used for the Home greeting. Leave it empty to hide it.",
+                    color = c.text3,
+                    fontSize = 11.sp,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it.take(24) },
+                    singleLine = true,
+                    label = { Text("Name") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                GlassButton(
+                    label = "Save name",
+                    onClick = { controller.setDisplayName(name.trim()) },
+                    enabled = name.trim() != state.settings.displayName,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+
+        item {
+            GlassCard(modifier = Modifier.bringIntoViewRequester(remindersRequester)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         SectionTitle("Reminders")

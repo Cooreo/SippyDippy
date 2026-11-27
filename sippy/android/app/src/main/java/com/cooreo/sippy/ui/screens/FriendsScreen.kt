@@ -43,6 +43,7 @@ fun FriendsScreen(
     hydratedMl: Int,
     goalMl: Int,
     animate: Boolean,
+    bottomPadding: androidx.compose.ui.unit.Dp = 24.dp,
 ) {
     val c = LocalSippyColors.current
     val goalMet = goalMl > 0 && hydratedMl >= goalMl
@@ -51,7 +52,7 @@ fun FriendsScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 28.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 28.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {

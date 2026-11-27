@@ -47,7 +47,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 /** Scrim + bottom card. Used by every sheet so they all behave the same. */
 @Composable
-private fun SheetScrim(
+internal fun SheetScrim(
     onDismiss: () -> Unit,
     content: @Composable () -> Unit,
 ) {

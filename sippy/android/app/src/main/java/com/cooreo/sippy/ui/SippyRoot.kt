@@ -9,11 +9,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
@@ -21,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -29,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -37,33 +43,66 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cooreo.sippy.BuildConfig
 import com.cooreo.sippy.R
 import com.cooreo.sippy.data.AppGraph
+import com.cooreo.sippy.domain.drinks.DrinkTable
 import com.cooreo.sippy.domain.water.WaterMath
+import com.cooreo.sippy.model.Friend
+import com.cooreo.sippy.model.LogEntry
+import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.model.ThemeMode
 import com.cooreo.sippy.ui.components.Celebration
-import com.cooreo.sippy.ui.glass.GlassChip
+import com.cooreo.sippy.ui.components.FloatingNav
+import com.cooreo.sippy.ui.components.NavTarget
 import com.cooreo.sippy.ui.glass.GlassTier
 import com.cooreo.sippy.ui.glass.LocalGlassTier
 import com.cooreo.sippy.ui.glass.SippyBackdropHost
 import com.cooreo.sippy.ui.screens.DeveloperScreen
+import com.cooreo.sippy.ui.screens.DrinksScreen
 import com.cooreo.sippy.ui.screens.FriendsScreen
+import com.cooreo.sippy.ui.screens.HomeScreen
 import com.cooreo.sippy.ui.screens.OnboardingScreen
 import com.cooreo.sippy.ui.screens.SettingsScreen
-import com.cooreo.sippy.ui.screens.TodayScreen
+import com.cooreo.sippy.ui.screens.moodFor
+import com.cooreo.sippy.ui.screens.moodLine
 import com.cooreo.sippy.ui.sheets.AddDrinkSheet
+import com.cooreo.sippy.ui.sheets.CustomVolumeSheet
+import com.cooreo.sippy.ui.sheets.EditEntrySheet
 import com.cooreo.sippy.ui.sheets.UpdateSheet
 import com.cooreo.sippy.ui.state.SippyController
-import com.cooreo.sippy.ui.theme.Accent
 import com.cooreo.sippy.ui.theme.LocalSippyColors
 import com.cooreo.sippy.ui.theme.SippyTheme
 import com.cooreo.sippy.ui.theme.accentFor
 import com.cooreo.sippy.util.Dates
+import kotlinx.coroutines.delay
 
-private enum class Tab { TODAY, FRIENDS, SETTINGS }
+private enum class Tab { HOME, DRINKS, FRIENDS, SETTINGS }
+
+private val Tab.navTarget: NavTarget
+    get() = when (this) {
+        Tab.HOME -> NavTarget.HOME
+        Tab.DRINKS -> NavTarget.DRINKS
+        Tab.FRIENDS -> NavTarget.FRIENDS
+        Tab.SETTINGS -> NavTarget.SETTINGS
+    }
+
+private fun NavTarget.toTab(): Tab = when (this) {
+    NavTarget.HOME -> Tab.HOME
+    NavTarget.DRINKS -> Tab.DRINKS
+    NavTarget.FRIENDS -> Tab.FRIENDS
+    NavTarget.SETTINGS -> Tab.SETTINGS
+}
+
+/** A short message above the bottom bar, optionally with one action (Undo). */
+private data class ToastMessage(
+    val text: String,
+    val actionLabel: String? = null,
+    val onAction: (() -> Unit)? = null,
+)
 
 /**
- * Root of the app: theme, glass tier, the one backdrop, the three tabs, the
- * sheets, the celebration and the splash. Everything below here is a pure
- * function of the stored state plus these callbacks.
+ * Root of the app: theme, glass tier, the one backdrop, onboarding, the four
+ * tabs behind the floating nav, the sheets, the celebration and the splash.
+ * Everything below here is a pure function of the stored state plus these
+ * callbacks.
  */
 @Composable
 fun SippyRoot(graph: AppGraph) {
@@ -104,70 +143,134 @@ fun SippyRoot(graph: AppGraph) {
 
 @Composable
 private fun AppScaffold(
-    state: com.cooreo.sippy.model.StoredState,
+    state: StoredState,
     controller: SippyController,
     animate: Boolean,
 ) {
-    var tab by remember { mutableStateOf(Tab.TODAY) }
+    var tab by remember { mutableStateOf(Tab.HOME) }
     var showDeveloper by remember { mutableStateOf(false) }
     var showAddDrink by remember { mutableStateOf(false) }
+    var showCustomVolume by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<LogEntry?>(null) }
     var celebrationAt by remember { mutableStateOf(0L) }
-    var info by remember { mutableStateOf<String?>(null) }
+    var toast by remember { mutableStateOf<ToastMessage?>(null) }
+    var remindersPrompt by remember { mutableIntStateOf(0) }
 
     val today = Dates.todayEpochDay()
-    val todayEntries = remember(state.log, today) { state.log.filter { it.dayEpoch == today } }
+    val todayEntries = remember(state.log, today) {
+        state.log.filter { it.dayEpoch == today }.sortedByDescending { it.atEpochMs }
+    }
     val hydrated = WaterMath.hydratedMl(todayEntries)
     val goal = state.settings.goalMl
+    val goalMet = WaterMath.goalMet(hydrated, goal)
+    // Quick adds are water; the Log sheet is there for everything else.
+    val water = remember { DrinkTable.byId("water") }
+
+    // The floating bar plus the gesture inset, so nothing hides behind it.
+    val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val navSpace = 104.dp + navInset
 
     LaunchedEffect(Unit) {
         controller.events.collect { event ->
             when (event) {
                 is SippyController.Event.Celebration -> celebrationAt = System.currentTimeMillis()
-                is SippyController.Event.Milestone ->
-                    info = "New milestone: ${event.days} days. Your friends grew."
-                is SippyController.Event.Info -> info = event.text
+                is SippyController.Event.Milestone -> toast = ToastMessage(
+                    text = "New milestone: ${event.days} days. Your friends grew.",
+                )
+                is SippyController.Event.Info -> toast = ToastMessage(text = event.text)
+                is SippyController.Event.Logged -> {
+                    val entryId = event.entryId
+                    toast = ToastMessage(
+                        text = "${event.drinkName} · ${event.volumeMl} ml logged",
+                        actionLabel = "Undo",
+                        onAction = { controller.deleteEntry(entryId) },
+                    )
+                }
             }
+        }
+    }
+    LaunchedEffect(toast) {
+        if (toast != null) {
+            delay(4200)
+            toast = null
         }
     }
     // One update check a day, in the background; never blocking the first frame.
     LaunchedEffect(Unit) { controller.checkForUpdate(manual = false) }
 
-    Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) {
-            Crossfade(targetState = tab, animationSpec = tween(if (animate) 220 else 0), label = "tab") { current ->
-                when (current) {
-                    Tab.TODAY -> TodayScreen(
-                        state = state,
-                        controller = controller,
-                        todayEntries = todayEntries,
-                        hydratedMl = hydrated,
-                        goalMl = goal,
-                        animate = animate,
-                        ringOverride = controller.ringOverride,
-                        onAddDrink = { showAddDrink = true },
-                        onOpenFriends = { tab = Tab.FRIENDS },
-                    )
-                    Tab.FRIENDS -> FriendsScreen(
-                        state = state,
-                        controller = controller,
-                        hydratedMl = hydrated,
-                        goalMl = goal,
-                        animate = animate,
-                    )
-                    Tab.SETTINGS -> SettingsScreen(
-                        state = state,
-                        controller = controller,
-                        onOpenDeveloper = { showDeveloper = true },
-                    )
-                }
+    Box(Modifier.fillMaxSize()) {
+        Crossfade(
+            targetState = tab,
+            animationSpec = tween(if (animate) 220 else 0),
+            label = "tab",
+        ) { current ->
+            when (current) {
+                Tab.HOME -> HomeScreen(
+                    state = state,
+                    todayEntries = todayEntries,
+                    hydratedMl = hydrated,
+                    goalMl = goal,
+                    animate = animate,
+                    ringOverride = controller.ringOverride,
+                    bottomPadding = navSpace,
+                    onQuickAdd = { ml -> controller.addDrink(water, ml) },
+                    onCustomAdd = { showCustomVolume = true },
+                    onOpenFriends = { tab = Tab.FRIENDS },
+                    onOpenReminders = {
+                        tab = Tab.SETTINGS
+                        remindersPrompt += 1
+                    },
+                    onEditEntry = { editing = it },
+                    onFriendTap = { friend -> toast = moodToast(friend, state, goalMet, todayEntries) },
+                )
+                Tab.DRINKS -> DrinksScreen(
+                    bottomPadding = navSpace,
+                    onLog = { drink -> controller.addDrink(drink, drink.defaultVolumeMl) },
+                )
+                Tab.FRIENDS -> FriendsScreen(
+                    state = state,
+                    controller = controller,
+                    hydratedMl = hydrated,
+                    goalMl = goal,
+                    animate = animate,
+                    bottomPadding = navSpace,
+                )
+                Tab.SETTINGS -> SettingsScreen(
+                    state = state,
+                    controller = controller,
+                    onOpenDeveloper = { showDeveloper = true },
+                    bottomPadding = navSpace,
+                    remindersPrompt = remindersPrompt,
+                )
             }
-            Celebration(
-                trigger = celebrationAt,
-                animate = animate,
-                modifier = Modifier.fillMaxSize(),
+        }
+
+        Celebration(
+            trigger = celebrationAt,
+            animate = animate,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        FloatingNav(
+            current = tab.navTarget,
+            onSelect = { tab = it.toTab() },
+            onLog = { showAddDrink = true },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        toast?.let { message ->
+            ToastBar(
+                message = message,
+                onDismiss = { toast = null },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(
+                        start = 20.dp,
+                        end = 20.dp,
+                        bottom = navSpace,
+                    ),
             )
         }
-        SippyTabBar(current = tab, onSelect = { tab = it })
     }
 
     if (showAddDrink) {
@@ -180,12 +283,38 @@ private fun AppScaffold(
         )
     }
 
+    if (showCustomVolume) {
+        CustomVolumeSheet(
+            onDismiss = { showCustomVolume = false },
+            onPick = { ml ->
+                controller.addDrink(water, ml)
+                showCustomVolume = false
+            },
+        )
+    }
+
+    editing?.let { entry ->
+        EditEntrySheet(
+            entry = entry,
+            goalMl = goal,
+            onSave = { ml ->
+                controller.updateEntryVolume(entry.id, ml)
+                editing = null
+            },
+            onDelete = {
+                controller.deleteEntry(entry.id)
+                editing = null
+            },
+            onDismiss = { editing = null },
+        )
+    }
+
     controller.updateOffer?.let { manifest ->
         UpdateSheet(
             manifest = manifest,
             progress = controller.updateManager.progress,
             installing = controller.installing,
-            onInstall = { controller.downloadAndInstall(manifest) { message -> info = message } },
+            onInstall = { controller.downloadAndInstall(manifest) { message -> toast = ToastMessage(message) } },
             onDismiss = { controller.dismissUpdate() },
         )
     }
@@ -197,62 +326,69 @@ private fun AppScaffold(
             onClose = { showDeveloper = false },
         )
     }
+}
 
-    info?.let { text ->
-        LaunchedEffect(text) {
-            kotlinx.coroutines.delay(3200)
-            info = null
-        }
-        InfoToast(text = text, onDismiss = { info = null })
-    }
+private fun moodToast(
+    friend: Friend,
+    state: StoredState,
+    goalMetToday: Boolean,
+    todayEntries: List<LogEntry>,
+): ToastMessage {
+    val mood = moodFor(
+        friend = friend,
+        state = state,
+        goalMetToday = goalMetToday,
+        hasEntriesToday = todayEntries.isNotEmpty(),
+    )
+    return ToastMessage(text = moodLine(friend.name, mood))
 }
 
 @Composable
-private fun SippyTabBar(current: Tab, onSelect: (Tab) -> Unit) {
+private fun ToastBar(
+    message: ToastMessage,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val c = LocalSippyColors.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    com.cooreo.sippy.ui.glass.GlassCard(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
     ) {
-        TabEntries.forEach { (entryTab, label) ->
-            Box(Modifier.weight(1f)) {
-                GlassChip(
-                    label = label,
-                    selected = current == entryTab,
-                    onClick = { onSelect(entryTab) },
-                    modifier = Modifier.fillMaxWidth(),
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = message.text,
+                color = c.text1,
+                fontSize = 14.sp,
+                modifier = Modifier.weight(1f),
+            )
+            val action = message.onAction
+            if (action != null && message.actionLabel != null) {
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    text = message.actionLabel,
+                    color = c.accentBright,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clickable(role = Role.Button) {
+                            action()
+                            onDismiss()
+                        }
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
                 )
             }
         }
-    }
-}
-
-private val TabEntries = listOf(Tab.TODAY to "Today", Tab.FRIENDS to "Friends", Tab.SETTINGS to "Settings")
-
-@Composable
-private fun InfoToast(text: String, onDismiss: () -> Unit) {
-    val c = LocalSippyColors.current
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-        Box(
-            Modifier
-                .padding(bottom = 96.dp, start = 24.dp, end = 24.dp)
-                .fillMaxWidth(),
-        ) {
-            com.cooreo.sippy.ui.glass.GlassCard(Modifier.fillMaxWidth()) {
-                Text(text = text, color = c.text1, fontSize = 14.sp)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "Tap to dismiss",
-                    color = c.text3,
-                    fontSize = 12.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onDismiss),
-                )
-            }
+        if (message.onAction == null) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Tap to dismiss",
+                color = c.text3,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onDismiss)
+                    .padding(vertical = 4.dp),
+            )
         }
     }
 }
@@ -262,7 +398,10 @@ private fun InfoToast(text: String, onDismiss: () -> Unit) {
 private fun Splash() {
     val c = LocalSippyColors.current
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
             Image(
                 painter = painterResource(R.drawable.dippy_waving),
                 contentDescription = null,
