@@ -51,6 +51,19 @@ jobs:
         working-directory: sippy/site
         run: npm ci
 
+      # The website's download button is driven by the same manifest the app's
+      # updater reads: stage it into the build. Absent on a fresh clone with no
+      # release yet — the card then says "no signed build published yet".
+      - name: Stage release manifest
+        run: |
+          mkdir -p sippy/site/public/releases
+          if [ -f releases/latest.json ]; then
+            cp releases/latest.json sippy/site/public/releases/latest.json
+            echo "staged releases/latest.json"
+          else
+            echo "no releases/latest.json yet — the download card stays disabled"
+          fi
+
       # Base path derived from GITHUB_REPOSITORY ("owner/repo" → "/repo/"),
       # so the site lands at https://<owner>.github.io/<repo>/ no matter what
       # the repo is named. Locally the default base is "/" (sippy/site/.env).

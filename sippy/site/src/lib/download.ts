@@ -1,14 +1,16 @@
 /**
- * Download configuration — the ONLY place the APK link lives.
+ * Download configuration — the ONLY place the APK link rules live.
  *
- * Phase 6: set `url` to the GitHub Release asset URL (e.g.
- * https://github.com/<user>/<repo>/releases/download/v1.0.0/sippy-v1.0.0.apk),
- * plus the real `sizeBytes` and `sha256` printed by tooling/build-release.*
- * Until all three are real, the download card stays DISABLED (honest, per
- * the brief — no fake downloads, ever).
+ * The link is no longer hand-edited: the site reads `releases/latest.json`
+ * (the same manifest the in-app updater consumes, staged into the build by
+ * the deploy workflow) and converts it with `downloadConfigFromManifest`.
+ * `APP_DOWNLOAD` stays as the "nothing published" fallback; while it is blank
+ * the card stays DISABLED — no fake downloads, ever.
  *
  * Never put secrets in this file: it ships to the website.
  */
+import { fileNameFromUrl, type ReleaseManifest } from "./release";
+
 export const APP_DOWNLOAD = {
   url: "",
   version: "v1.0.0",
@@ -19,8 +21,9 @@ export const APP_DOWNLOAD = {
 
 /**
  * Single source of truth for the APK CTA label across nav and hero:
- * "See install steps" until the real APK URL + size + SHA-256 are set,
- * then "Get the APK".
+ * "See install steps" while no release is configured, "Get the APK" once one
+ * is. The nav/hero CTA scrolls to the download card, which resolves the live
+ * release itself.
  */
 export const APK_CTA_LABELS = {
   pending: "See install steps",
@@ -67,6 +70,20 @@ export function getApkCtaLabel(cfg: DownloadConfig = APP_DOWNLOAD): string {
 }
 
 export const APK_CTA_LABEL = getApkCtaLabel();
+
+/**
+ * A published release (from releases/latest.json) → the download config the
+ * card renders. Kept here so the gating rules have exactly one implementation.
+ */
+export function downloadConfigFromManifest(m: ReleaseManifest): DownloadConfig {
+  return {
+    url: m.apkUrl,
+    version: `v${m.versionName.replace(/^v/i, "")}`,
+    fileName: fileNameFromUrl(m.apkUrl),
+    sizeBytes: m.sizeBytes,
+    sha256: m.sha256,
+  };
+}
 
 export function formatBytes(n: number): string {
   if (!n || n <= 0) return "—";

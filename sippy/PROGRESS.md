@@ -1,5 +1,7 @@
 # PROGRESS — Sippy
 
+**ANDROID v1.0.0 (round 6) is built and green in CI** — the app lives in `sippy/android/`, releases are served from `releases/`, pipelines are `.github/workflows/{ci,release}.yml`. Full report, release steps and known limitations: the `ANDROID v1.0.0` section at the bottom of this file.
+
 **CURRENT STATE (2026-11-27, post-round-4 merge — start here for new sessions):** `main` is up to date and deployed (PR #6 "Fix CTA labels, improve water orb", Pages deploy green). Shipped so far: glass design system + gallery, CTA contrast fixes, surface-break intro, hero water ring (fill 0→100% loop + counting label, wave/caustics, glass rim depth), no-cache Pages headers. **Nothing pending; all gates green** (tsc 0 · lint 0 err / 3 pre-existing warn · 37/37 tests · build ~4.6 s · `VITE_BASE=/sippy/` subpath build ✓). Standing rules: every completed round → commit + push session branch → PR → merge to main → verify Pages deploy green → report (PLAN.md top note + decision log #12); **no SPEC.md exists** in the repo — work from the round's inline brief + this file; the live site only updates on merge to `main` (workflow) and serves no-cache via `public/_headers`; no headless browser in the sandbox — "computed" values are CSS/PIL-derived, label them as such; keep `PhoneMock`/Showcase and the intro out of scope unless asked.
 
 **STEP 1 (performance, quality tiers, mobile fit) is merged to `main` (`130f9d2`, PR #10) and deployed (Pages run `46000103961` green) — measured before/after table, gates and the list of what still needs human eyes are in the `STEP 1` section at the bottom of this file. STEP 2 (light theme) has started with the light wallpaper (see the `LIGHT WALLPAPER` section at the bottom).**
@@ -503,3 +505,186 @@ All above AA (4.5:1), headline above AAA.
   the real wallpaper + scrim + a font mock, not the live DOM).
 - Whether the pale veil is the right strength for your taste — it is the knob to turn
   (`.backdrop-scrim` light stops); anything lighter starts to eat the `4.5:1` margin.
+
+## ANDROID v1.0.0 — Sippy the app (2026-11-27, round 6)
+
+Status: **built, committed, CI green on this branch. No tag created** — v1.0.0 is
+yours to tag once you have added the signing secrets and seen a green dry run.
+
+### What was built
+
+- **Layout**: `sippy/android/` (Gradle project), `releases/` (`latest.json` seeded;
+  `vX.Y.Z.json` written by CI; APKs never in git), `.github/workflows/ci.yml`,
+  `.github/workflows/release.yml`.
+- **Identity**: applicationId `com.cooreo.sippy` (debug `.debug`), minSdk 26,
+  compileSdk/targetSdk 37, `versionCode`/`versionName` from
+  `sippy/android/version.properties` (`1` / `1.0.0`), `android:exported` on every
+  component, FileProvider authority `"${applicationId}.fileprovider"`, no
+  `sharedUserId`, no custom permissions yet (they will be `applicationId`-prefixed).
+- **Today**: glass ring (backdrop lens/blur/frost), counting millilitre readout, greeting,
+  streak/best/sip counters, quick add 250/330/500, drink sheet with the 30-drink table
+  (+ custom amount), friends row with moods, today's entries with per-entry delete and
+  "undo last".
+- **Streaks**: day-based, goal-based, 3/7/14/30/100 milestones, best-streak memory.
+  A day is still open until midnight, so yesterday's run is not "broken" at 00:01.
+- **Friends**: Dippy + plant + cat, up to 5 slots, rename, four moods
+  (happy/dancing/sleepy/sad), growth by streak milestone **via scale only** — no new art.
+- **Reminders**: off by default, ≤4 a day, WorkManager periodic per slot, notification
+  permission requested only when the user turns reminders on, skipped when the goal is
+  already met.
+- **Settings**: theme (system/light/dark), accent (Sippy Blue + 3), goal 750–3000 ml,
+  reminders, Reduce effects, Check for updates, About (7 taps → developer options).
+- **Developer options**: mood triggers, ring 0/50/100 %/live, replay celebration, last
+  20 updater log lines, backup file names, reset all data.
+- **Glass**: one fixed backdrop captured once (`SippyBackdropHost`), every surface samples
+  it with `Modifier.drawBackdrop` from Kyant0 `backdrop` 2.0.1 — tiers are
+  lens (API 33+), blur (31–32), static frost (<31 or Reduce effects). No Haze, no second
+  backdrop layer, no nested backdrop-filter inside a card.
+- **Animations**: ring spring + counting number, celebration burst, friend mood/growth —
+  all declarative, all collapsed when the system animation scale is 0 or Reduce effects is
+  on. Splash is static and is replaced as soon as storage is ready.
+- **Data**: DataStore Preferences + kotlinx.serialization behind `SippyRepository`; one
+  JSON document with `schemaVersion`; corrupt or unknown-version documents are copied to
+  `files/backups/` and replaced by a clean state (never a crash), unknown JSON keys are
+  ignored, every field has a default.
+- **Updater**: reads `releases/latest.json` over HTTPS (8 s timeouts, 24 h auto-check,
+  3-day snooze), requires a strictly higher versionCode, HTTPS URL under the releases
+  prefix, matching SHA-256, matching package name and **matching signing certificate**;
+  a certificate mismatch shows the one-time uninstall + data-loss message and installs
+  nothing. Android's own installer always asks the user to confirm.
+
+### Toolchain — what the first real build corrected
+
+Pins came from `shared/docs/api-notes.md` §5 but three of the ⚠ guesses did not exist.
+Verified against `dl.google.com` / Maven Central on 2026-11-27 and corrected in
+`gradle/libs.versions.toml` (full table in `sippy/android/BUILD.md`):
+
+| Was (guess) | Now (verified) |
+|---|---|
+| material3 1.9.0 | material3 **1.5.0** |
+| datastore-preferences 1.1.7 | **1.3.0** |
+| work-runtime-ktx 2.10.5 | **2.12.0** |
+| lifecycle 2.11.0 | **2.11.1** |
+
+Also learned the hard way: **AGP 9 has built-in Kotlin** — applying
+`org.jetbrains.kotlin.android` makes AGP refuse to configure the project, so that plugin is
+gone and only the Compose and serialization compiler plugins are applied (Kotlin 2.4.21).
+
+### CI coverage
+
+`ci.yml` (every push and PR, no secrets, uploads nothing):
+- job **JVM unit tests** → `./gradlew testDebugUnitTest`
+- job **Assemble debug APK** → `./gradlew assembleDebug`
+
+Tests are pure JVM (no device, no emulator): goal maths and clamp, hydration factors
+vs. the drink table, streaks across day boundaries/skips (including "today is still open"),
+manifest parsing with unknown fields, version comparison, URL prefix policy, check rate
+limit and snooze, corrupt/unknown-schema recovery, SHA-256 matching, mood rules, and a
+BuildConfig smoke test.
+
+`release.yml` (tags `v*`, plus `workflow_dispatch` as a no-publish dry run):
+- **Build signed APK** — tag must equal `v` + versionName; versionCode must be strictly
+  higher than `releases/latest.json`; unit tests; keystore decoded from
+  `ANDROID_KEYSTORE_BASE64` into `$RUNNER_TEMP` with a message naming any missing secret;
+  `assembleRelease`; then `aapt2 dump badging` proves package/versionCode/versionName and
+  `apksigner verify --print-certs` proves the certificate SHA-256 matches
+  `sippy/android/signing/expected-cert-sha256.txt`; APK renamed `sippy-<version>.apk`,
+  SHA-256 + size emitted as outputs.
+- **Emulator smoke test** — KVM setup, API 34 x86_64 google_apis, install, grant
+  POST_NOTIFICATIONS, `monkey` launch, 20 s wait, fails on missing pid or
+  `Process: com.cooreo.sippy` in `logcat -b crash`, screenshot + crash buffers uploaded
+  always; when a previous release exists it installs that first, then `adb install -r` and
+  relaunches (upgrade-until-uninstall).
+- **Publish release** (tags only) — `gh release create` with the APK, download URL verified
+  with a 200 check, then `releases/vX.Y.Z.json` + `releases/latest.json` committed to
+  `main` as `github-actions[bot]` (`release: vX.Y.Z [skip ci]`, rebase before push, hard
+  fail if the push fails).
+
+### Release steps (yours to run)
+
+1. One-time: create the keystore, add the four secrets, fill
+   `sippy/android/signing/expected-cert-sha256.txt` — exact commands in
+   `sippy/android/BUILD.md` §"One-time repository setup".
+2. Merge this branch to `main`, then run **Android release** with *Run workflow*
+   (`workflow_dispatch`) on `main`: it builds, verifies and smoke-tests, and publishes
+   nothing. This is the dry run.
+3. If it is green: bump `version.properties` if needed, then `git tag v1.0.0 && git push
+   origin v1.0.0`. The tag must match versionName or the build job stops at the first guard.
+
+### Known limitations
+
+- R8 / resource shrinking are **off** for v1 (deliberate; they come back with their own
+  tests). The APK is therefore larger than it could be.
+- No Room/KSP — DataStore + JSON only. Data volume is tiny; the repository interface means
+  Room can be added later without a migration.
+- APK only: no AAB, no Play Store, no analytics, no accounts.
+- Android always asks the user to confirm an install, and the first install from Sippy may
+  need "allow installs from this source".
+- Frosted tier (API < 31) and Reduce effects drop the lens and blur — glass becomes tint +
+  rim. That is intended, and is the fallback the SPEC asks for.
+- A signature change in a future keystore requires one uninstall (data loss), which the
+  updater explains up front. The certificate check in CI exists to make that never happen
+  by accident.
+- 30 drinks with hydration factors informed by literature but **not individually
+  verified against primary sources**; they are estimates and are labelled as such in the
+  code (`DrinkTable`).
+- Mood art reuses existing assets: "sad" is the sleepy droplet desaturated, and the plant
+  and cat have two states each. No new mascot art in this round.
+
+### Unverified — needs your eyes (no device or emulator in this sandbox)
+
+- The release workflow has not executed yet: it needs the signing secrets, which only you
+  can add, and its first real run is the dry run in step 2 above. Its shell blocks were
+  checked with `bash -n`, its YAML parses, and every action is pinned to a commit SHA that
+  exists (verified through the GitHub API).
+- The look of the lens tier on a real device (refraction strength, rim highlight) — the
+  numbers are taste, the structure is what the brief asked for.
+- TalkBack reading order and the 48dp targets were built in but not audited on hardware.
+- Reminder timing across DST changes (daily periodic work, initial delay to the first slot).
+
+### Next steps
+
+1. Your dry run → tag → first public APK.
+2. Turn R8 + `shrinkResources` back on once the app has a crash-free release behind it.
+3. Consider per-day hydration factors review with a real nutrition source before any
+   marketing claim about accuracy.
+
+## DOWNLOAD BUTTON — live from `releases/latest.json` (2026-11-27)
+
+The download card is no longer gated by a hand-edited constant. It now reads the
+same manifest the app's updater reads and enables itself the moment a signed
+release exists.
+
+- **`src/lib/release.ts`** — `parseReleaseManifest` accepts a manifest only when it
+  is a real, verifiable APK: `versionCode > 0`, non-empty `versionName`, an https
+  `apkUrl` under `https://github.com/Cooreo/SippyDippy/releases/download/`,
+  a 64-char hex `sha256` and `sizeBytes > 0`. Anything else → `null`, and the card
+  stays honestly disabled (the seeded `versionCode: 0` placeholder is rejected).
+  `useRelease()` fetches once per page load, 5 s abort, and tries two sources:
+  the same-origin `/releases/latest.json` staged by the deploy workflow, then
+  `raw.githubusercontent.com/Cooreo/SippyDippy/main/releases/latest.json`.
+- **`src/sections/Download.tsx`** — three states: checking (`.download-disabled`
+  with "Checking for the latest signed build…"), not published ("No signed build
+  is published yet…"), and live (`Download sippy-1.0.0.apk (9 MB)` linking to the
+  release asset, with the full SHA-256 under the heading). Version, file name,
+  size and hash all come from the manifest — nothing is typed twice.
+- **`src/lib/download.ts`** — `downloadConfigFromManifest()` maps a published
+  manifest onto the existing `getDownloadState()` gate, so there is still exactly
+  one place that decides "enabled".
+- **`deploy.yml`** — new `Stage release manifest` step copies `releases/latest.json`
+  into `sippy/site/public/releases/` before the build (the staged path is
+  gitignored).
+- **`release.yml`** — after publishing and pushing the manifest, the publish job
+  asks for a website deploy (`gh workflow run deploy.yml`), because a push made
+  with `GITHUB_TOKEN` does not trigger other workflows. Best effort: if that call
+  fails, the raw-manifest fallback still shows the new version.
+
+Gates on this branch: `tsc --noEmit` 0 · `vitest run` **14 files / 89 tests**
+(14 new release-manifest tests) · `eslint .` 0 errors / 11 pre-existing warnings ·
+`VITE_BASE=/SippyDippy/ vite build` clean. Verified locally: with a sample
+manifest staged, `dist/releases/latest.json` is emitted and served `200`, and the
+bundle contains both the staged path and the releases prefix.
+
+**Still honest on purpose:** with no release published yet, the card shows
+"No signed build is published yet". It turns into the real download button with
+the first `v*` tag — no site change needed.

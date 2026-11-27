@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DataStore holds the whole v1 state; back it up (friends, streak, log). -->
+<full-backup-content>
+    <include domain="file" path="datastore/" />
+</full-backup-content>

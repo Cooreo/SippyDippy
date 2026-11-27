@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose owns the colour system; the platform theme only supplies the
+         window background, so the first frame matches the app instead of a
+         white flash. -->
+    <style name="Theme.Sippy" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/sippy_window_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>
