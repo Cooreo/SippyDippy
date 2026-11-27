@@ -278,3 +278,39 @@ All ≥ 7.5:1 with the halo — AA/AAA for large and normal text in both themes.
 - viewport 2560px → 520 × 520 px (visual column ≈ 532 px ✓ — cap chosen so it never overflows the grid column)
 
 **Gates:** tsc exit 0; lint 0 errors / 3 pre-existing warnings; 37/37 tests; build 4.79 s; subpath build (`VITE_BASE=/sippy/`) 4.79 s.
+
+## CTA labels invisible + water orb depth (round-4 task)
+
+**SPEC.md note:** still no `SPEC.md` in the repo — implemented from the task's 2-point spec + this file.
+
+**Task 1 — CTA labels. Root cause:** Glin's `ShimmerButton` wraps ALL children in `<span class="relative z-10">` (`src/vendor/glin/shimmer-button.js`), and my hover-shimmer rule was `.cta > span:not(.cta-label):not(.cta-arrow):not(.cta-ripple){opacity:0}` — which matched that wrapper, so the label + arrow sat at opacity 0 at rest (text was in the DOM; only the hover transition made them briefly visible). The "white on light-nav" contrast problem was real too: white on the old `rgba(91,155,255,.5)/rgba(46,124,246,.38)` gradient over the 52%-white light nav glass = **2.70:1** (fail).
+
+**Fix (nothing else):**
+- `index.css` `.cta` — shimmer selector → `.cta > span.absolute` in both the base and hover rules (the shimmer element is the only direct-child absolute span; Glin's `relative z-10` wrapper is never touched).
+- `.cta--primary` gradient alpha raised `.5/.38` → **`.78/.88`** (`#2563eb`→`#1d4ed8` core), white label.
+- `.cta--ghost` label → white in both themes (the hero scrim is dark in both; dark text on it in light mode = 2.87:1, white = 6.41:1), plus `:root:not(.dark) .gnav-cta .cta--ghost { color:#0c1424 }` — the nav ghost sits on the light glass where white fails (2.12:1), dark label there = 8.69:1 (dark-theme nav glass is dark, so white = 10.60:1 and needs no rule).
+
+**Label contrast, computed WCAG 2.x (page-under measured from the real hero backdrop; nav glass = 8%/52% white tint):**
+
+| label | context | dark: old → new | light: old → new |
+|---|---|---|---|
+| primary (#fff) | nav (worst, 52% white glass) | 6.89 → **6.76:1** | 2.70 ✗ → **5.08:1** |
+| primary (#fff) | hero | 7.98 → **7.03:1** | 5.16 → **6.23:1** |
+| ghost (was `var(--text-1)`; now #fff, dark nav-light override) | nav | 9.89 → **10.60:1** | 8.69 → **8.69:1** |
+| ghost (was `var(--text-1)`; now #fff) | hero | 12.65 → **13.55:1** | 2.87 ✗ → **6.41:1** |
+
+All ≥ 4.5:1 in both themes; no viewport-dependent values involved (colours are fixed, backgrounds are the measured page/glass stacks), so the 360 px and 1280 px before/after rows are identical at both sizes.
+
+**Task 2 — water orb "flat". What changed (nothing else):**
+- **Straight lighter band → curved gradient wave:** the old surface was a 16%-high band with one flat fill, so the top of the fill read as a hard straight edge with a lighter strip. Now the wave SVG spans the full water height (`viewBox 0 0 1200 1000`, surface at y=80) and is painted with a `userSpaceOnUse` vertical `linearGradient` whose stops exactly match the `.hr-fill` CSS gradient — the fill is one continuous gradient from surface to bottom; the drifting top edge is the only horizontal feature.
+- **Glass depth:** the flat 1.5px inset ring is gone. `.hr-disc` now has a soft radial inner highlight (top-left 32%/26%), an inner shadow along the bottom (`inset 0 -18px 40px rgba(2,8,20,.32)`), and a new `::after` **1px conic-gradient rim** (bright top-left → fades to the sides → slight bottom recovery) cut by a mask-composite ring.
+- **Caustic shimmer inside the water:** `.hr-caustic` (clipped, `mix-blend-mode: screen`) with two drifting radial blobs (`screen` blend, 9 s / 13 s loops) — transform + opacity only, no paint/blur/filter.
+- Loop + counting %: **untouched** (same rAF cycle: 4 s fill + 0.7 s shimmer + 1.5 s hold; `fillRef`/`numRef`/`doneRef` unchanged). Reduced motion: component still forces static 100% with no rAF, and the blanket RM rule (0.001ms durations) leaves the wave un-animated — static fill, no wave, no caustics.
+- Label halo (`::before`) unchanged; re-verified with the new caustics as worst case (screen-composited blob core over the water, halo over that): dark 14.06 (glass) / 8.25 (water) / **6.22 (water+caustic worst)**; light 7.57 / 8.53 / **10.00** — all ≥ 6:1.
+
+**Bounding box (unchanged — `--hr-size: clamp(260px, 34vw, 520px)`, the `.hr` element = the disc):**
+- viewport 360px → **260 × 260 px** (column available 320 px ✓)
+- viewport 1280px → **435.2 × 435.2 px** (visual column ≈ 538 px ✓)
+- viewport 2560px → **520 × 520 px** (visual column ≈ 532 px ✓)
+
+**Gates (real output, this pass):** tsc exit 0 · lint 0 errors / 3 pre-existing warnings · vitest 37/37 (7 files) · build 4.80 s · subpath build (`VITE_BASE=/sippy/`) 4.82 s.
