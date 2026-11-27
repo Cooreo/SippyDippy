@@ -843,6 +843,10 @@ said 1.0.0. So the fix is the normal ship ritual, not a site edit.
   `sippy-1.1.0.apk` (which is the real asset naming the pipeline uses). The URL is
   still blank, so the card stays disabled until a manifest exists — the fallback
   is a placeholder, never a claim.
+- `SmokeTest` used to assert `VERSION_NAME.startsWith("1.0.0")`, so the bump
+  turned CI red on the release commit (run `46051039666`). The assertion now
+  checks the semver *shape* the debug suffix allows, so a version bump can never
+  fail the build again; the bump itself was correct.
 - Verified in this sandbox before pushing: site `tsc --noEmit` clean,
   `vitest run` **14 files / 89 tests** pass. The Android side is unchanged apart
   from the version file, so the green runs on `2ff89f6`, `d9643a3` and `74a86b1`
