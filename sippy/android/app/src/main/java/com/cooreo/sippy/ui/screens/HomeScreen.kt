@@ -2,6 +2,8 @@ package com.cooreo.sippy.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -29,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,6 +67,7 @@ import com.cooreo.sippy.ui.components.DrinkIcon
 import com.cooreo.sippy.ui.components.FriendAvatar
 import com.cooreo.sippy.ui.components.ShareBar
 import com.cooreo.sippy.ui.components.WaterOrb
+import com.cooreo.sippy.ui.system.rememberHaptics
 import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.glass.GlassSurface
@@ -115,6 +119,16 @@ fun HomeScreen(
     val host = state.friends.firstOrNull { it.kind == FriendKind.DIPPY } ?: state.friends.firstOrNull()
     val hostMood = host?.let { moodFor(it, state, goalMet, hasEntries) } ?: Mood.SLEEPY
     var bubble by remember { mutableStateOf(false) }
+    // B5: a goal crossing makes the pinned friends dance for a moment, and the
+    // orb's own burst is what asks for it.
+    val haptics = rememberHaptics()
+    var dancing by remember { mutableStateOf(false) }
+    LaunchedEffect(dancing) {
+        if (dancing) {
+            delay(1600)
+            dancing = false
+        }
+    }
     LaunchedEffect(bubble) {
         if (bubble) {
             delay(4200)
@@ -159,13 +173,23 @@ fun HomeScreen(
                 hostName = host?.name ?: "Dippy",
                 hostMood = hostMood,
                 bubble = bubble,
+                dancing = dancing,
                 onOrbTap = { bubble = !bubble },
+                onGoalReached = {
+                    haptics.success()
+                    dancing = true
+                },
                 onFriendTap = onFriendTap,
             )
         }
 
         item(key = "pills") {
-            QuickPills(onQuickAdd = onQuickAdd)
+            QuickPills(
+                onQuickAdd = { ml ->
+                    haptics.thud()
+                    onQuickAdd(ml)
+                },
+            )
         }
 
         item(key = "today") {
@@ -278,7 +302,9 @@ private fun OrbBlock(
     hostName: String,
     hostMood: Mood,
     bubble: Boolean,
+    dancing: Boolean,
     onOrbTap: () -> Unit,
+    onGoalReached: () -> Unit,
     onFriendTap: (Friend) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -298,6 +324,7 @@ private fun OrbBlock(
                     fraction = fraction,
                     animate = animate,
                     diameter = diameter,
+                    onGoalReached = onGoalReached,
                     modifier = Modifier
                         .clip(RoundedCornerShape(Dimens.pill))
                         .clickable(onClick = onOrbTap)
@@ -323,6 +350,7 @@ private fun OrbBlock(
                         goalMetToday = goalMet,
                         hasEntriesToday = hasEntries,
                         animate = animate,
+                        dancing = dancing,
                         onTap = onFriendTap,
                     )
                     PinnedChip(
@@ -331,6 +359,7 @@ private fun OrbBlock(
                         goalMetToday = goalMet,
                         hasEntriesToday = hasEntries,
                         animate = animate,
+                        dancing = dancing,
                         onTap = onFriendTap,
                     )
                 }
@@ -359,6 +388,7 @@ private fun PinnedChip(
     goalMetToday: Boolean,
     hasEntriesToday: Boolean,
     animate: Boolean,
+    dancing: Boolean,
     onTap: (Friend) -> Unit,
 ) {
     val c = LocalSippyColors.current
@@ -381,6 +411,12 @@ private fun PinnedChip(
     }
     val mood = moodFor(friend, state, goalMetToday, hasEntriesToday)
     val worn = ShopRules.worn(state.equipped, state.equippedOutfits, state.ownedItems, friend.id)
+    // B5: the goal dance — a scale and a tilt, transform only.
+    val dance by animateFloatAsState(
+        targetValue = if (dancing && animate) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.38f, stiffness = 340f),
+        label = "dance",
+    )
 
     Column(
         modifier = Modifier
@@ -398,7 +434,13 @@ private fun PinnedChip(
             animate = animate,
             hat = worn.firstOrNull { it.slot == ItemSlot.HAT },
             outfit = worn.firstOrNull { it.slot == ItemSlot.OUTFIT },
-            modifier = Modifier.graphicsLayer { translationY = phase * 4.dp.toPx() },
+            modifier = Modifier.graphicsLayer {
+                translationY = phase * 4.dp.toPx() - dance * 6.dp.toPx()
+                val scale = 1f + 0.16f * dance
+                scaleX = scale
+                scaleY = scale
+                rotationZ = dance * 9f
+            },
         )
         Text(
             text = friend.name,
