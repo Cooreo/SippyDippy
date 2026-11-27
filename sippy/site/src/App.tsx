@@ -1,6 +1,11 @@
 import { lazy, Suspense, useEffect } from "react";
 import { MotionConfig, useReducedMotion } from "motion/react";
-import { debugOutlineRequested, enableDebugOutline } from "./lib/debug";
+import {
+  debugOutlineRequested,
+  debugPerfRequested,
+  enableDebugOutline,
+  enableDebugPerfOverlay,
+} from "./lib/debug";
 import { useRoute } from "./lib/router";
 import { useEffects } from "./lib/effects";
 import { Backdrop } from "./components/Backdrop";
@@ -30,6 +35,12 @@ export function App() {
   useEffect(() => {
     if (!debugOutlineRequested()) return;
     return enableDebugOutline();
+  }, []);
+
+  // ?debug=perf — rolling 2s FPS, 5s worst frame, >50ms long tasks, active tier
+  useEffect(() => {
+    if (!debugPerfRequested()) return;
+    return enableDebugPerfOverlay();
   }, []);
 
   return (
