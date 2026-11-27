@@ -267,6 +267,8 @@ class SippyController(
 
     fun setReduceEffects(reduce: Boolean) = update { it.copy(reduceEffects = reduce) }
 
+    fun setHaptics(enabled: Boolean) = update { it.copy(hapticsEnabled = enabled) }
+
     fun setDeveloperUnlocked(unlocked: Boolean) = update { it.copy(developerUnlocked = unlocked) }
 
     fun setRemindersEnabled(enabled: Boolean) = update { it.copy(remindersEnabled = enabled) }

@@ -69,6 +69,7 @@ import com.cooreo.sippy.model.ThemeMode
 import com.cooreo.sippy.ui.components.Celebration
 import com.cooreo.sippy.ui.components.FloatingNav
 import com.cooreo.sippy.ui.system.LocalMotionAllowed
+import com.cooreo.sippy.ui.system.rememberHaptics
 import com.cooreo.sippy.ui.components.NavBarHeight
 import com.cooreo.sippy.ui.components.NavTarget
 import com.cooreo.sippy.ui.glass.BackdropTints
@@ -239,6 +240,7 @@ private fun AppScaffold(
     diagnostics: GlassDiagnostics,
 ) {
     var tab by remember { mutableStateOf(Tab.HOME) }
+    val haptics = rememberHaptics(enabled = state.settings.hapticsEnabled)
     // B2: each tab tints the backdrop; the host crossfades on the change.
     val backdropTint = LocalBackdropTint.current
     LaunchedEffect(tab) {
@@ -408,8 +410,10 @@ private fun AppScaffold(
 
         FloatingNav(
             current = tab.navTarget,
-            onSelect = {
-                tab = it.toTab()
+            onSelect = { target ->
+                // B10: a tick on every real tab change, never on a re-tap.
+                if (target.toTab() != tab) haptics.tick()
+                tab = target.toTab()
                 showHistory = false
                 showShop = false
             },

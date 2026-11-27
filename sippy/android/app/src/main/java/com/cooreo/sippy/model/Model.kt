@@ -53,6 +53,8 @@ data class Settings(
     /** "HH:mm", 24h, at most [MAX_REMINDERS] entries. */
     val reminderTimes: List<String> = listOf("09:00", "13:00", "17:00", "21:00"),
     val reduceEffects: Boolean = false,
+    /** Round 8, B10: the three haptics, on by default. */
+    val hapticsEnabled: Boolean = true,
     val developerUnlocked: Boolean = false,
     /** Optional; when blank the Home greeting says "Good morning" alone. */
     val displayName: String = "",

@@ -25,6 +25,7 @@ import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassDiagnostics
 import com.cooreo.sippy.ui.glass.LocalBackdrop
 import com.cooreo.sippy.ui.glass.LocalGlassTier
+import com.cooreo.sippy.ui.system.rememberFrameStats
 import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.state.SippyController
 import com.cooreo.sippy.ui.theme.LocalSippyColors
@@ -157,6 +158,31 @@ fun DeveloperScreen(
                     Text(
                         text = "Backups: " + controller.backupFiles().take(3).joinToString(", ")
                             .ifEmpty { "none" },
+                        color = c.text3,
+                        fontSize = 11.sp,
+                    )
+                }
+            }
+            item {
+                // B10: real display cadence, measured only while this screen is up.
+                val frames = rememberFrameStats(enabled = true)
+                GlassCard {
+                    Text(
+                        "Frame timing",
+                        color = c.text1,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    DevRow("Frames per second", frames.fps.toString())
+                    DevRow(
+                        "Worst frame (last 1s)",
+                        if (frames.worstFrameMs <= 0f) "—" else "${frames.worstFrameMs.toInt()} ms",
+                    )
+                    DevRow("Frames counted", frames.frames.toString())
+                    Text(
+                        text = "Measured with the Choreographer while this screen is open. " +
+                            "16.7 ms is a 60 Hz budget, 8.3 ms a 120 Hz one.",
                         color = c.text3,
                         fontSize = 11.sp,
                     )

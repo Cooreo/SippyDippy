@@ -268,6 +268,26 @@ fun SettingsScreen(
 
         item {
             SettingsCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        SectionTitle("Haptics")
+                        Text(
+                            text = "A tick on tab changes, a thud when you log, and a " +
+                                "two-beat pattern when you reach the goal.",
+                            color = c.text3,
+                            fontSize = 11.sp,
+                        )
+                    }
+                    Switch(
+                        checked = state.settings.hapticsEnabled,
+                        onCheckedChange = { controller.setHaptics(it) },
+                    )
+                }
+            }
+        }
+
+        item {
+            SettingsCard {
                 SectionTitle("Updates")
                 Text(
                     text = "Sippy installs updates itself from GitHub Releases and checks the " +

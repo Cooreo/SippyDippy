@@ -121,7 +121,7 @@ fun HomeScreen(
     var bubble by remember { mutableStateOf(false) }
     // B5: a goal crossing makes the pinned friends dance for a moment, and the
     // orb's own burst is what asks for it.
-    val haptics = rememberHaptics()
+    val haptics = rememberHaptics(enabled = state.settings.hapticsEnabled)
     var dancing by remember { mutableStateOf(false) }
     LaunchedEffect(dancing) {
         if (dancing) {
