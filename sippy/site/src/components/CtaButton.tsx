@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { ShimmerButton } from "@glinui/ui";
-import { getDownloadState } from "../lib/download";
+import { APK_CTA_LABEL, APK_CTA_LABELS, getDownloadState } from "../lib/download";
 import { focusHeading, flashRim, scrollToId } from "../lib/scroll";
 
 interface CtaButtonProps {
@@ -15,14 +15,11 @@ interface CtaButtonProps {
   focusId?: string;
   /** Element id whose rim flashes once (~1.2 s) on landing. */
   flashId?: string;
-  /** Applies the APK label rule: "Get the APK" only when a real APK URL +
-   *  size + SHA-256 exist (getDownloadState), otherwise "See install steps"
-   *  so nothing promises a download that doesn't exist yet. */
+  /** Applies the APK label rule from APK_CTA_LABEL: "See install steps"
+   *  until a real APK URL + size + SHA-256 exist, then "Get the APK". */
   apk?: boolean;
   /** Explicit label (non-apk CTAs). */
   label?: ReactNode;
-  /** Show the down-arrow that nudges on hover. */
-  arrow?: boolean;
   className?: string;
   onClick?: () => void;
 }
@@ -34,15 +31,16 @@ interface Ripple {
 }
 
 /**
- * CtaButton — the ONE shared CTA (nav + hero), built on Glin ShimmerButton
- * (root-cause R2-2).
+ * CtaButton — the ONE shared CTA (nav + hero), built on Glin ShimmerButton.
  *
+ *  - single-line label (white-space: nowrap), content-sized pill with token
+ *    padding (no fixed Glin height, no down-arrow)
  *  - hover (real hover devices only, via @media (hover:hover)): pointer,
- *    2px lift, brighter rim (opacity overlay), shimmer sweep, arrow +3px
+ *    2px lift, brighter rim, shimmer sweep
  *  - press: scale 0.97 (springy curve) + a ring ripple from the pointer
- *    position (same ripple shape as the intro)
+ *    position
  *  - keyboard: native <button> → Enter and Space both fire click; visible
- *    focus ring (global :focus-visible)
+ *    focus ring (:focus-visible)
  *  - click: single scroll path (Lenis owner) with nav offset, focus the
  *    landing heading, one 1.2 s rim flash on the card
  *  - everything animates transform/opacity only
@@ -55,7 +53,6 @@ export function CtaButton({
   flashId,
   apk = false,
   label,
-  arrow = false,
   className,
   onClick,
 }: CtaButtonProps) {
@@ -64,11 +61,7 @@ export function CtaButton({
   const [ripples, setRipples] = useState<Ripple[]>([]);
 
   const d = apk ? getDownloadState() : null;
-  const text = apk
-    ? d && d.enabled
-      ? "Get the APK"
-      : "See install steps"
-    : (label ?? "Get the APK");
+  const text = apk ? APK_CTA_LABEL : (label ?? APK_CTA_LABELS.ready);
 
   const spawnRipple = (e: PointerEvent<HTMLButtonElement>) => {
     const el = btnRef.current;
@@ -86,7 +79,7 @@ export function CtaButton({
 
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     // e.detail === 0 → keyboard activation (Enter/Space): ripple from centre
-    if (e.detail === 0 || e.clientX === 0 && e.clientY === 0) {
+    if (e.detail === 0 || (e.clientX === 0 && e.clientY === 0)) {
       const el = btnRef.current;
       if (el) {
         const r = el.getBoundingClientRect();
@@ -126,22 +119,6 @@ export function CtaButton({
       onClick={handleClick}
     >
       <span className="cta-label">{text}</span>
-      {arrow && (
-        <svg
-          className="cta-arrow"
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M12 4v16M5 13l7 7 7-7" />
-        </svg>
-      )}
       {ripples.map((r) => (
         <span
           key={r.id}

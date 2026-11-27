@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { LiquidSwitch } from "fluidkit";
 import { useTheme } from "../../lib/theme";
+import { APK_CTA_LABEL } from "../../lib/download";
 import { IconDroplet, IconMoon, IconSun } from "../Icons";
 
 export interface GlassNavSection {
@@ -129,9 +130,9 @@ export function GlassNav({
           <IconMoon width={16} height={16} />
         </span>
         {cta ?? (
-          // APK label rule: never promise a download that doesn't exist
+          // APK label rule: single constant from lib/download
           <button type="button" className="pill-cta pressable">
-            See install steps
+            {APK_CTA_LABEL}
           </button>
         )}
       </div>

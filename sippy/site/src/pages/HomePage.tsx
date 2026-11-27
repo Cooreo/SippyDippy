@@ -91,7 +91,7 @@ export function HomePage() {
           <GlassNav
             sections={NAV_SECTIONS}
             enterDelay={navDelay}
-            cta={<CtaButton apk size="sm" arrow />}
+            cta={<CtaButton apk size="sm" />}
           />
         </div>
       </header>

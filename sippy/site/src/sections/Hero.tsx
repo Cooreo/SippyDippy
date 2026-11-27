@@ -96,7 +96,7 @@ export function Hero({
             transition={{ delay: wordsFast ? 0.12 : 0.75, duration: wordDur }}
           >
             {/* primary CTA — strongest element; label follows the APK rule */}
-            <CtaButton apk size="lg" arrow />
+            <CtaButton apk size="lg" />
             {/* ghost glass button, same hover behaviour */}
             <CtaButton
               variant="ghost"

@@ -17,6 +17,16 @@ export const APP_DOWNLOAD = {
   sha256: "",
 } as const;
 
+/**
+ * Single source of truth for the APK CTA label across nav and hero:
+ * "See install steps" until the real APK URL + size + SHA-256 are set,
+ * then "Get the APK".
+ */
+export const APK_CTA_LABELS = {
+  pending: "See install steps",
+  ready: "Get the APK",
+} as const;
+
 export interface DownloadConfig {
   url: string;
   version: string;
@@ -49,6 +59,14 @@ export function getDownloadState(cfg: DownloadConfig = APP_DOWNLOAD): DownloadSt
     sha256: cfg.sha256,
   };
 }
+
+export function getApkCtaLabel(cfg: DownloadConfig = APP_DOWNLOAD): string {
+  return getDownloadState(cfg).enabled
+    ? APK_CTA_LABELS.ready
+    : APK_CTA_LABELS.pending;
+}
+
+export const APK_CTA_LABEL = getApkCtaLabel();
 
 export function formatBytes(n: number): string {
   if (!n || n <= 0) return "—";

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, getDownloadState, type DownloadConfig } from "./download";
+import {
+  APK_CTA_LABELS,
+  formatBytes,
+  getApkCtaLabel,
+  getDownloadState,
+  type DownloadConfig,
+} from "./download";
 
 const blank: DownloadConfig = {
   url: "",
@@ -36,6 +42,26 @@ describe("getDownloadState — honest gating", () => {
     });
     expect(s.sizeLabel).toBe("11 MB");
     expect(s.sha256Short).toBe("0123456789ab");
+  });
+  it("resolves the shared APK CTA label from one constant", () => {
+    expect(getApkCtaLabel(blank)).toBe(APK_CTA_LABELS.pending);
+    expect(getApkCtaLabel(blank)).toBe("See install steps");
+    expect(
+      getApkCtaLabel({
+        ...blank,
+        url: "https://example.com/a.apk",
+        sizeBytes: 1024,
+        sha256: "abc123",
+      }),
+    ).toBe(APK_CTA_LABELS.ready);
+    expect(
+      getApkCtaLabel({
+        ...blank,
+        url: "https://example.com/a.apk",
+        sizeBytes: 1024,
+        sha256: "abc123",
+      }),
+    ).toBe("Get the APK");
   });
 });
 

@@ -357,6 +357,7 @@ section[id] {
   display: inline-flex;
   align-items: center;
   gap: 9px;
+  flex: none;
   font-family: var(--ff-display);
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -376,6 +377,7 @@ section[id] {
   font-weight: 500;
   padding: 9px 14px;
   border-radius: var(--r-pill);
+  white-space: nowrap;
   transition:
     color var(--t-quick) ease,
     background var(--t-quick) ease;
@@ -388,6 +390,7 @@ section[id] {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: none;
   margin-left: auto;
 }
 .gnav-theme {
@@ -2021,29 +2024,53 @@ section[id] {
   color: var(--text-1);
 }
 
-/* — Shared CTA (round 2, R2-2). Hover/press via transform + opacity only;
-   hover styles gated to real hover devices so touch never sticks. — */
+/* — Shared CTA (round 2/3). Content-sized pill with token padding (overrides
+   Glin fixed h-8/h-12), single-line label, no arrow. Hover/press via
+   transform + opacity only; hover gated to real hover devices. — */
 .cta {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  height: auto;
+  width: max-content;
+  max-width: 100%;
+  flex: none;
+  white-space: nowrap;
+  font-family: var(--ff-body);
+  font-weight: 600;
   border-radius: var(--r-pill);
   cursor: pointer;
   transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   -webkit-tap-highlight-color: transparent;
 }
-.cta--lg {
-  font-size: 15.5px;
-}
+/* token padding (8 · 12 · 16 · 24 px from tokens.md):
+   sm = 1px + 8px + 16px + 8px + 1px = 34px single-line height
+   lg = 1px + 12px + 20px + 12px + 1px = 46px single-line height */
 .cta--sm {
+  padding: 8px 16px;
   font-size: 13px;
+  line-height: 16px;
 }
-/* hero/nav primary: deep Sippy Blue, white label. The gradient alpha is
-   high ON PURPOSE: the button must clear 4.5:1 in both themes on every
-   surface it can sit on — worst case is the LIGHT nav pill, whose glass
-   is 52% white over the hero (measured label contrast: 2.8:1 at the old
-   0.5/0.38 alpha, 13.9:1 now). Still translucent (glass sheen kept). */
+.cta--lg {
+  padding: 12px 24px;
+  font-size: 15px;
+  line-height: 20px;
+}
+/* Glin wraps children inside span.relative.z-10 — make that inner wrapper
+   inline-flex + nowrap so content never wraps onto multiple lines. */
+.cta > span.relative {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.cta-label {
+  white-space: nowrap;
+}
+/* hero/nav primary: deep Sippy Blue, white label. Dark-mode recipe kept
+   unchanged (≥5.99:1 everywhere); in light mode the glass tint behind the
+   white label is darkened so every stop clears ≥4.5:1 even when the hero
+   scrim fades to 0 on mobile. */
 .cta--primary {
   background: linear-gradient(
     180deg,
@@ -2056,19 +2083,26 @@ section[id] {
     inset 0 1px 0 rgba(255, 255, 255, 0.4),
     0 2px 16px rgba(29, 95, 224, 0.35);
 }
-/* ghost: transparent glass, rim only ("How it works"). Default label =
-   white in both themes — the HERO scrim is dark in both (light theme
-   measured bg (80,96,118): dark text = 2.87:1, white = 6.41:1). The NAV
-   ghost sits on the 52%-white light glass, where white fails (2.12:1) →
-   dark label there, only in light mode (rule below). */
+:root:not(.dark) .cta--primary {
+  background: linear-gradient(
+    180deg,
+    rgba(25, 70, 200, 0.88),
+    rgba(20, 56, 172, 0.92)
+  );
+}
+/* ghost: transparent glass in dark mode (≥8.53:1); darkened smoked-glass
+   tint behind the white label in light mode so contrast stays ≥7.0:1
+   everywhere without changing the label colour. */
 .cta--ghost {
   background: rgba(255, 255, 255, 0.06);
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.22);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
-:root:not(.dark) .gnav-cta .cta--ghost {
-  color: #0c1424;
+:root:not(.dark) .cta--ghost {
+  background: rgba(12, 20, 36, 0.64);
+  border-color: rgba(12, 20, 36, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26);
 }
 /* brighter rim on hover — an opacity overlay (never an animated shadow) */
 .cta-rim {
@@ -2082,15 +2116,8 @@ section[id] {
     0 0 0 1px rgba(190, 214, 255, 0.75),
     0 0 26px 4px var(--accent-glow);
 }
-.cta-arrow {
-  flex: none;
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
 /* the Glin shimmer sweep is the button's ONLY direct `span.absolute`
-   child — Glin wraps ALL our children (label, arrow, ripples) in its own
-   `span.relative.z-10`, so the old `:not(.cta-label)` selector was
-   matching that wrapper and zeroing the LABEL's opacity (the "no visible
-   text" bug). Target the shimmer span precisely; the wrapper stays 1. */
+   child — target it precisely so the relative wrapper stays at opacity 1. */
 .cta > span.absolute {
   opacity: 0;
   transition: opacity 0.25s ease;
@@ -2104,9 +2131,6 @@ section[id] {
   }
   .cta:hover > span.absolute {
     opacity: 1;
-  }
-  .cta:hover .cta-arrow {
-    transform: translateY(3px);
   }
   .cta:hover:active {
     transform: translateY(-2px) scale(0.97);
@@ -2554,6 +2578,14 @@ html.debug-outline [data-overflow-hint] {
     width: 76px;
   }
 }
+@media (max-width: 780px) {
+  .gnav-links {
+    display: none;
+  }
+  .gnav-brand {
+    margin-right: auto;
+  }
+}
 @media (max-width: 640px) {
   .bento-span-4 {
     grid-column: span 12;
@@ -2564,14 +2596,20 @@ html.debug-outline [data-overflow-hint] {
   .how-line {
     display: none;
   }
-  .gnav-links {
-    display: none;
-  }
-  .gnav-brand {
-    margin-right: auto;
-  }
   .download-card {
     padding: 28px 22px;
+  }
+}
+@media (max-width: 440px) {
+  .gnav {
+    padding: 8px 8px 8px 16px;
+    gap: 8px;
+  }
+  .gnav-actions {
+    gap: 8px;
+  }
+  .gnav-theme {
+    display: none;
   }
 }
 
