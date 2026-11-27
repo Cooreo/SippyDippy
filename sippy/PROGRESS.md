@@ -509,7 +509,7 @@ All above AA (4.5:1), headline above AAA.
 ## ANDROID v1.0.0 — Sippy the app (2026-11-27, round 6)
 
 Status: **built, committed, CI green on this branch. No tag created** — v1.0.0 is
-yours to tag once you have added the signing secrets and seen a green dry run.
+yours to tag once the committed signing key is in place and a dry run is green.
 
 ### What was built
 
@@ -584,12 +584,14 @@ BuildConfig smoke test.
 
 `release.yml` (tags `v*`, plus `workflow_dispatch` as a no-publish dry run):
 - **Build signed APK** — tag must equal `v` + versionName; versionCode must be strictly
-  higher than `releases/latest.json`; unit tests; keystore decoded from
-  `ANDROID_KEYSTORE_BASE64` into `$RUNNER_TEMP` with a message naming any missing secret;
-  `assembleRelease`; then `aapt2 dump badging` proves package/versionCode/versionName and
-  `apksigner verify --print-certs` proves the certificate SHA-256 matches
-  `sippy/android/signing/expected-cert-sha256.txt`; APK renamed `sippy-<version>.apk`,
-  SHA-256 + size emitted as outputs.
+  higher than `releases/latest.json`; the committed signing files
+  (`signing/sippy-release.jks` + `signing/signing.properties`) must exist, and the step
+  names whichever is missing; unit tests; `assembleRelease`; then `aapt2 dump badging`
+  proves package/versionCode/versionName and `apksigner verify --print-certs` applies
+  trust-on-first-use to the certificate — compared with `certSha256` in
+  `releases/latest.json` when present (mismatch fails with both values), pinned on the
+  real first publish; APK renamed `sippy-<version>.apk`, SHA-256 + size + certificate
+  emitted as outputs.
 - **Emulator smoke test** — KVM setup, API 34 x86_64 google_apis, install, grant
   POST_NOTIFICATIONS, `monkey` launch, 20 s wait, fails on missing pid or
   `Process: com.cooreo.sippy` in `logcat -b crash`, screenshot + crash buffers uploaded
@@ -602,9 +604,10 @@ BuildConfig smoke test.
 
 ### Release steps (yours to run)
 
-1. One-time: create the keystore, add the four secrets, fill
-   `sippy/android/signing/expected-cert-sha256.txt` — exact commands in
-   `sippy/android/BUILD.md` §"One-time repository setup".
+1. One-time: create the keystore with `keytool` and commit
+   `sippy/android/signing/sippy-release.jks` + `signing.properties` (the key is public
+   by design — never reuse it; see `sippy/android/signing/README.md`). Exact commands in
+   `sippy/android/BUILD.md` §"Release signing". There are no GitHub secrets.
 2. Merge this branch to `main`, then run **Android release** with *Run workflow*
    (`workflow_dispatch`) on `main`: it builds, verifies and smoke-tests, and publishes
    nothing. This is the dry run.
@@ -623,8 +626,8 @@ BuildConfig smoke test.
 - Frosted tier (API < 31) and Reduce effects drop the lens and blur — glass becomes tint +
   rim. That is intended, and is the fallback the SPEC asks for.
 - A signature change in a future keystore requires one uninstall (data loss), which the
-  updater explains up front. The certificate check in CI exists to make that never happen
-  by accident.
+  updater explains up front. The trust-on-first-use check in CI makes that impossible to
+  do by accident: the first publish pins `certSha256`, later builds must match it.
 - 30 drinks with hydration factors informed by literature but **not individually
   verified against primary sources**; they are estimates and are labelled as such in the
   code (`DrinkTable`).
@@ -633,10 +636,11 @@ BuildConfig smoke test.
 
 ### Unverified — needs your eyes (no device or emulator in this sandbox)
 
-- The release workflow has not executed yet: it needs the signing secrets, which only you
-  can add, and its first real run is the dry run in step 2 above. Its shell blocks were
-  checked with `bash -n`, its YAML parses, and every action is pinned to a commit SHA that
-  exists (verified through the GitHub API).
+- The release workflow has not executed yet: its first real run is the dry run in step 2
+  above, and it needs the committed key material (`signing/sippy-release.jks` +
+  `signing/signing.properties`) to build a signed APK. Its shell blocks were checked with
+  `bash -n`, its YAML parses, and every action is pinned to a commit SHA that exists
+  (verified through the GitHub API).
 - The look of the lens tier on a real device (refraction strength, rim highlight) — the
   numbers are taste, the structure is what the brief asked for.
 - TalkBack reading order and the 48dp targets were built in but not audited on hardware.

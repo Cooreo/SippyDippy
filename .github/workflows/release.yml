@@ -34,6 +34,7 @@ jobs:
       version_code: ${{ steps.version.outputs.version_code }}
       apk_name: ${{ steps.package.outputs.apk_name }}
       sha256: ${{ steps.package.outputs.sha256 }}
+      cert_sha256: ${{ steps.package.outputs.cert_sha256 }}
       size: ${{ steps.package.outputs.size }}
       tag: ${{ steps.version.outputs.tag }}
     defaults:
@@ -93,34 +94,19 @@ jobs:
       - name: Unit tests
         run: ./gradlew --no-daemon --stacktrace testDebugUnitTest
 
-      - name: Decode signing keystore
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      # The release key is committed on purpose (public by design). Fail early,
+      # naming the file, if either half of the pair is missing.
+      - name: Check committed signing material
         run: |
-          missing=""
-          [ -z "$ANDROID_KEYSTORE_BASE64" ] && missing="$missing ANDROID_KEYSTORE_BASE64"
-          [ -z "$KEYSTORE_PASSWORD" ] && missing="$missing ANDROID_KEYSTORE_PASSWORD"
-          [ -z "$KEY_ALIAS" ] && missing="$missing ANDROID_KEY_ALIAS"
-          [ -z "$KEY_PASSWORD" ] && missing="$missing ANDROID_KEY_PASSWORD"
-          if [ -n "$missing" ]; then
-            echo "::error::Missing signing secret(s):$missing. Add them in Settings → Secrets → Actions (see sippy/android/BUILD.md)."
-            exit 1
-          fi
-          keystore="$RUNNER_TEMP/sippy-release.jks"
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$keystore"
-          if [ ! -s "$keystore" ]; then
-            echo "::error::ANDROID_KEYSTORE_BASE64 did not decode to a keystore file."
-            exit 1
-          fi
-          {
-            echo "ANDROID_KEYSTORE_PATH=$keystore"
-            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
-            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
-            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
-          } >> "$GITHUB_ENV"
+          missing=0
+          for f in signing/sippy-release.jks signing/signing.properties; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Missing release signing file: sippy/android/$f"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          echo "signing material present: sippy/android/signing/sippy-release.jks, sippy/android/signing/signing.properties"
 
       - name: Assemble release
         run: ./gradlew --no-daemon --stacktrace assembleRelease
@@ -158,20 +144,33 @@ jobs:
             exit 1
           fi
 
+          # Trust on first use: the APK's own certificate is the truth. If
+          # releases/latest.json already pins a certificate, this build must
+          # match it — otherwise an update would install as a different app.
           cert="$("$apksigner" verify --print-certs "dist/$apk_name" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr 'A-F' 'a-f' | tr -d ': ')"
-          expected="$(tr -d ' \n\r' < signing/expected-cert-sha256.txt | tr 'A-F' 'a-f')"
-          if printf '%s' "$expected" | grep -q 'PLACEHOLDER'; then
-            echo "::error::sippy/android/signing/expected-cert-sha256.txt still holds the placeholder. Put the release certificate's SHA-256 there (lowercase hex, no colons) and commit it."
+          if [ -z "$cert" ]; then
+            echo "::error::The APK has no signer certificate — refuses to publish an unsigned build."
             exit 1
           fi
-          if [ "$cert" != "$expected" ]; then
-            echo "::error::Signing certificate mismatch. APK=$cert expected=$expected — installs would fail with an update conflict."
+          latest="../../releases/latest.json"
+          pinned=""
+          if [ -f "$latest" ]; then
+            pinned="$(python3 -c "import json; print(json.load(open('$latest')).get('certSha256','') or '')" | tr 'A-F' 'a-f' | tr -d ': ')"
+          fi
+          if [ -n "$pinned" ] && [ "$pinned" != "$cert" ]; then
+            echo "::error::Signing certificate mismatch: this APK is signed with $cert, releases/latest.json pins $pinned. Publishing would break every existing install — aborting."
             exit 1
+          fi
+          if [ -n "$pinned" ]; then
+            echo "certificate matches the published manifest ($cert)"
+          else
+            echo "first publish — this certificate will be pinned in releases/latest.json ($cert)"
           fi
           echo "package $package_name · versionName $version_name · versionCode $version_code · cert $cert"
 
           sha256="$(sha256sum "dist/$apk_name" | cut -d' ' -f1)"
           size="$(stat -c %s "dist/$apk_name")"
+          echo "cert_sha256=$cert" >> "$GITHUB_OUTPUT"
           echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
           echo "size=$size" >> "$GITHUB_OUTPUT"
           echo "apk_name=$apk_name" >> "$GITHUB_OUTPUT"
@@ -364,7 +363,8 @@ jobs:
             --code "${{ needs.build.outputs.version_code }}" \
             --sha "${{ needs.build.outputs.sha256 }}" \
             --size "${{ needs.build.outputs.size }}" \
-            --apk "${{ needs.build.outputs.apk_name }}"
+            --apk "${{ needs.build.outputs.apk_name }}" \
+            --cert-sha256 "${{ needs.build.outputs.cert_sha256 }}"
           git add releases
           git commit -m "release: $GITHUB_REF_NAME [skip ci]"
           git pull --rebase origin main
