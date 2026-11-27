@@ -18,12 +18,14 @@ class DrinkCategoryTest {
     }
 
     @Test
-    fun onlyUnknownIdsFallIntoOther() {
-        val mapped = DrinkTable.drinks.filter { DrinkCategory.of(it.id) == DrinkCategory.OTHER }
-        assertTrue(
-            "unmapped drinks: ${mapped.map { it.id }}",
-            mapped.isEmpty(),
-        )
+    fun onlySoupAndUnknownIdsFallIntoOther() {
+        // Soup is in the drink table because it hydrates, not because it is a
+        // drink family; it is the one legitimate OTHER. Anything else landing
+        // there means the mapping fell behind the table.
+        val other = DrinkTable.drinks
+            .filter { DrinkCategory.of(it.id) == DrinkCategory.OTHER }
+            .map { it.id }
+        assertEquals(listOf("soup"), other)
         assertEquals(DrinkCategory.OTHER, DrinkCategory.of("not-a-drink"))
     }
 

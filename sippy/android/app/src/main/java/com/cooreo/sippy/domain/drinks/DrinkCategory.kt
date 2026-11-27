@@ -33,6 +33,8 @@ enum class DrinkCategory {
             "smoothie" -> SMOOTHIE
             "soda", "diet-soda", "energy" -> SODA
             "beer", "wine", "cocktail" -> ALCOHOL
+            // Soup is in the table for its hydration, not as a drink family.
+            "soup" -> OTHER
             else -> OTHER
         }
 
