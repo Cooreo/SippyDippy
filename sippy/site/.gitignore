@@ -4,3 +4,4 @@ coverage/
 lighthouse-report.*
 *.local
 .DS_Store
+.assets-src/

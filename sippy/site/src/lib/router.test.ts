@@ -9,6 +9,7 @@ describe("resolveRoute", () => {
   it("supports the hash form for static hosts without SPA rewrites", () => {
     expect(resolveRoute("/", "#/gallery")).toBe("/gallery");
     expect(resolveRoute("/features", "#/gallery")).toBe("/gallery");
+    expect(resolveRoute("/", "#/assets")).toBe("/assets");
   });
   it("everything else is the home route", () => {
     expect(resolveRoute("/", "")).toBe("/");

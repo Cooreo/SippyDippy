@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 const FAQS = [
   {
     q: "Do I need an account or internet?",
@@ -21,18 +23,51 @@ const FAQS = [
   },
 ];
 
-/** FAQ — short, real answers. Native <details> for keyboard/screen-reader. */
+/**
+ * FAQ (Phase 3 fix D) — same centered 760px container as the download card.
+ * Rows: neutral glass tint (no saturated blue/purple fill); the accent
+ * appears only on the border and the chevron when a row is open; the
+ * plus/minus chevron is a visible 10px icon; height animates smoothly both
+ * ways via the grid-template-rows 0fr↔1fr technique (button-based, so close
+ * animates too — native <details> cannot animate closing).
+ */
 export function Faq() {
+  const [open, setOpen] = useState<number | null>(0);
+
   return (
     <section id="faq" className="faq">
-      <h2>Questions</h2>
-      <div className="faq-list">
-        {FAQS.map((f) => (
-          <details key={f.q} className="glass faq-item">
-            <summary>{f.q}</summary>
-            <p>{f.a}</p>
-          </details>
-        ))}
+      <div className="narrow">
+        <h2>Questions</h2>
+        <div className="faq-list">
+          {FAQS.map((f, i) => {
+            const isOpen = open === i;
+            return (
+              <div key={f.q} className="faq-item" data-open={isOpen}>
+                <button
+                  type="button"
+                  id={`faq-q-${i}`}
+                  className="faq-q"
+                  aria-expanded={isOpen}
+                  aria-controls={`faq-a-${i}`}
+                  onClick={() => setOpen(isOpen ? null : i)}
+                >
+                  <span>{f.q}</span>
+                  <span className="faq-icon" aria-hidden="true" />
+                </button>
+                <div
+                  id={`faq-a-${i}`}
+                  className="faq-a"
+                  role="region"
+                  aria-labelledby={`faq-q-${i}`}
+                >
+                  <div className="faq-a-inner">
+                    <p>{f.a}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </section>
   );

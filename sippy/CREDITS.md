@@ -19,5 +19,14 @@ Notes:
 ## Imagery
 - `shared/backdrops/landscape-dusk-emerald.jpg` — AI-generated 2026-11-26. No third-party rights.
 - `shared/backdrops/blobs-dark.jpg` — AI-generated 2026-11-26. No third-party rights.
+- **Sippy asset pack (Phase 3 richness pass, AI-generated 2026-11-27)** — `site/public/assets/*.webp`
+  (hero caustics backdrop; Dippy set: happy/dancing/sleepy/waving; friends:
+  plant sprout & bloom, pet cub & adult; droplet sprite; ripple ring;
+  section backdrops features/showcase/download). Style: glossy translucent
+  water-droplet character, soft studio lighting, subtle rim light, Sippy
+  Blue #2E7CF6 with violet accents, clean 3D render style, no text, no
+  watermark. Generated with Arena's image generation; no third-party rights.
+  Source PNGs are gitignored (`.assets-src/`); production WebP + alpha
+  keying via `site/tooling/build-assets.py`. Review: `/#/assets`.
 - Logo, favicon, app icon — original vector artwork for Sippy (this repo).
 - All other website backdrops are procedural (canvas gradients) — no stock photos, no watermarks, no hotlinks.

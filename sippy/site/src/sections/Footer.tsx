@@ -1,9 +1,20 @@
 import { IconDroplet } from "../components/Icons";
+import { asset } from "../lib/router";
 
 export function Footer() {
   const base = import.meta.env.BASE_URL;
   return (
     <footer className="footer">
+      <img
+        className="footer-ripple"
+        src={asset("assets/ripple-ring.webp")}
+        alt=""
+        width={240}
+        height={138}
+        loading="lazy"
+        decoding="async"
+        aria-hidden="true"
+      />
       <div className="footer-brand">
         <IconDroplet width={20} height={20} />
         Sippy

@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""
+Asset pack builder (Phase 3 richness pass).
+
+Reads generated PNGs from .assets-src/ and writes production WebP files to
+public/assets/:
+  - mascots/sprites (dippy-*, friend-*, droplet-sprite, ripple-ring):
+    black studio background keyed to alpha (luminance ramp), content
+    auto-cropped with padding, resized to the size budget, alpha preserved.
+  - scenery (hero-caustics, bg-*): resized + compressed, no keying.
+
+Budgets (brief): hero art < 250 KB, everything else < 120 KB.
+Also emits src/lib/assets.ts (the manifest the contact sheet + components
+use: name, file, width, height, bytes, alpha).
+
+Re-run after regenerating any source:  python3 tooling/build-assets.py
+"""
+import json
+import os
+import sys
+
+from PIL import Image, ImageOps
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SITE = os.path.dirname(HERE)
+SRC = os.path.join(SITE, ".assets-src")
+OUT = os.path.join(SITE, "public", "assets")
+MANIFEST_OUT = os.path.join(SITE, "src", "lib", "assets.ts")
+
+# name -> (max_side_or_width, key_alpha, target_bytes)
+ASSETS = {
+    "hero-caustics": (1600, False, 250_000),
+    "dippy-happy": (512, True, 120_000),
+    "dippy-dancing": (512, True, 120_000),
+    "dippy-sleepy": (512, True, 120_000),
+    "dippy-waving": (512, True, 120_000),
+    "friend-plant-sprout": (448, True, 120_000),
+    "friend-plant-bloom": (448, True, 120_000),
+    "friend-pet-cub": (448, True, 120_000),
+    "friend-pet-adult": (448, True, 120_000),
+    "droplet-sprite": (256, True, 120_000),
+    "ripple-ring": (512, True, 120_000),
+    "bg-features": (1600, False, 120_000),
+    "bg-showcase": (1600, False, 120_000),
+    "bg-download": (1600, False, 120_000),
+}
+
+# luminance ramp for the black-background key:
+#   L <= LO  -> transparent,  L >= HI -> opaque, linear between
+LO, HI = 16, 72
+
+
+def key_alpha(im: Image.Image) -> Image.Image:
+    """Key the near-black studio background to alpha (luminance ramp)."""
+    rgb = im.convert("RGB")
+    # standard luma (Y = 0.299R + 0.587G + 0.114B, as in .convert("L"))
+    lum = rgb.convert("L")
+    lo, hi = LO, HI
+    alpha = lum.point(lambda v: 0 if v <= lo else (255 if v >= hi else round((v - lo) * 255 / (hi - lo))))
+    out = rgb.convert("RGBA")
+    out.putalpha(alpha)
+    return out
+
+
+def crop_content(im: Image.Image, pad: int = 12) -> Image.Image:
+    a = im.getchannel("A")
+    bbox = a.getbbox()
+    if not bbox:
+        return im
+    x0, y0, x1, y1 = bbox
+    x0 = max(0, x0 - pad)
+    y0 = max(0, y0 - pad)
+    x1 = min(im.width, x1 + pad)
+    y1 = min(im.height, y1 + pad)
+    return im.crop((x0, y0, x1, y1))
+
+
+def fit(im: Image.Image, max_side: int) -> Image.Image:
+    im = ImageOps.exif_transpose(im)
+    w, h = im.size
+    scale = min(1.0, max_side / max(w, h))
+    if scale < 1.0:
+        im = im.resize((max(1, round(w * scale)), max(1, round(h * scale))), Image.LANCZOS)
+    return im
+
+
+def save_webp(im: Image.Image, path: str, target: int) -> int:
+    """Save WebP under the byte budget; step quality down, then scale."""
+    q = 82
+    scale = 1.0
+    while True:
+        cur = im if scale == 1.0 else im.resize(
+            (max(1, round(im.width * scale)), max(1, round(im.height * scale))),
+            Image.LANCZOS,
+        )
+        cur.save(path, "WEBP", quality=q, method=6)
+        size = os.path.getsize(path)
+        if size <= target or (q <= 55 and scale <= 0.6):
+            return size
+        if q > 60:
+            q -= 12
+        else:
+            scale *= 0.85
+
+
+def main() -> int:
+    os.makedirs(OUT, exist_ok=True)
+    manifest = []
+    missing = []
+    for name, (max_side, key, target) in ASSETS.items():
+        src = os.path.join(SRC, name + ".png")
+        if not os.path.exists(src):
+            missing.append(name)
+            continue
+        im = Image.open(src).convert("RGBA")
+        im = fit(im, max_side)
+        has_alpha_src = im.getchannel("A").getextrema()[0] < 255
+        if key:
+            im = key_alpha(im)
+            im = crop_content(im)
+            im = fit(im, max_side)
+        out_path = os.path.join(OUT, name + ".webp")
+        size = save_webp(im, out_path, target)
+        final_alpha = im.getchannel("A").getextrema()
+        opaque_px = sum(im.getchannel("A").histogram()[201:])
+        opaque_pct = round(100 * opaque_px / (im.width * im.height), 1)
+        entry = {
+            "name": name,
+            "file": f"assets/{name}.webp",
+            "width": im.width,
+            "height": im.height,
+            "bytes": size,
+            "alpha": (final_alpha[0] < 255) or has_alpha_src,
+            "opaquePct": None if not key else opaque_pct,
+            "budget": target,
+        }
+        manifest.append(entry)
+        print(f"  {name:20s} {im.width:4d}x{im.height:<4d} {size/1024:7.1f} KB"
+              f"{'  ALPHA (opaque ' + str(opaque_pct) + '%)' if key else ''}")
+
+    with open(MANIFEST_OUT, "w") as f:
+        f.write("// GENERATED by tooling/build-assets.py — do not edit by hand.\n")
+        f.write("export interface AssetInfo {\n")
+        f.write("  name: string;\n  file: string;\n  width: number;\n  height: number;\n")
+        f.write("  bytes: number;\n  alpha: boolean;\n  opaquePct: number | null;\n  budget: number;\n}\n\n")
+        f.write("export const ASSETS: AssetInfo[] = " + json.dumps(manifest, indent=2) + ";\n")
+        f.write("\n")
+        f.write(
+            "/** Assets whose source PNG has not been generated yet (full pack set\n"
+            " *  minus what is currently built) — the contact sheet lists these as\n"
+            " *  pending.\n"
+            " */\n"
+            "export const PENDING_ASSETS: string[] = "
+            + json.dumps(sorted(set(ASSETS) - {e["name"] for e in manifest}))
+            + ";\n\n"
+        )
+        f.write("const KNOWN = new Set(ASSETS.map((a) => a.name));\n")
+        f.write("\n")
+        f.write(
+            "/** True when the named asset exists in the built pack (lets components\n"
+            " *  skip optional art whose source image has not been generated yet).\n"
+            " */\n"
+            "export function hasAsset(name: string): boolean {\n  return KNOWN.has(name);\n}\n"
+        )
+
+    total = sum(e["bytes"] for e in manifest)
+    print(f"\n  manifest: {len(manifest)} assets, {total/1024:.1f} KB total -> {MANIFEST_OUT}")
+    if missing:
+        print(f"  MISSING sources (will be picked up on re-run): {', '.join(missing)}")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
