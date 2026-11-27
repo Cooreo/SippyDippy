@@ -29,6 +29,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.cooreo.sippy.domain.drinks.DrinkCategory
+import com.cooreo.sippy.ui.theme.DrinkTints
 import com.cooreo.sippy.domain.drinks.DrinkTable
 import com.cooreo.sippy.domain.log.DayGroup
 import com.cooreo.sippy.domain.log.LogGroups
@@ -200,6 +202,7 @@ private fun HistoryRow(entry: LogEntry, goalMl: Int, onClick: () -> Unit) {
 
     GlassSurface(
         shape = RoundedCornerShape(Dimens.inner),
+        tint = DrinkTints.card(DrinkCategory.of(entry.drinkId)),
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(Dimens.inner))

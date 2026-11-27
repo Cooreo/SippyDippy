@@ -28,6 +28,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.cooreo.sippy.domain.drinks.Drink
+import com.cooreo.sippy.domain.drinks.DrinkCategory
+import com.cooreo.sippy.ui.theme.DrinkTints
 import com.cooreo.sippy.domain.drinks.DrinkTable
 import com.cooreo.sippy.ui.components.DrinkIcon
 import com.cooreo.sippy.ui.glass.GlassSurface
@@ -90,7 +92,7 @@ private fun DrinkRow(drink: Drink, onLog: () -> Unit) {
                     "counts $percent percent"
             },
     ) {
-        GlassSurface(shape = shape) {
+        GlassSurface(shape = shape, tint = DrinkTints.card(DrinkCategory.of(drink.id))) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

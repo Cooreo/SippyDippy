@@ -28,6 +28,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.cooreo.sippy.ui.glass.GlassLevel
 import com.cooreo.sippy.ui.glass.GlassSurface
 import com.cooreo.sippy.ui.theme.Dimens
 import com.cooreo.sippy.ui.theme.LocalSippyColors
@@ -71,7 +72,11 @@ fun FloatingNav(
             .padding(horizontal = Dimens.screenPadding, vertical = 10.dp),
         contentAlignment = Alignment.BottomCenter,
     ) {
-        GlassSurface(shape = shape, modifier = Modifier.fillMaxWidth()) {
+        GlassSurface(
+            shape = shape,
+            modifier = Modifier.fillMaxWidth(),
+            level = GlassLevel.LIVE,
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

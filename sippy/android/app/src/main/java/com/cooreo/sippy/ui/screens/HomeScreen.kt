@@ -44,6 +44,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.cooreo.sippy.domain.drinks.DrinkCategory
+import com.cooreo.sippy.ui.theme.DrinkTints
 import com.cooreo.sippy.domain.drinks.DrinkTable
 import com.cooreo.sippy.domain.friends.Mood
 import com.cooreo.sippy.domain.friends.MoodRules
@@ -506,7 +508,10 @@ private fun TodayCard(
 ) {
     val c = LocalSippyColors.current
     val loose = state.friends.filterNot { it.pinned }.take(4)
-    GlassCard(contentPadding = PaddingValues(16.dp)) {
+    // B3: the card takes its tint from the last drink in it.
+    val todayTint = entries.maxByOrNull { it.atEpochMs }
+        ?.let { DrinkTints.card(DrinkCategory.of(it.drinkId)) }
+    GlassCard(contentPadding = PaddingValues(16.dp), tint = todayTint) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Today", style = SippyType.emphasis, color = c.text1)
             Spacer(Modifier.weight(1f))

@@ -22,6 +22,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +40,8 @@ import com.cooreo.sippy.domain.updates.UpdateManifest
 import com.cooreo.sippy.model.Settings
 import com.cooreo.sippy.ui.glass.GlassButton
 import com.cooreo.sippy.ui.glass.GlassCard
+import com.cooreo.sippy.ui.glass.GlassLevel
+import com.cooreo.sippy.ui.glass.LocalGlassLevel
 import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.theme.Dimens
 import com.cooreo.sippy.ui.theme.LocalSippyColors
@@ -67,7 +70,10 @@ internal fun SheetScrim(
                 .navigationBarsPadding(),
             contentAlignment = Alignment.BottomCenter,
         ) {
-            content()
+            // B3: a sheet is one of the three live-refraction surfaces.
+            CompositionLocalProvider(LocalGlassLevel provides GlassLevel.LIVE) {
+                content()
+            }
         }
     }
 }

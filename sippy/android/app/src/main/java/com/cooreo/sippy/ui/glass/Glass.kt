@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -119,39 +120,58 @@ fun SippyBackdropHost(
  * highlight and a soft drop shadow. [content] sits on the single surface — no
  * nested backdrop-filter layers (SPEC §1 budget).
  */
+/**
+ * The three glass levels (round 8, B3). This *is* the performance budget:
+ *
+ *  - LIVE — the real thing: backdrop blur plus the AGSL lens. The orb overlay,
+ *    the bottom bar, the + button and sheets. Never more than three at once.
+ *  - CHEAP — level 2: tint, gradient rim, inner top highlight, soft blue shadow,
+ *    no live blur. Every list card and the Today card.
+ *  - CHIP — level 3: a thin tint and a rim. Chips, pills, tags.
+ *
+ * Reduce effects (or a device without RenderEffect) collapses everything to
+ * CHEAP, so the app never blurs on a phone that asked it not to.
+ */
+enum class GlassLevel { LIVE, CHEAP, CHIP }
+
+val LocalGlassLevel = staticCompositionLocalOf { GlassLevel.CHEAP }
+
+/**
+ * A glass surface. [level] overrides [LocalGlassLevel] for one call; null means
+ * "use the ambient level", which is what most call sites want.
+ */
 @Composable
 fun GlassSurface(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(Dimens.card),
     tint: Color? = null,
     shadow: Boolean = true,
+    level: GlassLevel? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val c = LocalSippyColors.current
     val backdrop = LocalBackdrop.current
     val tier = LocalGlassTier.current
     val boost = LocalGlassBoost.current
-    val surface = tint ?: c.glassTint
+    val requested = level ?: LocalGlassLevel.current
+    val effective = if (tier == GlassTier.FROST) GlassLevel.CHEAP else requested
+    val surface = if (effective == GlassLevel.CHIP) {
+        (tint ?: c.glassTint).copy(alpha = 0.55f)
+    } else {
+        tint ?: c.glassTint
+    }
 
-    val glass = if (backdrop != null) {
-        Modifier.drawBackdrop(
+    val glass = when {
+        // Level 1 — the lens. Only reachable on API 33+ with shaders.
+        effective == GlassLevel.LIVE && backdrop != null -> Modifier.drawBackdrop(
             backdrop = backdrop,
             shape = { shape },
             effects = {
-                when (tier) {
-                    // B1: the lens is real on API 33+ — a blur plus an AGSL
-                    // refraction pass — and the boost scales both.
-                    GlassTier.LENS -> {
-                        blur(radius = 14.dp.toPx() * boost)
-                        lens(
-                            refractionHeight = 26.dp.toPx() * boost,
-                            refractionAmount = 22.dp.toPx() * boost,
-                        )
-                    }
-                    GlassTier.BLUR -> blur(radius = 18.dp.toPx() * boost)
-                    // Static frosting: tint + rim only, zero GPU work.
-                    GlassTier.FROST -> Unit
-                }
+                blur(radius = 14.dp.toPx() * boost)
+                lens(
+                    refractionHeight = 26.dp.toPx() * boost,
+                    refractionAmount = 22.dp.toPx() * boost,
+                )
             },
             highlight = { Highlight.Default },
             shadow = if (shadow) {
@@ -161,17 +181,52 @@ fun GlassSurface(
             },
             onDrawSurface = { drawRect(surface) },
         )
-    } else {
-        Modifier.background(surface, shape)
+
+        // Level 2 — cheap glass: a tinted plate with a soft blue shadow. No blur,
+        // so it costs nothing per frame while scrolling.
+        effective == GlassLevel.CHEAP -> Modifier
+            .then(
+                if (shadow) {
+                    Modifier.shadow(
+                        elevation = 16.dp,
+                        shape = shape,
+                        clip = false,
+                        ambientColor = Color(0xFF2E7CF6).copy(alpha = 0.30f),
+                        spotColor = Color(0xFF2E7CF6).copy(alpha = 0.26f),
+                    )
+                } else {
+                    Modifier
+                },
+            )
+            .background(surface, shape)
+
+        // Level 3 — a thin tint; the rim below does the rest.
+        else -> Modifier.background(surface, shape)
     }
-    // A real rim: bright at the top, fading at the bottom, drawn on top of the
-    // surface. It is what makes a card read as glass even at FROST (A2).
+
+    // The rim: brighter at the top-left, fading out, drawn on top of the surface.
     val rim = Modifier.border(
-        width = 1.dp,
-        brush = Brush.verticalGradient(listOf(c.glassRimStart, c.glassRimEnd)),
+        width = if (effective == GlassLevel.CHIP) 0.8.dp else 1.dp,
+        brush = Brush.linearGradient(listOf(c.glassRimStart, c.glassRimEnd)),
         shape = shape,
     )
-    Box(modifier = modifier.clip(shape).then(glass).then(rim), content = content)
+    // An inner highlight along the top edge — the thing that makes level 2 read
+    // as glass without any GPU work.
+    val highlight = if (effective == GlassLevel.CHIP) {
+        Modifier
+    } else {
+        Modifier.background(
+            Brush.verticalGradient(
+                0f to Color.White.copy(alpha = if (c.isDark) 0.10f else 0.34f),
+                0.42f to Color.Transparent,
+            ),
+            shape,
+        )
+    }
+
+    Box(modifier = modifier.clip(shape).then(glass).then(highlight).then(rim)) {
+        content()
+    }
 }
 
 /**
@@ -253,6 +308,7 @@ fun GlassButton(
             shape = shape,
             tint = tint,
             shadow = false,
+            level = GlassLevel.CHIP,
         ) {
             Box(Modifier.padding(contentPadding), contentAlignment = Alignment.Center) {
                 // A1: labels are never ellipsised. If a row is too tight the text
@@ -301,6 +357,7 @@ fun GlassChip(
             shape = shape,
             tint = if (selected) c.accent.copy(alpha = 0.72f) else null,
             shadow = false,
+            level = GlassLevel.CHIP,
         ) {
             Box(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
                 androidx.compose.material3.Text(
@@ -350,6 +407,7 @@ fun GlassIconButton(
             shape = shape,
             tint = if (selected) c.accent.copy(alpha = 0.72f) else null,
             shadow = false,
+            level = GlassLevel.CHIP,
         ) {
             Box(Modifier.size(20.dp), contentAlignment = Alignment.Center, content = content)
         }
