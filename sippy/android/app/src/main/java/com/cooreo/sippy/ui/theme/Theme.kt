@@ -144,6 +144,6 @@ fun SippyTheme(
         )
     }
     CompositionLocalProvider(LocalSippyColors provides colors) {
-        MaterialTheme(colorScheme = scheme, content = content)
+        MaterialTheme(colorScheme = scheme, typography = SippyTypography, content = content)
     }
 }

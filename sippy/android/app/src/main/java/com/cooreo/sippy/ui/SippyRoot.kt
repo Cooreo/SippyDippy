@@ -46,6 +46,7 @@ import com.cooreo.sippy.ui.glass.LocalGlassTier
 import com.cooreo.sippy.ui.glass.SippyBackdropHost
 import com.cooreo.sippy.ui.screens.DeveloperScreen
 import com.cooreo.sippy.ui.screens.FriendsScreen
+import com.cooreo.sippy.ui.screens.OnboardingScreen
 import com.cooreo.sippy.ui.screens.SettingsScreen
 import com.cooreo.sippy.ui.screens.TodayScreen
 import com.cooreo.sippy.ui.sheets.AddDrinkSheet
@@ -86,7 +87,16 @@ fun SippyRoot(graph: AppGraph) {
         val tier = remember(reduce) { GlassTier.forSdk(reduceEffects = reduce) }
         CompositionLocalProvider(LocalGlassTier provides tier) {
             SippyBackdropHost {
-                if (!ready) Splash() else AppScaffold(state, controller, animate = !reduce)
+                when {
+                    !ready -> Splash()
+                    // First run (or a kill mid-flow): onboarding owns the screen.
+                    !state.settings.onboardingComplete -> OnboardingScreen(
+                        state = state,
+                        controller = controller,
+                        animate = !reduce,
+                    )
+                    else -> AppScaffold(state, controller, animate = !reduce)
+                }
             }
         }
     }
