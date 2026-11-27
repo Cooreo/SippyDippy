@@ -335,5 +335,46 @@ All ≥ 4.5:1 in both themes; no viewport-dependent values involved (colours are
 4. **Was the overlay removed on the same frame the page faded in?** Yes — `SurfaceBreakIntro.tsx` kept `overlay` at `opacity: 1` for the entire `4.2s` run (and throughout `applySkip`'s `140ms` timeout) with zero opacity crossfade, then unmounted `.sb` synchronously inside `finish()`. Under reduced motion, `SurfaceBreakIntro` also returned `null` instead of playing a `500ms` mark-to-page crossfade.
 **Structural fix:** make `.sb` `background: transparent` so the frame-0 `<Backdrop />` renders directly through the reveal hole; set `gl.clearColor` to the page's darkest backdrop tone (`#060a14` = `rgb(6, 10, 20)` at `alpha = 1.0`, never `(0,0,0,0)` or `#000`) and keep the shader/CSS scene purely additive over that backdrop tone (keeping the CSS fallback's circular hole open at `transparent 100%` once `r >= maxRevealRadius` instead of resetting `maskImage = "none"`); open the hole from `markCentre(vp)` (`2.5s → 3.0s`), pop Dippy waving from the hole's edge during the `800ms` exit crossfade (`3.0s → 3.8s`) while `overlay.style.opacity` ramps smoothly to `0` and hero words rise blur-to-sharp, and unmount `.sb` ONLY after `overlay.style.opacity === "0"` (`≤ 4500ms` total); on skip (`click`/`tap`/`Esc`/any key), jump to end state with a `150ms` opacity crossfade to `0` before unmounting; under reduced motion, play a `500ms` mark-to-page crossfade (no `<canvas>`, no WebGL context, no ring, no black frame); and initialize `wordsPlay = !playing` when `effective === "skip"`.
 
+## Phase 3 round 3 — Verification & Delivery Report
+
+### 1. CTA buttons (nav & hero)
+- **Arrow removed:** `.cta-arrow` and `arrow` prop removed from `CtaButton.tsx`, `GlassNav.tsx`, `HomePage.tsx`, `Hero.tsx`, and `index.css`.
+- **Single label constant:** `APK_CTA_LABELS = { pending: "See install steps", ready: "Get the APK" }` + `getApkCtaLabel()` in `src/lib/download.ts`.
+- **Single-line border-box heights (CSS token math):**
+  - `.cta--sm` (nav): `1px` border + `8px` top + `16px` line-height + `8px` bottom + `1px` border = **`34px`**.
+  - `.cta--lg` (hero primary & `"How it works"` ghost): `1px` border + `12px` top + `20px` line-height + `12px` bottom + `1px` border = **`46px`**.
+- **360px / 1280px / 2560px fit:** `.cta` uses `white-space: nowrap; width: max-content; flex: none; height: auto`; `.gnav-links` drops at `≤780px` and decorative `aria-hidden` `.gnav-theme` icons drop at `≤440px`, leaving `303px` used inside the `320px` `.wrap` at `360px` width.
+- **Computed contrast (`#fff` label, CSS composited stack):**
+  - Dark mode: `.cta--primary` **≥ 5.99:1** (`5.99:1–7.04:1`), `.cta--ghost` **≥ 8.53:1** (`8.53:1–18.92:1`).
+  - Light mode (glass tint darkened behind `#fff` label): `.cta--primary` **≥ 5.86:1** (`5.86:1–7.62:1` even on `#fff`), `.cta--ghost` **≥ 7.02:1** (`7.02:1` mobile / `10.54:1` desktop).
+
+### 2. Showcase: `"Three things Sippy does best."`
+- Phone showcase (`PhoneMock.tsx`, `Dippy.tsx`, `components/app/PhoneDevice.tsx`, `components/app/WaterRing.tsx`, `public/assets/bg-showcase.webp`) completely removed; main JS bundle shrank `296.05 kB → 292.85 kB`.
+- Reuses `src/components/BentoCard.tsx` (single shared implementation of cursor-following specular, spring tilt ≤ `6°`, `4px` hover lift, `0.98` press scale, mascot counter-parallax, touch/no-hover gate, and reduced-motion gate).
+- Simultaneous `backdrop-filter` surfaces in the Showcase viewport = **4** (`1` nav + `3` cards, well within `≤ 6`).
+- Cards: (1) **Every drink counts** (`Water 250`, `Tea 200`, `Coffee 150`, `Juice 200` logging to `"ml logged"`, zero `"hydration"` strings since `sippy/app` does not exist yet); (2) **Friends grow with you** (focusable Dippy, Plant, Cat tiles cycling existing `.webp` moods with hover/focus bounce); (3) **Your goal, your rules** (`750–3000 ml` `<input type="range">` updating large tabular readout, `aria-valuetext`, and `scaleX` bar).
+
+### 3. Water orb (`HeroWaterRing` + `sippy/SPEC.md`)
+- Recorded the strict `transform` + `opacity`-only orb animation rule in `sippy/SPEC.md` (enforced by `HeroWaterRing.test.tsx`).
+- Two `transform`-only wave layers (`4.6s` back / `2.8s` front, distinct amplitudes), `8` rising bubbles (`≤ 8` cap, `transform` + `opacity`), single `--hr-progress` CSS variable driving `.hr-fill-vivid` & `.hr-glow`, `4.5s` decelerating rise → `1.5s` hold (`~600ms` `.hr-splash` ring + `"Goal reached"` + damped `rotate` slosh) → `1.1s` smooth drain & restart, `IntersectionObserver` off-screen pause, and static `68%` (or live `%`) reduced-motion state with no waves/bubbles/splash.
+- **Hero column clearance (`"consistently."` vs orb left edge):** `1280px` **+263.2px**, `1440px` **+160.9px**, `1920px` **+150.4px**, `2560px` **+150.4px** (zero overlap).
+
+### 4. Intro smooth exit (`SurfaceBreakIntro`)
+- `.sb` background is `transparent` over frame-0 `<Backdrop />`; WebGL clears to `#060a14` at `alpha = 1.0` (never `(0,0,0,0)` or `#000`); CSS fallback keeps hole open once `r >= maxRevealRadius`; total timeline `3850 ms` (`≤ 4500 ms`) with `800 ms` exit crossfade (`3.0s → 3.8s`) and unmount guard after `overlay.style.opacity === "0"`; `150 ms` skip crossfade; `500 ms` reduced-motion mark-to-page crossfade (no `<canvas>`, no WebGL context).
+- **Screen-check timestamps:** `2.5s` surface-break ring ignites at mark centre (`r = 0`) → `3.0s` hole covers viewport over live `<Backdrop />`, Dippy waving at hole edge, mark starts FLIP to nav, hero words start rising blur-to-sharp, 800ms crossfade begins (`opacity = 1`) → `3.5s` mid-crossfade (`opacity ≈ 0.52`), Dippy waving, mark in nav slot, hero words sharpening → `3.8s` `overlay.style.opacity === "0"`, hero crisp, resting backdrop unchanged → `end` (`3.85s`) WebGL disposed & `.sb` unmounted with zero cut.
+
+### 5. Contrast & small text (`≥ 4.5:1` across all 28 audited contexts)
+- `.download-note` (`"Sideloaded APK..."`), `.download-disabled span` (`"The APK ships after..."`), `.download-meta`, and `.download-sha` raised from `var(--text-3)` (`3.33:1` dark / `4.10:1` light) to `var(--text-2)` (**`6.25:1` dark / `7.68:1` light**; **`8.35:1` / `6.62:1`** under reduced transparency).
+- Also raised `.features .hint` (`7.86:1` dark / `7.26:1` light), `.milestone` (`4.94:1` dark / `6.52:1` light), `.milestone-done` (`5.60:1` dark / `6.08:1` light), `.footer > p` (`6.50:1` dark / `6.30:1` light), light-mode `.gnav-link` (`8.54:1` hero / `12.72:1` scrolled), and light-mode `.hero .lead` (`9.23:1` desktop / `6.56:1` mobile). Zero design tokens or layouts modified.
+
+### 6. Gate outputs & honest verification status
+- `npx tsc --noEmit`: exit `0`
+- `npm run lint`: `0 errors, 3 warnings` (pre-existing fast-refresh warnings)
+- `npm test -- --run`: **11/11 files, 55/55 tests passed**
+- `npm run build`: clean (`5.04 s`)
+- `VITE_BASE=/sippy/ npm run build`: clean (`4.84 s`, all `dist/index.html` links prefixed `/sippy/`)
+- `?debug=outline` static CSS box-math + `happy-dom` `enableDebugOutline()` check at `1280px` & `360px`: `0` `[data-overflow-hint]` elements (`.hr-disc`/`.hr-water`/`.hr-fill`/`.bento-inner`/`.sc-goal-bar` set to `overflow: clip`, `.cta-rim` `inset: 0`, `.hero-buddy` `right: 0` at `≤1000px`). Real browser GPU rendering, `backdrop-filter` blur, spring feel, and live browser `scrollWidth > clientWidth` layout measurement remain **Unverified** in this headless-free sandbox and are listed for user inspection.
+
+
 
 
