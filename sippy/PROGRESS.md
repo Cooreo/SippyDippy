@@ -1344,3 +1344,13 @@ with Full/Short/Off; and a tilt that leans the backdrop and the pinned friends.
 
 **Still true:** nothing visual has been seen on a device. Every claim above is code
 plus a green `testDebugUnitTest` and `assembleDebug`.
+
+### 1.3.0 — the release this round ships as
+
+`versionCode 4`, `versionName 1.3.0`. Round 8 in full: the fix-and-layout pass (A1
+labels, A2 status bar, A3 dated log, A4 cosmetics, A5 Home) and the look-and-motion
+pass (B1–B11 above), on top of the 1.2.0 baseline. The pipeline publishes it from the
+merge to `main`: `release.yml` builds, signs, smoke-tests on an emulator, publishes
+the GitHub Release, rewrites `releases/latest.json` and redeploys the site, and
+`rollback.yml` withdraws it in one click if it misbehaves (1.2.0 is the manifest it
+would restore).
