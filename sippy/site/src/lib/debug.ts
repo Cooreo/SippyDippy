@@ -42,5 +42,12 @@ export function enableDebugOutline(): () => void {
 }
 
 export function debugOutlineRequested(): boolean {
-  return new URLSearchParams(window.location.search).has("debug");
+  const p = new URLSearchParams(window.location.search).get("debug");
+  return p === "outline" || p === "both";
+}
+
+/** ?debug=perf — log intro frame times to the console (sendable numbers). */
+export function debugPerfRequested(): boolean {
+  const p = new URLSearchParams(window.location.search).get("debug");
+  return p === "perf" || p === "both";
 }

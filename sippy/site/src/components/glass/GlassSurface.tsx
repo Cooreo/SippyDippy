@@ -6,10 +6,8 @@
  * enhancement, gated by lib/fx.ts → ?fx=blur forces the clean fallback).
  */
 import {
-  useState,
   type CSSProperties,
   type HTMLAttributes,
-  type PointerEvent,
 } from "react";
 import { useFxMode } from "../../lib/fx";
 import { blur as blurTokens, glassSaturation, radius as radiusTokens } from "../../lib/tokens";
@@ -22,7 +20,7 @@ export interface GlassSurfaceProps extends HTMLAttributes<HTMLDivElement> {
    * Always off unless the current fx mode is "full" (capability gate).
    */
   refraction?: boolean;
-  /** Cursor-following specular highlight. */
+  /** Static top-left specular glow (≤10% alpha, fades before the border). */
   specular?: boolean;
   /** Override the glass tint (any CSS color). */
   tint?: string;
@@ -37,11 +35,9 @@ export function GlassSurface({
   className,
   style,
   children,
-  onPointerMove,
   ...rest
 }: GlassSurfaceProps) {
   const fx = useFxMode();
-  const [spot, setSpot] = useState<{ x: number; y: number } | null>(null);
 
   const doRefract = (refraction ?? true) && fx === "full";
   const bpx = blurTokens[blur];
@@ -62,30 +58,9 @@ export function GlassSurface({
     ...style,
   };
 
-  const handlePointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (specular) {
-      const r = e.currentTarget.getBoundingClientRect();
-      setSpot({ x: e.clientX - r.left, y: e.clientY - r.top });
-    }
-    onPointerMove?.(e);
-  };
-
   return (
-    <div
-      className={`glass${className ? ` ${className}` : ""}`}
-      style={glassStyle}
-      onPointerMove={handlePointerMove}
-      {...rest}
-    >
-      {specular && spot && (
-        <span
-          aria-hidden="true"
-          className="spec"
-          style={{
-            background: `radial-gradient(160px at ${spot.x}px ${spot.y}px, rgba(255,255,255,0.16), transparent 65%)`,
-          }}
-        />
-      )}
+    <div className={`glass${className ? ` ${className}` : ""}`} style={glassStyle} {...rest}>
+      {specular && <span aria-hidden="true" className="spec" />}
       {children}
     </div>
   );

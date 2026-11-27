@@ -34,7 +34,10 @@ export function HowItWorks() {
 
   return (
     <section id="how" className="how" ref={ref}>
-      <h2>How it works</h2>
+      {/* focus target for the "How it works" CTA landing (preventScroll) */}
+      <h2 id="how-heading" tabIndex={-1}>
+        How it works
+      </h2>
       <div className="how-track">
         <motion.div
           className="how-line"

@@ -1,5 +1,4 @@
 import { GlassCard } from "../components/glass/GlassCard";
-import { SectionArt } from "../components/SectionArt";
 import { asset } from "../lib/router";
 import { getDownloadState } from "../lib/download";
 
@@ -22,9 +21,8 @@ export function Download() {
 
   return (
     <section id="download" className="download">
-      <SectionArt name="bg-download" />
       <div className="narrow">
-        <GlassCard blur="lg" className="download-card" specular>
+        <GlassCard id="download-card" blur="lg" className="download-card" specular>
           <div className="download-head">
             <img
               src={asset("assets/dippy-waving.webp")}
@@ -35,7 +33,10 @@ export function Download() {
               decoding="async"
             />
             <div className="download-head-text">
-              <h2>Get Sippy for Android</h2>
+              {/* focus target for CTA landing (preventScroll) */}
+              <h2 id="download-heading" tabIndex={-1}>
+                Get Sippy for Android
+              </h2>
               <p className="download-meta">
                 {d.version} · {d.enabled ? d.sizeLabel : "size appears with the build"} ·
                 Android 8.0+ (looks best on 13+)

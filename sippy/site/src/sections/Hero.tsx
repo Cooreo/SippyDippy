@@ -2,10 +2,11 @@ import { useRef, type PointerEvent } from "react";
 import {
   motion,
   useMotionValue,
+  useReducedMotion,
   useSpring,
   useTransform,
 } from "motion/react";
-import { GlassButton } from "../components/glass/GlassButton";
+import { CtaButton } from "../components/CtaButton";
 import { PhoneMock } from "../components/PhoneMock";
 import { asset } from "../lib/router";
 import { springs } from "../lib/tokens";
@@ -14,15 +15,26 @@ const WORDS = ["Drink", "consistently.", "Joyfully."];
 
 /**
  * Hero — two-column grid inside the shared 1280px wrap (same width as the
- * nav, root-cause fix B), vertically centered, full-viewport height. Words
- * rise blur-to-sharp (staggered; delayed to land as the intro lifts when
- * playing). The phone mockup (real Sippy glass components) gets spring
- * parallax with the pointer and a gentle idle float.
+ * nav), vertically centered, full-viewport height.
+ *
+ * Round 2: the CTA row is the shared CtaButton (primary "See install
+ * steps"/"Get the APK" + ghost "How it works"); the phone is the live
+ * recreation (PhoneDevice + app components + demo loop). Words rise
+ * blur-to-sharp when the intro reveals (playWords), fast under a skip.
  *
  * The hero is dark via the backdrop's soft scrim — it has NO section
- * background of its own (root-cause fix A).
+ * background of its own.
  */
-export function Hero({ startDelay = 0 }: { startDelay?: number }) {
+export function Hero({
+  playWords,
+  wordsFast,
+}: {
+  /** The intro has revealed the page — words rise now. */
+  playWords: boolean;
+  /** Skipped intro — finish the entrance fast (end state in ~150 ms). */
+  wordsFast: boolean;
+}) {
+  const reduced = useReducedMotion();
   const visualRef = useRef<HTMLDivElement>(null);
   const mx = useMotionValue(0);
   const my = useMotionValue(0);
@@ -30,6 +42,7 @@ export function Hero({ startDelay = 0 }: { startDelay?: number }) {
   const rotateX = useSpring(useTransform(my, [-0.5, 0.5], [4.5, -4.5]), springs.gentle);
 
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (reduced) return; // no parallax under reduced motion
     const el = visualRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
@@ -37,44 +50,39 @@ export function Hero({ startDelay = 0 }: { startDelay?: number }) {
     my.set((e.clientY - r.top) / r.height - 0.5);
   };
 
+  const wordDur = wordsFast ? 0.15 : 0.5;
+  const wordStagger = wordsFast ? 0.02 : 0.09;
+
   return (
     <section id="hero" className="hero">
       <div className="wrap hero-inner">
         <div className="hero-copy">
-          <motion.h1
-            className="hero-title"
-            initial="hidden"
-            animate="show"
-            variants={{
-              show: {
-                transition: { staggerChildren: 0.09, delayChildren: startDelay / 1000 },
-              },
-              hidden: {},
-            }}
-          >
-            {WORDS.map((w) => (
+          <h1 className="hero-title">
+            {WORDS.map((w, i) => (
               <motion.span
                 key={w}
                 className="hero-word"
-                variants={{
-                  hidden: { opacity: 0, y: 26, filter: "blur(10px)" },
-                  show: {
-                    opacity: 1,
-                    y: 0,
-                    filter: "blur(0px)",
-                    transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
-                  },
+                initial={{ opacity: 0, y: 26, filter: "blur(10px)" }}
+                animate={
+                  playWords
+                    ? { opacity: 1, y: 0, filter: "blur(0px)" }
+                    : { opacity: 0 }
+                }
+                transition={{
+                  duration: wordDur,
+                  delay: i * wordStagger,
+                  ease: [0.22, 1, 0.36, 1],
                 }}
               >
                 {w}
               </motion.span>
             ))}
-          </motion.h1>
+          </h1>
           <motion.p
             className="lead"
             initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: startDelay / 1000 + 0.55, duration: 0.5 }}
+            animate={playWords ? { opacity: 1, y: 0 } : { opacity: 0 }}
+            transition={{ delay: wordsFast ? 0.1 : 0.55, duration: wordDur }}
           >
             Sippy tracks water and every other drink you actually have — with
             friends who notice, streaks that keep you honest, and reminders
@@ -83,42 +91,40 @@ export function Hero({ startDelay = 0 }: { startDelay?: number }) {
           <motion.div
             className="hero-cta"
             initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: startDelay / 1000 + 0.75, duration: 0.5 }}
+            animate={playWords ? { opacity: 1, y: 0 } : { opacity: 0 }}
+            transition={{ delay: wordsFast ? 0.12 : 0.75, duration: wordDur }}
           >
-            <GlassButton
+            {/* primary CTA — strongest element; label follows the APK rule */}
+            <CtaButton apk size="lg" arrow />
+            {/* ghost glass button, same hover behaviour */}
+            <CtaButton
+              variant="ghost"
               size="lg"
-              onClick={() =>
-                document
-                  .getElementById("download")
-                  ?.scrollIntoView({ behavior: "smooth" })
-              }
-            >
-              Get the APK
-            </GlassButton>
-            <a className="hero-secondary" href="#how">
-              How it works
-            </a>
+              label="How it works"
+              target="how"
+              focusId="how-heading"
+            />
           </motion.div>
         </div>
-        <div
-          className="hero-visual"
-          ref={visualRef}
-          onPointerMove={onPointerMove}
-          aria-hidden="true"
-        >
+        <div className="hero-visual" ref={visualRef} onPointerMove={onPointerMove}>
           {/* Dippy floating by the phone — gentle idle bob, never over text */}
-          <img
-            className="hero-buddy"
-            src={asset("assets/dippy-happy.webp")}
-            alt=""
-            width={76}
-            height={76}
-            loading="eager"
-            decoding="async"
-          />
           <motion.div
-            animate={{ y: [0, -9, 0] }}
+            className="hero-buddy-wrap"
+            animate={reduced ? { y: 0 } : { y: [0, -7, 0] }}
+            transition={{ duration: 5.2, repeat: Infinity, ease: "easeInOut", delay: 0.8 }}
+          >
+            <img
+              className="hero-buddy"
+              src={asset("assets/dippy-happy.webp")}
+              alt=""
+              width={76}
+              height={76}
+              loading="eager"
+              decoding="async"
+            />
+          </motion.div>
+          <motion.div
+            animate={reduced ? { y: 0 } : { y: [0, -9, 0] }}
             transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
           >
             <motion.div style={{ rotateX, rotateY }}>
