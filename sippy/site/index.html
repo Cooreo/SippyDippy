@@ -40,14 +40,38 @@
       type="font/woff2"
       crossorigin
     />
-    <link
-      rel="preload"
-      as="image"
-      href="%VITE_BASE%assets/hero-caustics.webp"
-      imagesrcset="%VITE_BASE%assets/hero-caustics-640.webp 640w, %VITE_BASE%assets/hero-caustics-960.webp 960w, %VITE_BASE%assets/hero-caustics.webp 1376w"
-      imagesizes="100vw"
-      fetchpriority="high"
-    />
+    <!-- Theme boot (before first paint): stamp `.dark` so a dark-mode visitor
+         never sees a light flash, then preload the wallpaper of the ACTIVE
+         theme only — dark = night reef, light = daylight water. -->
+    <script>
+      (function () {
+        var base = "%VITE_BASE%";
+        var light = true;
+        try {
+          var stored = window.localStorage.getItem("sippy-theme");
+          light = stored
+            ? stored !== "dark"
+            : !window.matchMedia("(prefers-color-scheme: dark)").matches;
+        } catch (e) {
+          /* private mode / no storage — default to light */
+        }
+        if (!light) document.documentElement.classList.add("dark");
+        var stem = light ? "hero-caustics-light" : "hero-caustics";
+        var link = document.createElement("link");
+        link.rel = "preload";
+        link.as = "image";
+        link.setAttribute("fetchpriority", "high");
+        link.setAttribute(
+          "imagesrcset",
+          base + "assets/" + stem + "-640.webp 640w, " +
+            base + "assets/" + stem + "-960.webp 960w, " +
+            base + "assets/" + stem + ".webp 1376w"
+        );
+        link.setAttribute("imagesizes", "100vw");
+        link.href = base + "assets/" + stem + ".webp";
+        document.head.appendChild(link);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

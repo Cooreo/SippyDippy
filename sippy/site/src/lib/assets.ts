@@ -22,6 +22,16 @@ export const ASSETS: AssetInfo[] = [
     "budget": 250000
   },
   {
+    "name": "hero-caustics-light",
+    "file": "assets/hero-caustics-light.webp",
+    "width": 1376,
+    "height": 768,
+    "bytes": 69416,
+    "alpha": false,
+    "opaquePct": null,
+    "budget": 250000
+  },
+  {
     "name": "dippy-happy",
     "file": "assets/dippy-happy.webp",
     "width": 248,
