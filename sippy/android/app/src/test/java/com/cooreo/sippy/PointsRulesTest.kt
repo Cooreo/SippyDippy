@@ -55,7 +55,8 @@ class PointsRulesTest {
         assertEquals(0, PointsRules.debit(0, 30))
         assertEquals(0, PointsRules.debit(10, 30))
         assertEquals(5, PointsRules.debit(10, 5))
-        assertEquals(0, PointsRules.debit(3, -100))
+        // A negative amount is not a refund: it debits nothing.
+        assertEquals(3, PointsRules.debit(3, -100))
         assertEquals(0, PointsRules.credit(-40, -10, -100).points)
     }
 
@@ -73,7 +74,9 @@ class PointsRulesTest {
         assertEquals(250, PointsRules.millilitresToNextPoint(0))
         assertEquals(50, PointsRules.millilitresToNextPoint(200))
         assertEquals(1, PointsRules.millilitresToNextPoint(249))
-        // A stale value from an older document cannot make it zero or negative.
-        assertEquals(250, PointsRules.millilitresToNextPoint(250))
+        // A stale carry of a whole step is clamped into range, so the distance
+        // to the next point can never be zero or negative.
+        assertEquals(1, PointsRules.millilitresToNextPoint(250))
+        assertEquals(250, PointsRules.millilitresToNextPoint(-40))
     }
 }
