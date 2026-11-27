@@ -44,3 +44,19 @@ Friends are 512 × 512, cosmetics 256 × 256. Every file is well under the
 Two more outfits were planned (otter, turtle) and a third (axolotl) was cut off
 by the image tool's per-turn cap. See `PROGRESS.md` — the cosmetic table only
 lists items whose art exists, so nothing in the app points at a missing file.
+
+## Round 8 (B2, B4) — backdrop and drink icons
+
+Same tool, same rule: generated here, compressed here, nothing third-party. The
+PNG sources are not kept in the repository; the prompt below plus the pipeline is
+enough to regenerate them, and the shipped WebP is the artefact.
+
+| File | Size | Prompt in one line |
+| --- | --- | --- |
+| `res/drawable-nodpi/backdrop.webp` | 1080 × 2400, 35 KB | tall portrait underwater scene: aqua at the top with wide god rays, deep royal blue in the middle, near-black navy at the bottom, faint caustics and out-of-focus bubbles, no objects, no text |
+| `res/drawable-nodpi/drink_*.webp` | 192 × 192, see below | glossy translucent 3D drink glyph on a transparent field, one per category |
+
+Pipeline for the backdrop: `convert src.png -resize 1080x2400^ -gravity center
+-extent 1080x2400 -strip -quality 84 backdrop.webp` (WebP, method 6). Budget was
+250 KB; it lands at 35 KB, so there is room to raise quality later if the banding
+ever shows on a phone.

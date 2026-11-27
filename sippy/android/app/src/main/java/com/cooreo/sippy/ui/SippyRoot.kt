@@ -71,6 +71,8 @@ import com.cooreo.sippy.ui.components.FloatingNav
 import com.cooreo.sippy.ui.system.LocalMotionAllowed
 import com.cooreo.sippy.ui.components.NavBarHeight
 import com.cooreo.sippy.ui.components.NavTarget
+import com.cooreo.sippy.ui.glass.BackdropTints
+import com.cooreo.sippy.ui.glass.LocalBackdropTint
 import com.cooreo.sippy.ui.glass.GlassCapabilities
 import com.cooreo.sippy.ui.glass.GlassDiagnostics
 import com.cooreo.sippy.ui.glass.LocalGlassBoost
@@ -237,6 +239,16 @@ private fun AppScaffold(
     diagnostics: GlassDiagnostics,
 ) {
     var tab by remember { mutableStateOf(Tab.HOME) }
+    // B2: each tab tints the backdrop; the host crossfades on the change.
+    val backdropTint = LocalBackdropTint.current
+    LaunchedEffect(tab) {
+        backdropTint.color = when (tab) {
+            Tab.HOME -> BackdropTints.home
+            Tab.DRINKS -> BackdropTints.drinks
+            Tab.FRIENDS -> BackdropTints.friends
+            Tab.SETTINGS -> BackdropTints.settings
+        }
+    }
     var showDeveloper by remember { mutableStateOf(false) }
     var showAddDrink by remember { mutableStateOf(false) }
     var showCustomVolume by remember { mutableStateOf(false) }

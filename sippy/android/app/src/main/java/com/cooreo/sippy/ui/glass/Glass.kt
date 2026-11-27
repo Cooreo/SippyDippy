@@ -94,130 +94,22 @@ fun SippyBackdropHost(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val backdrop = rememberLayerBackdrop()
+    // B2: the host owns the tab tint; a screen writes LocalBackdropTint.color and
+    // the backdrop crossfades to it.
+    val tint = remember { BackdropTint() }
     Box(modifier.fillMaxSize()) {
-        AmbientBackground(
-            modifier = Modifier
-                .fillMaxSize()
-                .layerBackdrop(backdrop),
-        )
-        CompositionLocalProvider(LocalBackdrop provides backdrop) {
-            Box(Modifier.fillMaxSize()) { content() }
+        CompositionLocalProvider(LocalBackdropTint provides tint) {
+            AmbientBackground(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .layerBackdrop(backdrop),
+            )
         }
-    }
-}
-
-/**
- * The site's underwater scene, static: the deep gradient, three light pools, a
- * diagonal shaft, drifting caustic ribbons and ambient droplets. Nothing here
- * animates and no image is loaded — but the detail is deliberate (round 7, A2):
- * a blur or a lens over a smooth gradient is invisible, so the backdrop has to
- * carry structure if the glass is to look like glass.
- */
-@Composable
-fun AmbientBackground(modifier: Modifier = Modifier) {
-    val c = LocalSippyColors.current
-    val dark = c.isDark
-    Box(
-        modifier = modifier.background(
-            Brush.verticalGradient(listOf(c.bg0, c.bg1, c.bg2)),
-        ),
-    ) {
-        Canvas(Modifier.fillMaxSize()) {
-            fun pool(x: Float, y: Float, r: Float, color: Color) {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(color, Color.Transparent),
-                        center = Offset(size.width * x, size.height * y),
-                        radius = size.minDimension * r,
-                    ),
-                    radius = size.minDimension * r,
-                    center = Offset(size.width * x, size.height * y),
-                )
-            }
-            val accent = c.accent.copy(alpha = if (dark) 0.34f else 0.26f)
-            pool(0.16f, 0.12f, 0.55f, accent)
-            pool(0.92f, 0.34f, 0.42f, c.accentBright.copy(alpha = if (dark) 0.20f else 0.18f))
-            pool(0.44f, 0.98f, 0.60f, c.accentDeep.copy(alpha = if (dark) 0.16f else 0.10f))
-
-            // Light shaft from the top-left, like the hero scrim on the site.
-            drawPath(
-                path = Path().apply {
-                    moveTo(size.width * 0.06f, 0f)
-                    lineTo(size.width * 0.42f, 0f)
-                    lineTo(size.width * 0.30f, size.height)
-                    lineTo(size.width * -0.04f, size.height)
-                    close()
-                },
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = if (dark) 0.05f else 0.16f),
-                        Color.Transparent,
-                    ),
-                    startY = 0f,
-                    endY = size.height * 0.9f,
-                ),
-            )
-
-            // Caustic ribbons: three travelling wave bands, painted as strokes so
-            // their edges are what the lens bends.
-            val caustic = if (dark) 0.10f else 0.20f
-            repeat(3) { band ->
-                val baseY = size.height * (0.30f + band * 0.22f)
-                val amplitude = size.height * (0.045f + band * 0.012f)
-                val path = Path()
-                var x = -size.width * 0.05f
-                var first = true
-                while (x <= size.width * 1.05f) {
-                    val y = baseY + sin(x / size.width * 5.2f + band * 1.7f) * amplitude
-                    if (first) {
-                        path.moveTo(x, y)
-                        first = false
-                    } else {
-                        path.lineTo(x, y)
-                    }
-                    x += size.width / 40f
-                }
-                drawPath(
-                    path = path,
-                    color = c.accentBright.copy(alpha = caustic * (1f - band * 0.22f)),
-                    style = Stroke(width = (2.5f - band * 0.5f).dp.toPx()),
-                )
-            }
-
-            // Ambient droplets: fixed positions, small, soft.
-            val droplets = floatArrayOf(
-                0.08f, 0.16f, 0.030f,
-                0.24f, 0.34f, 0.018f,
-                0.38f, 0.12f, 0.022f,
-                0.52f, 0.44f, 0.016f,
-                0.66f, 0.22f, 0.026f,
-                0.74f, 0.62f, 0.020f,
-                0.86f, 0.40f, 0.030f,
-                0.92f, 0.74f, 0.017f,
-                0.16f, 0.68f, 0.021f,
-                0.46f, 0.80f, 0.026f,
-                0.60f, 0.92f, 0.015f,
-                0.30f, 0.52f, 0.013f,
-            )
-            var i = 0
-            while (i + 2 < droplets.size) {
-                val x = droplets[i] * size.width
-                val y = droplets[i + 1] * size.height
-                val r = droplets[i + 2] * size.minDimension
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = if (dark) 0.16f else 0.30f),
-                            Color.Transparent,
-                        ),
-                        center = Offset(x - r * 0.3f, y - r * 0.3f),
-                        radius = r,
-                    ),
-                    radius = r,
-                    center = Offset(x, y),
-                )
-                i += 3
-            }
+        CompositionLocalProvider(
+            LocalBackdrop provides backdrop,
+            LocalBackdropTint provides tint,
+        ) {
+            Box(Modifier.fillMaxSize()) { content() }
         }
     }
 }
