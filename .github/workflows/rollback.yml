@@ -1,0 +1,214 @@
+# Sippy Android - withdraw a bad release, in one click.
+#
+#   Actions -> "Roll back a release" -> Run workflow
+#     version  : the tag to withdraw (v1.2.0). Empty means "the newest release".
+#     dry_run  : report what would happen, change nothing.
+#
+# What it does, in this order (each step is safe to repeat):
+#   1. finds the newest published manifest that is STRICTLY OLDER than the one
+#      being withdrawn and copies it over releases/latest.json on main, so the
+#      site and the in-app updater stop offering the bad build within one deploy;
+#   2. deletes the GitHub Release and its tag, so nobody downloads it by link;
+#   3. asks deploy.yml to rebuild the site.
+#
+# It refuses to guess: an unknown tag, or a withdrawal that has no older
+# manifest behind it, aborts before anything is changed.
+#
+# What it cannot do: un-install or downgrade the build on a phone that already
+# took the update - Android has no downgrade path. The honest fix for an
+# installed bad build is the next release; this workflow stops the spread and
+# puts the download and the update offer back on the last good version.
+#
+# It can find what to restore because this repo already keeps a manifest per
+# published tag (releases/v1.0.0.json, releases/v1.1.0.json) and the publish job
+# now also archives releases/history/<versionName>.json for everything it ships.
+name: Roll back a release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag to withdraw, e.g. v1.2.0 (empty = newest v* tag)"
+        required: false
+        default: ""
+        type: string
+      dry_run:
+        description: "Report what would happen and change nothing"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rollback
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Withdraw a release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write   # rewrite releases/latest.json, delete the tag
+      actions: write    # re-deploy the site
+    steps:
+      - name: Checkout main with tags
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Decide what to withdraw and what to restore
+        id: decide
+        env:
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          set -e
+          tag="$REQUESTED"
+          if [ -z "$tag" ]; then
+            tag="$(git tag --sort=-v:refname --list 'v*' | head -1)"
+          fi
+          if [ -z "$tag" ]; then
+            echo "::error::No v* tag exists, so there is nothing to withdraw."
+            exit 1
+          fi
+          python3 - "$tag" >> "$GITHUB_OUTPUT" <<'PY'
+          import glob, json, os, sys
+
+          tag = sys.argv[1]
+          version = tag[1:] if tag.startswith("v") else tag
+
+
+          def read(path):
+              try:
+                  with open(path) as fh:
+                      return json.load(fh)
+              except Exception:
+                  return {}
+
+
+          def version_code(manifest):
+              try:
+                  return int(manifest.get("versionCode") or 0)
+              except Exception:
+                  return 0
+
+
+          current = read("releases/latest.json")
+          current_code = version_code(current)
+
+          # Every manifest this repo has ever published: releases/latest.json, the
+          # per-tag manifests written by write_release_manifest.py (releases/v1.0.0.json)
+          # and the archive the publish job keeps (releases/history/<version>.json).
+          seen = {}
+          for path in glob.glob("releases/*.json") + glob.glob("releases/history/*.json"):
+              name = os.path.basename(path)
+              if not name.endswith(".json") or name == "latest.json":
+                  continue
+              manifest = read(path)
+              name_version = name[:-5]
+              if name_version.startswith("v"):
+                  name_version = name_version[1:]
+              seen[path] = (version_code(manifest), name_version)
+
+          # Which version is going away?
+          withdraw_code = current_code if str(current.get("versionName", "")) == version else 0
+          for path, (code, name_version) in seen.items():
+              if name_version == version and code > 0:
+                  withdraw_code = code
+
+          # Only ever restore something strictly older than the version being withdrawn.
+          candidates = []
+          for path, (code, name_version) in seen.items():
+              if code <= 0 or name_version == version:
+                  continue
+              if withdraw_code > 0 and code >= withdraw_code:
+                  continue
+              candidates.append((code, path))
+          candidates.sort(reverse=True)
+          restore = candidates[0][1] if candidates else ""
+          restore_version = os.path.basename(restore)[:-5] if restore else ""
+          if restore_version.startswith("v"):
+              restore_version = restore_version[1:]
+
+          print(f"withdraw={tag}")
+          print(f"withdraw_code={withdraw_code}")
+          print(f"restore={restore}")
+          print(f"restore_version={restore_version}")
+          PY
+
+      - name: Refuse to guess
+        env:
+          RESTORE: ${{ steps.decide.outputs.restore }}
+          WITHDRAW_CODE: ${{ steps.decide.outputs.withdraw_code }}
+          WITHDRAW: ${{ steps.decide.outputs.withdraw }}
+        run: |
+          if [ "$WITHDRAW_CODE" = "0" ]; then
+            echo "::error::$WITHDRAW does not match any published manifest, so there is nothing to withdraw. Nothing was changed."
+            exit 1
+          fi
+          if [ -z "$RESTORE" ]; then
+            echo "::error::No older manifest exists behind $WITHDRAW - refusing to guess what to restore. Nothing was changed."
+            exit 1
+          fi
+          echo "will restore $RESTORE"
+
+      - name: Point latest.json at the previous manifest
+        if: ${{ !inputs.dry_run }}
+        env:
+          RESTORE: ${{ steps.decide.outputs.restore }}
+          WITHDRAW: ${{ steps.decide.outputs.withdraw }}
+        run: |
+          set -e
+          cp "$RESTORE" releases/latest.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add releases/latest.json
+          git commit -m "rollback: withdraw $WITHDRAW [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Delete the release and its tag
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WITHDRAW: ${{ steps.decide.outputs.withdraw }}
+        run: |
+          if gh release delete "$WITHDRAW" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag; then
+            echo "deleted release and tag $WITHDRAW"
+          else
+            echo "::warning::Could not delete $WITHDRAW; latest.json already moved, so the site no longer offers it."
+          fi
+
+      - name: Re-deploy the website
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh workflow run deploy.yml --repo "$GITHUB_REPOSITORY" --ref main; then
+            echo "requested a website deploy"
+          else
+            echo "::warning::Could not request the deploy; the site reads releases/latest.json from main as a fallback."
+          fi
+
+      - name: Summary
+        env:
+          WITHDRAW: ${{ steps.decide.outputs.withdraw }}
+          RESTORE_VERSION: ${{ steps.decide.outputs.restore_version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          {
+            echo "## Rollback"
+            echo ""
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "**Dry run** - nothing was changed."
+              echo ""
+            fi
+            echo "- withdrawn: \`$WITHDRAW\`"
+            echo "- latest.json now serves: \`$RESTORE_VERSION\`"
+            echo "- site redeploy: requested"
+            echo ""
+            echo "Installs that already took \`$WITHDRAW\` cannot be downgraded by Android;"
+            echo "they keep it until the next release fixes it forward."
+          } >> "$GITHUB_STEP_SUMMARY"

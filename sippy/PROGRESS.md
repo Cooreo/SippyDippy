@@ -1108,3 +1108,38 @@ Because two of those were in the same commit as the feature, one commit
 (`662e22b`) temporarily removed `ShopRulesTest` to prove which file was at
 fault, and the next commit restored it fixed. The final tree is green at
 `b3a8b59` (both the push run and the pull-request run).
+
+## Rule change: publish every part automatically, revert with one click (owner decision)
+
+Round 7 ran under "dry run only, release files untouched", and that produced the
+one outcome that actually hurt: six parts of green work sat on a branch that
+nothing could install. The app's updater, the site and the GitHub releases page
+all still said 1.1.0 — correctly, because a branch cannot publish (the release
+job's guard skips publish off `main`) and nobody bumped the version.
+
+**The new rule, from now on:**
+
+- **Every part ships when it lands.** Bump `sippy/android/version.properties`,
+  merge to `main`, and `release.yml` builds, signs, publishes, rewrites
+  `releases/latest.json` and redeploys the site on its own. A dry run is now only
+  for validating a change *to the pipeline itself*, never for code.
+- **Any release can be undone in one click.** Actions → *"Roll back a release"*
+  (`.github/workflows/rollback.yml`). It copies the newest published manifest that
+  is strictly older than the withdrawn tag over `releases/latest.json` on `main`,
+  deletes the GitHub Release and its tag, and asks for a site deploy. It refuses
+  to guess: an unknown tag, or a tag with nothing older behind it, aborts before
+  anything is touched (verified against the real manifests: withdraw 1.2.0 →
+  restore 1.1.0; withdraw 1.1.0 → restore 1.0.0; oldest and unknown both refuse).
+- **What a rollback cannot do** is downgrade a phone that already installed the
+  bad build — Android has no downgrade path. A rollback stops the spread (site,
+  in-app update offer, download links); the next release fixes it forward. That
+  limit is written on the workflow itself, not just here.
+
+To make the restore exact rather than a best guess, the publish job now archives
+every manifest it ships as `releases/history/<versionName>.json` (1.1.0 was seeded
+by hand). The repo already kept `releases/v1.0.0.json` and `releases/v1.1.0.json`,
+so the rollback can also reach back before this change.
+
+**What this means for round 7:** the work is no longer "done but unreleased". It
+is 1.2.0, published by the pipeline, with the new rollback available before the
+first automatic ship — so there is something to revert to if 1.2.0 misbehaves.
