@@ -593,8 +593,10 @@ manual run can tick `publish`):
 - **Build signed APK** — the committed signing files
   (`signing/sippy-release.jks` + `signing/signing.properties`) must exist, and the step
   names whichever is missing; unit tests; `assembleRelease`; then `aapt2 dump badging`
-  proves package/versionCode/versionName and `apksigner verify --print-certs` applies
-  trust-on-first-use to the certificate — compared with `certSha256` in
+  proves package/versionCode/versionName and the certificate digest (from
+  `apksigner verify --print-certs`, falling back to `keytool -printcert -jarfile` on the
+  v1 signature; both tool outputs are echoed as workflow annotations if neither yields a
+  64-hex value) applies trust-on-first-use — compared with `certSha256` in
   `releases/latest.json` when present (mismatch fails with both values), pinned on the
   real first publish; APK renamed `sippy-<version>.apk`, SHA-256 + size + certificate
   emitted as outputs.
