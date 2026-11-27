@@ -1,37 +1,55 @@
 package com.cooreo.sippy.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.cooreo.sippy.domain.nav.NavLens
 import com.cooreo.sippy.ui.glass.GlassLevel
 import com.cooreo.sippy.ui.glass.GlassSurface
 import com.cooreo.sippy.ui.theme.Dimens
 import com.cooreo.sippy.ui.theme.LocalSippyColors
+import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 /**
  * The height the floating pill occupies inside the content frame:
@@ -48,11 +66,28 @@ enum class NavTarget(val label: String) {
     SETTINGS("Settings"),
 }
 
+/** Left to right; the Log button owns the middle slot and no tab may sit on it. */
+private val TAB_TARGETS = listOf(
+    NavTarget.HOME,
+    NavTarget.DRINKS,
+    NavTarget.FRIENDS,
+    NavTarget.SETTINGS,
+)
+
+private fun slotOf(target: NavTarget): Int =
+    NavLens.TAB_SLOTS[TAB_TARGETS.indexOf(target).coerceAtLeast(0)]
+
 /**
- * The floating glass pill from the site nav: four glyphs around a Sippy Blue
- * Log action. It floats over the content, honours the gesture nav inset, and
- * every hit area is at least 48dp. The whole bar is one glass surface, so it
- * costs one backdrop layer.
+ * The floating glass pill from the site nav (round 6, rebuilt for round 8 B6).
+ *
+ * One liquid lens travels the bar behind the glyphs: it springs to the active tab,
+ * stretches along its travel in proportion to its speed, settles with a slight
+ * overshoot, and magnifies whichever glyph it is under. Dragging moves the lens
+ * under the finger and snaps it to the nearest tab on release. The Log button
+ * sits on top of the lens, so the lens slides behind it and the button stays
+ * tappable the whole way.
+ *
+ * With Reduce effects the lens does not travel: it fades in place instead.
  */
 @Composable
 fun FloatingNav(
@@ -64,6 +99,22 @@ fun FloatingNav(
 ) {
     val c = LocalSippyColors.current
     val shape = RoundedCornerShape(Dimens.pill)
+    val lens = remember { Animatable(slotOf(current).toFloat()) }
+    val reveal = remember { Animatable(1f) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(current, animate) {
+        val target = slotOf(current).toFloat()
+        if (animate) {
+            reveal.snapTo(1f)
+            lens.animateTo(target, spring(dampingRatio = 0.62f, stiffness = 380f))
+        } else {
+            // Reduce effects: the lens jumps, and a short fade hides the cut.
+            lens.snapTo(target)
+            reveal.snapTo(0.35f)
+            reveal.animateTo(1f, tween(150))
+        }
+    }
 
     Box(
         modifier = modifier
@@ -77,83 +128,132 @@ fun FloatingNav(
             modifier = Modifier.fillMaxWidth(),
             level = GlassLevel.LIVE,
         ) {
-            Row(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
             ) {
-                NavItem(NavTarget.HOME, current, onSelect, animate)
-                NavItem(NavTarget.DRINKS, current, onSelect, animate)
-                LogButton(onLog)
-                NavItem(NavTarget.FRIENDS, current, onSelect, animate)
-                NavItem(NavTarget.SETTINGS, current, onSelect, animate)
+                val slotPx = constraints.maxWidth / NavLens.SLOTS.toFloat()
+
+                // The lens, drawn first so the row and the Log button sit on top.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .offset {
+                            val center = NavLens.centerPx(lens.value, slotPx)
+                            IntOffset((center - slotPx / 2f).roundToInt(), 0)
+                        }
+                        .size(width = 56.dp, height = 52.dp)
+                        .graphicsLayer {
+                            val speed = lens.velocity
+                            scaleX = NavLens.stretchX(speed)
+                            scaleY = NavLens.stretchY(speed)
+                            alpha = reveal.value.coerceIn(0f, 1f)
+                        }
+                        .background(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    c.accentBright.copy(alpha = 0.46f),
+                                    c.accent.copy(alpha = 0.22f),
+                                    Color.Transparent,
+                                ),
+                            ),
+                            shape = CircleShape,
+                        )
+                        .border(
+                            width = 1.dp,
+                            brush = Brush.verticalGradient(
+                                listOf(Color.White.copy(alpha = 0.36f), Color.Transparent),
+                            ),
+                            shape = CircleShape,
+                        ),
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .pointerInput(animate, slotPx) {
+                            if (!animate) return@pointerInput
+                            detectHorizontalDragGestures(
+                                onDragEnd = {
+                                    val slot = NavLens.nearestTabSlot(lens.value)
+                                    val target = TAB_TARGETS
+                                        .getOrNull(NavLens.TAB_SLOTS.indexOf(slot))
+                                    target?.let { onSelect(it) }
+                                    scope.launch {
+                                        lens.animateTo(
+                                            targetValue = slot.toFloat(),
+                                            animationSpec = spring(
+                                                dampingRatio = 0.62f,
+                                                stiffness = 380f,
+                                            ),
+                                        )
+                                    }
+                                },
+                                onDragCancel = {
+                                    scope.launch {
+                                        lens.animateTo(
+                                            targetValue = slotOf(current).toFloat(),
+                                            animationSpec = spring(dampingRatio = 0.7f, stiffness = 420f),
+                                        )
+                                    }
+                                },
+                                onHorizontalDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val next = NavLens.clamp(lens.value + dragAmount / slotPx)
+                                    scope.launch { lens.snapTo(next) }
+                                },
+                            )
+                        },
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    NavItem(NavTarget.HOME, current, lens, onSelect)
+                    NavItem(NavTarget.DRINKS, current, lens, onSelect)
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        LogButton(onLog)
+                    }
+                    NavItem(NavTarget.FRIENDS, current, lens, onSelect)
+                    NavItem(NavTarget.SETTINGS, current, lens, onSelect)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun NavItem(
+private fun RowScope.NavItem(
     target: NavTarget,
     current: NavTarget,
+    lens: Animatable<Float, AnimationVector1D>,
     onSelect: (NavTarget) -> Unit,
-    animate: Boolean,
 ) {
     val c = LocalSippyColors.current
     val isCurrent = current == target
     val tint = if (isCurrent) c.accentBright else c.text2
-    // The liquid lens: it swells under the active glyph with a spring overshoot
-    // (and squashes on the way, so it reads as a droplet settling), and shrinks
-    // away when the tab is left.
-    val lens by animateFloatAsState(
-        targetValue = if (isCurrent) 1f else 0f,
-        animationSpec = if (animate) spring(dampingRatio = 0.5f, stiffness = 420f) else snap(),
-        label = "navLens",
-    )
-    val lensAmount = if (animate) lens else if (isCurrent) 1f else 0f
+    val slot = slotOf(target)
 
-    Box(
+    Column(
         modifier = Modifier
-            .size(56.dp)
+            .weight(1f)
+            .fillMaxHeight()
             .clip(RoundedCornerShape(Dimens.pill))
             .clickable(role = Role.Tab) { onSelect(target) }
             .semantics {
                 contentDescription = target.label
                 selected = isCurrent
+            }
+            .graphicsLayer {
+                // Read in the layer scope: the lens travelling does not recompose.
+                val near = NavLens.proximity(lens.value, slot)
+                val scale = 1f + 0.18f * near
+                scaleX = scale
+                scaleY = scale
             },
-        contentAlignment = Alignment.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
-        if (lensAmount > 0.01f) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .padding(4.dp)
-                    .graphicsLayer {
-                        scaleX = 0.84f + 0.16f * lensAmount
-                        scaleY = 0.68f + 0.32f * lensAmount
-                        alpha = lensAmount.coerceIn(0f, 1f)
-                    }
-                    .background(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                c.accentBright.copy(alpha = 0.42f),
-                                c.accent.copy(alpha = 0.20f),
-                                Color.Transparent,
-                            ),
-                        ),
-                        shape = CircleShape,
-                    )
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.verticalGradient(
-                            listOf(Color.White.copy(alpha = 0.34f * lensAmount), Color.Transparent),
-                        ),
-                        shape = CircleShape,
-                    ),
-            )
-        }
         NavGlyph(
             kind = when (target) {
                 NavTarget.HOME -> NavGlyphKind.HOME
@@ -162,7 +262,17 @@ private fun NavItem(
                 NavTarget.SETTINGS -> NavGlyphKind.SETTINGS
             },
             tint = tint,
-            size = 23.dp,
+            size = 22.dp,
+        )
+        Text(
+            text = target.label,
+            color = tint,
+            fontSize = 9.sp,
+            modifier = Modifier.graphicsLayer {
+                // Faint at rest, full under the lens: the label is magnified with
+                // the glyph instead of popping in and out.
+                alpha = 0.45f + 0.55f * NavLens.proximity(lens.value, slot)
+            },
         )
     }
 }
