@@ -203,3 +203,10 @@ Preview base: `https://{port}-<sandbox>.e2b.app/` (dev server :5173) or the prod
 - **Verified here:** gates above, module transform, asset serving, unit-test geometry.
 - **Unverified (needs a browser):** all visual/interaction items 1–8 — no browser in this sandbox.
 - **Known gap:** 4 of 14 asset images pending the generation limit (sections fall back to gradients gracefully; re-run `python3 tooling/build-assets.py` after the 4 PNGs land in `.assets-src/`).
+
+### F completion (2026-11-27, image limit reset)
+All 4 pending assets generated (style prefix verbatim, no rejections — each visually reviewed: clean edges, no text, correct palette), converted, and the builder now exits 0 with **14/14 assets, 226.4 KB total**:
+- friend-pet-adult 177×240 7.7 KB (alpha 51.4%)
+- bg-features 1376×768 19.1 KB · bg-showcase 21.0 KB · bg-download 15.4 KB (all ≤120 KB budget)
+Home-route unique image bytes now **≈226 KB** (target <1.2 MB ✓). `/#/assets` contact sheet shows all 14; pending note disappears (PENDING_ASSETS empty).
+Gates re-run green after the conversion: tsc 0, lint 0 err/3 warn, 36/36, build ~4.8 s.

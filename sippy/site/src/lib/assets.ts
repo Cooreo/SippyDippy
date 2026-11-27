@@ -92,6 +92,16 @@ export const ASSETS: AssetInfo[] = [
     "budget": 120000
   },
   {
+    "name": "friend-pet-adult",
+    "file": "assets/friend-pet-adult.webp",
+    "width": 177,
+    "height": 240,
+    "bytes": 7896,
+    "alpha": true,
+    "opaquePct": 51.4,
+    "budget": 120000
+  },
+  {
     "name": "droplet-sprite",
     "file": "assets/droplet-sprite.webp",
     "width": 82,
@@ -110,6 +120,36 @@ export const ASSETS: AssetInfo[] = [
     "alpha": true,
     "opaquePct": 25.5,
     "budget": 120000
+  },
+  {
+    "name": "bg-features",
+    "file": "assets/bg-features.webp",
+    "width": 1376,
+    "height": 768,
+    "bytes": 19542,
+    "alpha": false,
+    "opaquePct": null,
+    "budget": 120000
+  },
+  {
+    "name": "bg-showcase",
+    "file": "assets/bg-showcase.webp",
+    "width": 1376,
+    "height": 768,
+    "bytes": 21454,
+    "alpha": false,
+    "opaquePct": null,
+    "budget": 120000
+  },
+  {
+    "name": "bg-download",
+    "file": "assets/bg-download.webp",
+    "width": 1376,
+    "height": 768,
+    "bytes": 15782,
+    "alpha": false,
+    "opaquePct": null,
+    "budget": 120000
   }
 ];
 
@@ -117,7 +157,7 @@ export const ASSETS: AssetInfo[] = [
  *  minus what is currently built) — the contact sheet lists these as
  *  pending.
  */
-export const PENDING_ASSETS: string[] = ["bg-download", "bg-features", "bg-showcase", "friend-pet-adult"];
+export const PENDING_ASSETS: string[] = [];
 
 const KNOWN = new Set(ASSETS.map((a) => a.name));
 
