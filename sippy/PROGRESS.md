@@ -853,3 +853,31 @@ said 1.0.0. So the fix is the normal ship ritual, not a site edit.
   still describe the code being released.
 - **Not yet published:** the release exists only after the PR is merged. Until
   then both the site and the APK honestly say 1.0.0.
+
+## v1.1.0 PUBLISHED — onboarding + rebuilt Home (2026-11-27)
+
+Merging PR #20 (`aea28ed`) made the pipeline publish by itself. No tag, no release
+and no manifest were written by hand.
+
+- Run `46051538310` (**Android release**, push to `main`): *Check for a new
+  version* · *Build signed APK* · *Publish release* = success; *Emulator smoke
+  test (advisory)* = failure, which is expected — it has never passed on a hosted
+  runner.
+- GitHub Release **`v1.1.0`** — `sippy-1.1.0.apk`, 10,096,505 B, SHA-256
+  `b9c17bcac2cda51e5f46474e6568f6bb54f47a978f8bfb70d9abbe93bba400b7`. GitHub's
+  own digest for that asset reports the same SHA-256, the manifest carries the
+  same numbers, and the certificate pin is unchanged (`da0673…1900`), so an
+  installed 1.0.0 verifies and installs the update through the in-app updater.
+- `releases/latest.json` on `main` (commit `465fee6`, `[skip ci]`) is
+  `versionCode 2 / versionName "1.1.0"`, minSdk 26.
+- **Why the site still said 1.0.0 for a few minutes after the merge:** the merge
+  itself triggers a site deploy, and that deploy (`46051538110`) ran with the old
+  1.0.0 manifest because the APK had not been built yet. The release job then
+  dispatched a second deploy (`46052489505`, finished 18:51:57), and
+  `https://cooreo.github.io/SippyDippy/releases/latest.json` now serves 1.1.0.
+  The download card renders straight from that file, so it reads
+  "v1.1.0 · 9.6 MB" with `sippy-1.1.0.apk`. Nothing needs to be re-deployed by
+  hand; a browser that cached the old JSON needs one hard refresh.
+- Same-day follow-up for the next release: the merge-time deploy always shows the
+  previous version until the release finishes (~8 min) and re-deploys. That is the
+  designed behaviour, not a failure.
