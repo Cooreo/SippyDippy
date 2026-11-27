@@ -1,6 +1,7 @@
-# TEMPORARY diagnostic workflow (deleted before the final commit). It exists
-# because this sandbox cannot stream Actions logs; the log is uploaded as an
-# artifact instead, which the GitHub API can hand back.
+# TEMPORARY diagnostic workflow (deleted before the final commit).
+# This sandbox cannot download Actions logs OR artifacts (both hosts are
+# blocked), so failures are surfaced as check-run annotations, which
+# api.github.com does return.
 name: WIP android diagnostics
 on:
   workflow_dispatch:
@@ -24,23 +25,18 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
-      - name: Environment
-        run: |
-          {
-            echo "=== java ==="; java -version 2>&1
-            echo "=== sdk env ==="; echo "ANDROID_HOME=$ANDROID_HOME ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-            echo "=== installed platforms ==="; ls "$ANDROID_HOME/platforms" 2>&1
-            echo "=== installed build-tools ==="; ls "$ANDROID_HOME/build-tools" 2>&1
-            echo "=== gradle ==="; ./gradlew --version 2>&1
-          } > env.log 2>&1 || true
       - name: Build (diagnostic)
-        run: ./gradlew --no-daemon --stacktrace --console=plain testDebugUnitTest assembleDebug > gradle.log 2>&1 || true
-      - name: Tail
-        run: tail -c 200000 gradle.log | tee tail.txt
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: android-logs
-          path: |
-            sippy/android/env.log
-            sippy/android/tail.txt
-          if-no-files-found: warn
+        shell: bash
+        run: |
+          set +e
+          ./gradlew --no-daemon --stacktrace --console=plain testDebugUnitTest assembleDebug > gradle.log 2>&1
+          code=$?
+          echo "gradle exit=$code"
+          if [ $code -ne 0 ]; then
+            msg="$( { grep -a -m 40 -E "^e: " gradle.log; echo '--- what went wrong ---'; sed -n '/What went wrong/,$p' gradle.log | head -50; echo '--- first errors ---'; grep -a -m 20 -E "error:|Could not (find|resolve|GET|HEAD)|No matching|not found|Unresolved" gradle.log | head -20; } | head -120 )"
+            enc="${msg//'%'/'%25'}"
+            enc="${enc//$'\r'/}"
+            enc="${enc//$'\n'/'%0A'}"
+            echo "::error title=Gradle failure::${enc}"
+          fi
+          exit $code
