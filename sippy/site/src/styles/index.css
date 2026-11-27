@@ -2590,6 +2590,37 @@ html.debug-outline [data-overflow-hint] {
   outline: 2px solid #ff2d55 !important;
   box-shadow: 0 0 0 3px rgba(255, 45, 85, 0.3) !important;
 }
+/* ?debug=perf corner HUD (no backdrop-filter so it adds zero blur cost) */
+.perf-hud {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 200;
+  min-width: 158px;
+  padding: 8px 11px;
+  border-radius: 12px;
+  background: rgba(8, 13, 24, 0.88);
+  border: 1px solid rgba(140, 180, 255, 0.32);
+  color: #f4f7ff;
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  box-shadow: 0 6px 20px rgba(4, 8, 18, 0.38);
+}
+.perf-hud-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.perf-hud-row span {
+  color: #a9b4ce;
+}
+.perf-hud-row b {
+  font-weight: 600;
+  color: #f4f7ff;
+}
 
 /* — Responsive — */
 @media (max-width: 1000px) {
