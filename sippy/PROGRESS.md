@@ -1143,3 +1143,56 @@ so the rollback can also reach back before this change.
 **What this means for round 7:** the work is no longer "done but unreleased". It
 is 1.2.0, published by the pipeline, with the new rollback available before the
 first automatic ship — so there is something to revert to if 1.2.0 misbehaves.
+
+---
+
+# Round 8 — HANDOFF
+
+**Where things stand:** 1.2.0 is published and live (site, GitHub release and the
+in-app updater all point at `versionCode 3`). Round 7 shipped: immersive bars,
+the glass diagnosis row, the Settings layout pass, the dated log, two pinned
+friends, four new friends with cosmetics, points + ledger + shop, and the motion
+pass. Round 8 is a two-round job: **Round 1 (this one) fixes and layout; Round 2
+is look and motion and only starts on the owner's word.** The sketch and the
+screenshots for Round 1 did not arrive, so A5 was built from its written
+description, which is now the layout authority for Home.
+
+**Evidence note:** the host can never read the Gradle log (blocked blob host) and
+the emulator job dies before it can take a screenshot, so every CI verdict in this
+round is from job/step conclusions plus the code, and every visual is a phone
+check, never a claim.
+
+## Root causes, written before the code
+
+**A1 — truncated labels ("S…", "B…", "−…", "+…", "…").** `GlassButton` and
+`GlassChip` draw their label with `maxLines = 1, overflow = Ellipsis`, so any
+squeeze silently becomes an ellipsis instead of wrapping. The squeeze comes from
+the callers: Settings' stepper Row, the Friends and Shop headers and the Shop item
+rows all put text chips next to text that grows (the goal number, the balance,
+"Need 12"), and some wrap chips in `Box(Modifier.weight(1f))`, which hands the
+chip a fixed share of the width. One component decides, so it is fixed once.
+
+**A2 — the status bar disappeared.** Round 7's A1 called
+`WindowInsetsController.hide(systemBars())` with `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`,
+and the content frame's padding came from `Modifier.statusBarsPadding()` — which
+returns **0 while the bar is hidden**. So hiding the bars and padding by the bar
+inset cannot coexist: with bars shown the content needs the inset, with bars
+hidden it needs none. Fix: stop hiding, make the bar transparent over the
+backdrop, and pad by status bar *plus* display cutout.
+
+**A3 — the log is incomplete and unsorted.** Two independent causes.
+(1) `SippyController.addDrink` keeps only the newest `MAX_LOG_ENTRIES = 400`
+(`takeLast`) — the tail is *deleted*, not just hidden. (2) History exists but is a
+plain `LazyColumn` fed by `LogGroups.byDay`, which sorts by `atEpochMs` only (no
+id tie-break, so identical timestamps can swap), formats dates without a year, and
+has no edit/delete path at all. There is also no way to see a day's counted
+millilitres or whether it met the goal.
+
+**A4 — cosmetics can be bought but not worn.** `StoredState.equipped` is
+`Map<friendId, itemId>`: one item per friend, no slot concept, so a hat and an
+outfit cannot coexist. Nothing draws a cosmetic on a friend — `FriendImage` has no
+item parameters and there is no anchor data — and the Shop's only action is
+`buyItem`; the chip that was meant to say "Equip" is the one A1 turns into "…".
+Ownership is already keyed by item id, which is why removal survives; equip state
+is keyed by friend id, which is why renaming survives, but neither slot nor
+renderer exists.
