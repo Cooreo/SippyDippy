@@ -80,10 +80,27 @@ and fails with both values if they differ.
 
 - `ci.yml` — every push and PR: `testDebugUnitTest` + `assembleDebug`. No
   signing material needed, no secrets, uploads nothing.
-- `release.yml` — tags `v*`, plus `workflow_dispatch` as a dry run that publishes
-  nothing. It checks the tag matches `version.properties` and that the
-  `versionCode` is newer than `releases/latest.json`, checks the committed
-  signing files exist, runs the tests, builds and signs the APK, verifies
-  package/versions/certificate with `aapt2` + `apksigner`, smoke-tests it on an
-  API 34 emulator (boot + crash buffer + in-place upgrade), and only then
-  publishes the GitHub Release and rewrites `releases/latest.json`.
+- `release.yml` — pushes to `main`, plus `workflow_dispatch` as a dry run. It
+  compares `version.properties` with `releases/latest.json` first: if the
+  `versionCode` is not newer, the build jobs are skipped and nothing is
+  published. Otherwise it checks the committed signing files exist, runs the
+  tests, builds and signs the APK, verifies package/versions/certificate with
+  `aapt2` + `apksigner`, smoke-tests it on an API 34 emulator (boot + crash
+  buffer + in-place upgrade), then publishes the GitHub Release and rewrites
+  `releases/latest.json`.
+
+## Releasing
+
+One step, no tags to remember:
+
+1. Bump `versionCode` (and `versionName` with it) in
+   `sippy/android/version.properties` — e.g. `2` / `1.1.0`.
+2. Commit and push to `main`.
+
+The pipeline makes the `v1.1.0` tag and the release, uploads `sippy-1.1.0.apk`,
+rewrites `releases/latest.json` (versionCode, SHA-256, `certSha256`) and
+redeploys the site. Installed phones offer the update on their next check — the
+app compares `versionCode`. A push that does not bump the version builds nothing.
+
+To rebuild without publishing, run **Android release** → *Run workflow*: a manual
+run always builds and smoke-tests, and publishes only if you tick `publish`.
