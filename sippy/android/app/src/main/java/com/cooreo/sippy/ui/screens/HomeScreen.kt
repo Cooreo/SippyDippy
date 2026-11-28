@@ -214,7 +214,6 @@ fun HomeScreen(
 }
 
 /** Greeting on the left, two chips on the right. No bell — that lives in Settings. */
-@Composable
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Header(
