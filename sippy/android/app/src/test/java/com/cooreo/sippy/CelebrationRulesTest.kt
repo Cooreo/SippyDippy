@@ -36,10 +36,11 @@ class CelebrationRulesTest {
         var met = false
         val events = mutableListOf<String>()
         // log up to the goal, undo, log again, go over, undo and re-cross.
-        for (step in listOf(1500, 600, -600, 600, 800, -800, 800)) {
+        var total = 0
+        for (delta in listOf(1500, 600, -600, 600, 800, -800, 800)) {
+            total = (total + delta).coerceAtLeast(0)
             val before = met
-            val total = if (step > 0) step else 0
-            met = (total >= 2000)
+            met = total >= 2000
             if (CelebrationRules.shouldCelebrate(before, met, today, last)) {
                 events += "celebrated"
                 last = today
