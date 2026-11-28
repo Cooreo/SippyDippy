@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
@@ -28,6 +27,7 @@ import com.cooreo.sippy.ui.components.DrinkIcon
 import com.cooreo.sippy.ui.glass.GlassButton
 import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassChip
+import com.cooreo.sippy.ui.glass.GlassChipRow
 import com.cooreo.sippy.ui.theme.Dimens
 import com.cooreo.sippy.ui.theme.LocalSippyColors
 import com.cooreo.sippy.ui.theme.SippyType
@@ -75,16 +75,13 @@ fun CustomVolumeSheet(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
                 Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GlassChipRow {
                     VolumeRules.PRESETS.forEach { preset ->
-                        Box(Modifier.weight(1f)) {
-                            GlassChip(
-                                label = "$preset",
-                                selected = value == preset,
-                                onClick = { text = preset.toString() },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
+                        GlassChip(
+                            label = "$preset",
+                            selected = value == preset,
+                            onClick = { text = preset.toString() },
+                        )
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -95,6 +92,7 @@ fun CustomVolumeSheet(
                     prominent = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                Spacer(Modifier.height(6.dp))
                 GlassButton(
                     label = "Cancel",
                     onClick = onDismiss,
@@ -165,16 +163,13 @@ fun EditEntrySheet(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
                 Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GlassChipRow {
                     VolumeRules.PRESETS.forEach { preset ->
-                        Box(Modifier.weight(1f)) {
-                            GlassChip(
-                                label = "$preset",
-                                selected = value == preset,
-                                onClick = { text = preset.toString() },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
+                        GlassChip(
+                            label = "$preset",
+                            selected = value == preset,
+                            onClick = { text = preset.toString() },
+                        )
                     }
                 }
                 Spacer(Modifier.height(10.dp))

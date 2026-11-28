@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -50,21 +51,22 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.cooreo.sippy.domain.drinks.DrinkCategory
-import com.cooreo.sippy.domain.water.VolumeRules
 import com.cooreo.sippy.domain.drinks.Drink
+import com.cooreo.sippy.domain.drinks.DrinkCategory
+import com.cooreo.sippy.domain.drinks.DrinkTable
+import com.cooreo.sippy.domain.water.VolumeRules
 import com.cooreo.sippy.ui.components.DrinkIcon
 import com.cooreo.sippy.ui.glass.GlassButton
 import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassChip
+import com.cooreo.sippy.ui.glass.GlassChipRow
 import com.cooreo.sippy.ui.glass.GlassLevel
 import com.cooreo.sippy.ui.glass.LocalGlassLevel
 import com.cooreo.sippy.ui.theme.Dimens
 import com.cooreo.sippy.ui.theme.DrinkTints
 import com.cooreo.sippy.ui.theme.LocalSippyColors
+import com.cooreo.sippy.ui.theme.SippyType
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -95,7 +97,7 @@ fun LogDrinkFlow(
     onCustom: () -> Unit,
 ) {
     val c = LocalSippyColors.current
-    val drinks = remember { com.cooreo.sippy.domain.drinks.DrinkTable.drinks }
+    val drinks = remember { DrinkTable.drinks }
     var selected by remember { mutableStateOf(drinks.first()) }
     var volume by remember { mutableIntStateOf(selected.defaultVolumeMl.coerceIn(100, 600)) }
     val progress = remember { Animatable(if (animate) 0f else 1f) }
@@ -170,18 +172,18 @@ fun LogDrinkFlow(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = "Log a drink",
+                                    style = SippyType.section,
                                     color = c.text1,
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.SemiBold,
                                 )
                                 Spacer(Modifier.weight(1f))
                                 Text(
                                     text = "Close",
+                                    style = SippyType.secondary,
                                     color = c.text3,
-                                    fontSize = 13.sp,
                                     modifier = Modifier
+                                        .minimumInteractiveComponentSize()
                                         .clickable(enabled = !busy) { leave(onDismiss) }
-                                        .padding(8.dp),
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
                                 )
                             }
                             Spacer(Modifier.height(12.dp))
@@ -215,17 +217,16 @@ fun LogDrinkFlow(
                                 Column(Modifier.weight(1f)) {
                                     Text(
                                         text = "$volume ml",
+                                        style = SippyType.display,
                                         color = c.text1,
-                                        fontSize = 30.sp,
-                                        fontWeight = FontWeight.Light,
                                     )
                                     Text(
                                         text = selected.name,
+                                        style = SippyType.secondary,
                                         color = c.text2,
-                                        fontSize = 13.sp,
                                     )
                                     Spacer(Modifier.height(8.dp))
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    GlassChipRow {
                                         VolumeRules.PRESETS.forEach { preset ->
                                             GlassChip(
                                                 label = "$preset",
@@ -245,13 +246,13 @@ fun LogDrinkFlow(
                             )
                             Spacer(Modifier.height(4.dp))
                             GlassButton(
-                                label = "Add $volume ml of ${selected.name}",
+                                label = "Add $volume ml",
                                 prominent = true,
                                 onClick = { leave { onLog(selected, volume) } },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Spacer(Modifier.height(8.dp))
-                            GlassChip(
+                            GlassButton(
                                 label = "Custom…",
                                 onClick = { leave(onCustom) },
                                 modifier = Modifier.fillMaxWidth(),

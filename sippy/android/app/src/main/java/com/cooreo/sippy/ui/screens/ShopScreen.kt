@@ -6,6 +6,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,20 +23,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.cooreo.sippy.domain.points.PointsRules
 import com.cooreo.sippy.domain.shop.ItemTable
 import com.cooreo.sippy.domain.shop.ShopItem
 import com.cooreo.sippy.domain.shop.ShopRules
 import com.cooreo.sippy.model.Friend
-import com.cooreo.sippy.model.FriendKind
 import com.cooreo.sippy.model.PointsEntry
 import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.ui.components.FriendAvatar
-import com.cooreo.sippy.ui.components.ItemImage
 import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.theme.LocalSippyColors
@@ -44,6 +42,7 @@ import com.cooreo.sippy.ui.theme.SippyType
  * Points, the price table and the ledger (round 7, B4). No real money and no
  * ads anywhere: points come only from counted hydration.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ShopScreen(
     state: StoredState,
@@ -69,17 +68,26 @@ fun ShopScreen(
     ) {
         item {
             Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Shop", style = SippyType.display, color = c.text1)
-                        Text(
-                            text = "One point per 250 ml you count. Nothing here costs money.",
-                            style = SippyType.caption,
-                            color = c.text2,
-                        )
-                    }
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Shop",
+                        style = SippyType.display,
+                        color = c.text1,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
                     GlassChip(label = "Back", onClick = onBack)
                 }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "One point per 250 ml you count. Nothing here costs money.",
+                    style = SippyType.caption,
+                    color = c.text2,
+                )
             }
         }
 
@@ -190,20 +198,21 @@ private fun ItemRow(
                     !owned -> "Proposed price: ${item.price} points · you have $balance"
                     else -> "${item.kind.short} · owned"
                 },
-                style = SippyType.caption,
+                style = SippyType.secondary,
                 color = c.text3,
             )
-        }
-        Spacer(Modifier.width(8.dp))
-        // One button, four states (A4).
-        when {
-            !owned -> GlassChip(
-                label = "Buy",
-                onClick = onBuy,
-            )
-            !canWear -> GlassChip(label = "Needs ${item.kind.short}", onClick = {})
-            equipped -> GlassChip(label = "Equipped", selected = true, onClick = onEquip)
-            else -> GlassChip(label = "Equip", onClick = onEquip)
+            Spacer(Modifier.height(8.dp))
+            // One button, four states (A4); placed below the copy so long labels
+            // like "Needs Axolotl" never crush the item title at 1.5x font scale.
+            when {
+                !owned -> GlassChip(
+                    label = "Buy",
+                    onClick = onBuy,
+                )
+                !canWear -> GlassChip(label = "Needs ${item.kind.short}", onClick = {})
+                equipped -> GlassChip(label = "Equipped", selected = true, onClick = onEquip)
+                else -> GlassChip(label = "Equip", onClick = onEquip)
+            }
         }
     }
 }
