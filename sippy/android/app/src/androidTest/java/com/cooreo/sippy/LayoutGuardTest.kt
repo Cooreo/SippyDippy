@@ -256,7 +256,13 @@ class LayoutGuardTest {
         assertTrue("Missing text layout result for '$text' at scale $scale", action?.invoke(layouts) == true)
         val layout = layouts.first()
         assertEquals("'$text' wrapped onto multiple lines at scale $scale", 1, layout.lineCount)
-        assertFalse("'$text' overflowed visually at scale $scale", layout.hasVisualOverflow)
+        assertFalse(
+            "'$text' overflowed visually at scale $scale " +
+                "(w=${layout.didOverflowWidth}, h=${layout.didOverflowHeight}, " +
+                "size=${layout.size}, lineR=${layout.getLineRight(0)}, " +
+                "lineB=${layout.getLineBottom(0)}, bounds=${node.boundsInRoot}, root=$rootBounds)",
+            layout.hasVisualOverflow,
+        )
         val bounds = node.boundsInRoot
         assertTrue(
             "'$text' overflowed left of $rootTag at scale $scale (${bounds.left} < ${rootBounds.left})",
