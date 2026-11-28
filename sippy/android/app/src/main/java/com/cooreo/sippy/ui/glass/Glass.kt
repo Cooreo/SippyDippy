@@ -1,11 +1,11 @@
 package com.cooreo.sippy.ui.glass
 
 import android.os.Build
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -20,16 +20,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -38,13 +34,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
-import kotlin.math.sin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cooreo.sippy.ui.system.LocalMotionAllowed
 import com.cooreo.sippy.ui.system.motionAllowed
+import com.cooreo.sippy.ui.theme.BackdropSamples
 import com.cooreo.sippy.ui.theme.Dimens
 import com.cooreo.sippy.ui.theme.LocalSippyColors
 import com.kyant.backdrop.Backdrop
@@ -55,6 +55,7 @@ import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.Shadow
+import kotlin.math.sin
 
 /**
  * Glass capability tier (brief §glass):
@@ -106,6 +107,10 @@ fun SippyBackdropHost(
                     .layerBackdrop(backdrop),
             )
         }
+        // 1.1: the theme scrim. The backdrop's art and its animation are untouched;
+        // this is a navy veil over them, light at the top so the light shafts still
+        // read, heavy at the bottom so text always has something dark to sit on.
+        ThemeScrim()
         CompositionLocalProvider(
             LocalBackdrop provides backdrop,
             LocalBackdropTint provides tint,
@@ -113,6 +118,26 @@ fun SippyBackdropHost(
             Box(Modifier.fillMaxSize()) { content() }
         }
     }
+}
+
+/**
+ * The dark-theme veil over the backdrop (round 9, 1.1): 35% navy at the top, 75% at
+ * the bottom. Light theme has no scrim — its backdrop is the pale one.
+ */
+@Composable
+private fun ThemeScrim() {
+    val c = LocalSippyColors.current
+    if (!c.isDark) return
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    0f to Color(0xFF0B1F38).copy(alpha = BackdropSamples.SCRIM_TOP_ALPHA),
+                    1f to Color(0xFF0B1F38).copy(alpha = BackdropSamples.SCRIM_BOTTOM_ALPHA),
+                ),
+            ),
+    )
 }
 
 /**
@@ -156,7 +181,9 @@ fun GlassSurface(
     val requested = level ?: LocalGlassLevel.current
     val effective = if (tier == GlassTier.FROST) GlassLevel.CHEAP else requested
     val surface = if (effective == GlassLevel.CHIP) {
-        (tint ?: c.glassTint).copy(alpha = 0.55f)
+        // 0.68 rather than 0.55: at 0.55 a chip over the brightest part of the
+        // backdrop is too pale for its own secondary text (see ContrastTest).
+        (tint ?: c.glassTint).copy(alpha = 0.68f)
     } else {
         tint ?: c.glassTint
     }
