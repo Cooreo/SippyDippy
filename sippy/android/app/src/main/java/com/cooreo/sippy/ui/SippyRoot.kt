@@ -308,10 +308,11 @@ private fun AppScaffold(
 
     // The floating pill plus the gesture inset, so nothing hides behind it.
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val navSpace = NavBarHeight + navInset + 16.dp
-    // Settings ends on a full-height card, so it gets the pill + inset + a
-    // margin of its own (A1) instead of the shared clearance.
-    val settingsBottom = navSpace + 24.dp
+    // Round 9, 1.4: one clearance for every screen — the pill, the gesture inset
+    // and 24dp of air. Settings used to add another 24 on top of a 16dp base, so
+    // the same screen scrolled to two different distances depending on the tab.
+    val navSpace = NavBarHeight + navInset + 24.dp
+    val settingsBottom = navSpace
 
     LaunchedEffect(Unit) {
         controller.events.collect { event ->
