@@ -1396,3 +1396,74 @@ slot. There was no 13sp secondary role and no explicit tab-label floor.
 secondary 13, label 12, tab 11) with `TextScaleTest` holding every role at or above
 11sp. `CappedTextScale` caps decorative labels at 1.3x; everything else keeps the
 full system scale and grows its container. The tab bar is the first caller.
+
+## DECISIONS (round 9)
+
+- **Navy glass at 72%, chips at 68%.** Chosen from the measured backdrop: at 0.55 a
+  chip over the brightest shaft is too pale for its own secondary text (3.39:1), and
+  4.5:1 is the floor. *Reason: the token follows the art, not the other way round.*
+- **Scrim 35% → 75% navy, applied in `BackdropHost`, not inside `AmbientBackground`.**
+  *Reason: the brief says keep the backdrop's art and animation exactly as they are;
+  a separate veil over it changes neither.*
+- **Text2 `#B3BFD8`, text3 `#AEBAD4`.** *Reason: the previous greys cleared 4.5:1 on
+  a card but not on a chip, and one tertiary token is better than two.*
+- **`CappedTextScale` overrides `LocalDensity`, not a text size.** *Reason: it caps
+  what the system font scale can do to decorative labels while leaving real body
+  copy to scale fully.*
+- **The tab label moves from 9sp to the 11sp floor.** *Reason: 1.2 sets 11sp as the
+  minimum anywhere, and the lens magnifies it anyway.*
+
+## SKIPPED (round 9)
+
+Nothing is skipped yet. Items **1.3, 1.4, 1.5 and all of phases 2 to 6 are not
+started**: this session ran out of context after 1.2, which the brief allows
+("finish the current item, push, write HANDOFF and stop").
+
+## HANDOFF — round 9 (read this first)
+
+**Where the branch is.** `arena/3dda615e-sippydippy`, tip `9b871ee`, CI green. 1.3.0
+is published and live (versionCode 4) and is **unaffected by round 9 so far**: no
+version bump has been made, and per the brief no tag or release is created until
+everything is green.
+
+**Done and CI-green:**
+
+| item | commit | note |
+| --- | --- | --- |
+| 1.1 dark theme reads dark | `549044f` | navy tokens, theme scrim, orb vessel + resting line, `tools/backdrop_stats.py`, `BackdropSamples`, `ContrastTest` |
+| 1.2 type size and scale | `9b871ee` (`9a0c457` was red on `Density.copy`) | `SippyType.section/secondary/tab`, `CappedTextScale`, `TextScaleTest` |
+
+**Next, in order, with what is already known:**
+
+1. **1.3 button and chip wrapping.** Root cause to confirm first: `GlassButton` and
+   `GlassChip` draw with `maxLines = 2, overflow = Visible` (changed last round), and
+   the call sites squeeze them — `Modifier.weight(1f)` in narrow Rows and
+   `Box(Modifier.size(...))` wrappers — so they wrap inside a square. Rebuild the two
+   components content-sized (`softWrap = false`, `maxLines = 1`, min height 40dp
+   inside a 48dp target, no fixed width), sweep Home, Friends, Shop, Settings, sheets
+   and History, then the layout guard: an instrumented test over the Developer
+   "Layout check" screen at font scale 1.0 / 1.3 / 1.5, run as an extra non-blocking
+   step in the dry-run workflow (the only workflow change the brief allows).
+2. **1.4 insets.** Look for padding on the parent instead of `contentPadding` on the
+   scroller; bottom = bar height + nav inset + 24dp on all five screens.
+3. **1.5 Settings layout.** One `SettingsRow(title, subtitle?, trailing)`; content-
+   sized steppers; equal widths for the name field and Save; grouped cards.
+4. Phases 2 to 6 as written in the brief.
+
+**CI-verified vs not.** Logic is unit-tested and CI-verified (`assembleDebug` +
+`testDebugUnitTest`). **Nothing visual is verified**: the navy glass, the scrim, the
+orb's resting line and the 11sp tab label have not been seen on a phone. CI logs
+cannot be read from this sandbox; every verdict above comes from job/step
+conclusions plus the two local checks (forgotten extension imports, phantom project
+imports).
+
+**Stored data.** Round 9 has changed no stored schema yet. 3.2 (custom drinks) and
+4.1 (cosmetic slots) will both need a schema bump, migrations and fixture tests;
+nothing has been half-done there.
+
+**No new libraries, no signing or workflow changes, no tags.**
+
+**What to check on the phone when 1.1 lands there:** a card in Drinks and a chip in
+Settings should read as navy glass over a dark backdrop, not as frosted white; the
+light shafts should still be visible near the top; an empty orb should show a dark
+body with a faint water line rather than a clear ring.
