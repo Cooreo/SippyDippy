@@ -36,6 +36,12 @@ data class StoredState(
     val equipped: Map<String, String> = emptyMap(),
     /** friendId -> item id on the outfit slot. */
     val equippedOutfits: Map<String, String> = emptyMap(),
+    /**
+     * The day epoch the goal-reached celebration last ran (round 9, 2.2). Null in
+     * every state written before this field existed: the field is nullable with a
+     * default, so old JSON loads unchanged and needs no migration.
+     */
+    val lastCelebratedDay: Long? = null,
 )
 
 @Serializable

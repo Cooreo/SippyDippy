@@ -24,9 +24,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.cooreo.sippy.domain.friends.Mood
 import com.cooreo.sippy.domain.intro.Vignette
 import com.cooreo.sippy.domain.intro.VignetteMotion
@@ -36,6 +34,7 @@ import com.cooreo.sippy.model.Friend
 import com.cooreo.sippy.model.StartupAnimation
 import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.ui.components.FriendAvatar
+import com.cooreo.sippy.ui.theme.SippyType
 
 /** The dark blue the splash screen paints, so the first frame matches this one. */
 private val IntroDeep = Color(0xFF0B1F38)
@@ -84,7 +83,7 @@ fun StartupIntro(
     }
     val hat = worn.firstOrNull { it.slot == ItemSlot.HAT }
     val outfit = worn.firstOrNull { it.slot == ItemSlot.OUTFIT }
-    val held = if (animate) VignetteMotion.of(vignette, 0.65f) else VignetteMotion.of(vignette, 0.65f)
+    val held = remember(vignette) { VignetteMotion.of(vignette, 0.65f) }
 
     Box(
         modifier = modifier
@@ -201,14 +200,13 @@ fun StartupIntro(
         ) {
             Text(
                 text = "Sippy",
+                style = SippyType.title,
                 color = Color.White,
-                fontSize = 30.sp,
-                fontWeight = FontWeight.SemiBold,
             )
             Text(
                 text = "drink up",
+                style = SippyType.caption,
                 color = Color.White.copy(alpha = 0.55f),
-                fontSize = 12.sp,
             )
         }
     }

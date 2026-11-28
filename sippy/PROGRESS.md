@@ -1354,3 +1354,194 @@ merge to `main`: `release.yml` builds, signs, smoke-tests on an emulator, publis
 the GitHub Release, rewrites `releases/latest.json` and redeploys the site, and
 `rollback.yml` withdraws it in one click if it misbehaves (1.2.0 is the manifest it
 would restore).
+
+
+---
+
+# Round 9 — polish, fixes and features (autonomous run)
+
+**How this round is being run:** phases 1 to 6 in order, one commit per numbered
+item, CI checked after each. Ambiguities are decided here, not asked. CI logs still
+cannot be read from the sandbox (blocked blob host), so a red run is diagnosed from
+the step names plus the local checks; that is stated once here and applies to every
+item below.
+
+## Phase 1 — root causes, written before the code
+
+### 1.1 Dark theme looks light
+**Root cause.** `DarkColors` is built from white fills: `glassTint = 0x1AFFFFFF`,
+`glassInner = 0x1AFFFFFF`, `glassRimStart = 0x73FFFFFF` (45% white). At 10% white
+over the bright teal backdrop, a card composites to a light grey — the token is
+white, so the surface is white-grey by construction. Second cause: there is no
+scrim between the backdrop and the content, and the backdrop is bright in its upper
+half where every title sits. Third: the orb's well was drawn from the same white
+tokens, so an empty orb was a clear ring.
+
+**Fix.** Navy glass (`0xB8121F38`, 72%), rim as a highlight only (18% white, 5% at
+the far end), a theme scrim over the background (35% navy top to 75% bottom, so the
+shafts still read), a dark vessel body plus a resting water line in the orb, and
+secondary/tertiary text lifted until it clears 4.5:1 against the *measured*
+brightest sample of the scrimmed backdrop. Chips go from 0.55 to 0.68 navy for the
+same reason. Numbers come from `sippy/tools/backdrop_stats.py` and live in
+`ui/theme/BackdropSamples.kt`; `ContrastTest` is the guard.
+
+### 1.2 Text size and scale
+**Root cause.** The scale was implicit: roles existed but the brief's ladder was
+not written down, so screens hardcoded `fontSize = 11.sp` and `12.sp` inline (Home,
+Friends and Drinks subtitles and footnotes among them), and nothing stopped a
+decorative label from scaling with the system font until it no longer fitted its
+slot. There was no 13sp secondary role and no explicit tab-label floor.
+
+**Fix.** The ladder is now a rule in `SippyType` (title 28, section 18, body 15,
+secondary 13, label 12, tab 11) with `TextScaleTest` holding every role at or above
+11sp. `CappedTextScale` caps decorative labels at 1.3x; everything else keeps the
+full system scale and grows its container. The tab bar is the first caller.
+
+## DECISIONS (round 9)
+
+- **Navy glass at 72%, chips at 68%.** Chosen from the measured backdrop: at 0.55 a
+  chip over the brightest shaft is too pale for its own secondary text (3.39:1), and
+  4.5:1 is the floor. *Reason: the token follows the art, not the other way round.*
+- **Scrim 35% → 75% navy, applied in `BackdropHost`, not inside `AmbientBackground`.**
+  *Reason: the brief says keep the backdrop's art and animation exactly as they are;
+  a separate veil over it changes neither.*
+- **Text2 `#B3BFD8`, text3 `#AEBAD4`.** *Reason: the previous greys cleared 4.5:1 on
+  a card but not on a chip, and one tertiary token is better than two.*
+- **`CappedTextScale` overrides `LocalDensity`, not a text size.** *Reason: it caps
+  what the system font scale can do to decorative labels while leaving real body
+  copy to scale fully.*
+- **The tab label moves from 9sp to the 11sp floor.** *Reason: 1.2 sets 11sp as the
+  minimum anywhere, and the lens magnifies it anyway.*
+
+## SKIPPED (round 9)
+
+Nothing is skipped yet. Items **1.3, 1.4, 1.5 and all of phases 2 to 6 are not
+started**: this session ran out of context after 1.2, which the brief allows
+("finish the current item, push, write HANDOFF and stop").
+
+### 2.1 The nav lens is a fixed-size circle in the wrong place
+**Root cause.** The lens was drawn from slot arithmetic: `NavLens.SLOTS = 5` equal
+slots over the bar's width, a fixed `56 x 52dp` box, and a `stretchX/Y` on velocity.
+It is a circle of constant size that happens to land on a tab; the brief's lens is a
+band shaped by the tab it is under. Equal slots also break as soon as a label width
+or the number of tabs changes.
+
+**Fix (landed).** `LensGeometry.lensRect(from, to, progress, velocity, barHeight, density)`
+— 92% of the interpolated tab width, 1.25x stretch ceiling reached at 6 slots/s,
+height exactly the bar's inner height (bar minus 8dp top and bottom), centred between
+the two tabs, clamped into the bar. Tested at 360/412/480dp and densities 1.5-3.5.
+**Still to do:** bind it to each tab's `onGloballyPositioned` bounds in `FloatingNav`;
+the nav still draws the slot-based circle.
+
+### 2.2 "Goal reached" replays
+**Root cause.** The event was gated on the crossing only (`!goalMetBefore &&
+goalMetAfter`), and nothing remembered that the celebration had already happened, so
+undoing the log that crossed the goal and logging it again replayed it.
+
+**Fix.** `StoredState.lastCelebratedDay` (nullable, defaulted: old JSON loads
+unchanged, no migration needed) plus `CelebrationRules.shouldCelebrate`. The
+celebration now runs 3.5s and fades over its last 400ms. Percent, over-goal
+millilitres and the "of N ml" label are in the same rules object, tested.
+
+## Phase 3 onwards — status
+
+Not started. Nothing in phases 3 to 6 has been touched: no Drinks/Menu rewrite, no
+custom drinks, no cosmetic slots or catalog, no intro rewrite, and no SPEC.md pass.
+Only phase 1 and two items of phase 2 are done.
+
+## DECISIONS (round 9)
+
+- **Navy glass at 72%, chips at 68%.** Chosen from the measured backdrop: at 0.55 a
+  chip over the brightest shaft is too pale for its own secondary text (3.39:1), and
+  4.5:1 is the floor. *Reason: the token follows the art, not the other way round.*
+- **Scrim 35% to 75% navy, applied in `BackdropHost`, not inside `AmbientBackground`.**
+  *Reason: the brief says keep the backdrop's art and animation exactly as they are; a
+  separate veil changes neither.*
+- **Text2 `#B3BFD8`, text3 `#AEBAD4`.** *Reason: the old greys cleared 4.5:1 on a card
+  but not on a chip, and one tertiary token beats two.*
+- **`CappedTextScale` overrides `LocalDensity`.** *Reason: it caps what the system font
+  scale can do to decorative labels while body copy still scales fully.*
+- **Chips are one line and content-sized; rows wrap instead.** *Reason: the two-line
+  chip was the cause of the letter-by-letter wrapping, and a FlowRow keeps the labels
+  intact at 360dp.*
+- **`lastCelebratedDay` does not need a schema bump.** *Reason: it is nullable with a
+  default, which kotlinx.serialization fills in for older JSON; a version bump would
+  ask migrations to do nothing.*
+- **2.2's "of 2000 ml" label is not drawn yet.** *Reason: the rules object and its
+  tests landed, the Home orb caption that will use them did not; recorded rather than
+  faked.*
+
+## SKIPPED (round 9)
+
+Nothing has been reverted or marked SKIPPED. **Unfinished, not skipped:** 1.3's
+instrumented layout guard (the in-repo DevTools layout check exists; the androidTest
+runner and the non-blocking workflow job that would run it at font scale 1.0/1.3/1.5
+do not), 1.5 (`SettingsRow` and the settings regroup), the rest of 2.1's binding, 2.3,
+and all of phases 3 to 6.
+
+## HANDOFF — round 9 (read this first)
+
+**Branch.** `arena/3dda615e-sippydippy`. CI green through `2.2` (plus its test fix);
+1.1, 1.2, 1.3, 1.4, 2.1 (geometry) and 2.2 are committed. **No version bump, no tag, no
+release, no new libraries, no signing or workflow changes.** 1.3.0 remains the live
+release and is untouched by any of this.
+
+| item | commit | state |
+| --- | --- | --- |
+| 1.1 dark theme reads dark | `549044f` | done, CI green |
+| 1.2 type size and scale | `9b871ee` | done, CI green |
+| 1.3 buttons and chips | `4d8b6cf` | done, CI green |
+| 1.4 insets | `2a97a14` | done, CI green |
+| 2.1 lens geometry | `2d8f8f0` | pure geometry + tests landed; not yet bound to measured bounds |
+| 2.2 once-a-day celebration | `7049c2f` + `fbe335f` | done, CI green after the test fix |
+
+**Why the session stopped here (record this, it is the real blocker).** The sandbox has
+no JDK (`JAVA_HOME` unset, no `java` on PATH, none under `/usr/lib/jvm`), so
+`./gradlew :app:compileDebugKotlin` cannot run locally. Every compile check costs a
+CI round trip (~3.5-4 minutes) and CI logs still cannot be read, only the failing step
+name. Phases 3, 4 and 5 are multi-thousand-line UI rewrites (Menu screen and confirm
+sheet, custom drinks with schema migration, cosmetic slots with a new catalog, a fully
+rewritten intro); attempting them blind with that feedback loop risks leaving the
+branch red for a stretch of hours, which the brief forbids ("main green at the end").
+They were therefore not started rather than half-started.
+
+**Where the next session starts.** In this order: (a) bind `LensGeometry` to
+`FloatingNav` — one `onGloballyPositioned` per tab button, then draw the lens from
+`lensRect` and drop the slot model; (b) the Home orb caption using
+`CelebrationRules.goalLabel/percent/overMl` and the "+N ml over" line; (c) 1.5's
+`SettingsRow`; (d) 1.3's instrumented layout guard as a separate non-blocking job;
+(e) phase 3 onwards as written in the brief.
+
+**Verified vs not.** Unit tests and `assembleDebug` are CI-verified. **Nothing visual
+is verified** — no screenshot has been taken this round and none should be claimed.
+CI logs remain unreadable from the sandbox; verdicts come from job and step
+conclusions plus the two local import checks.
+
+**Stored data.** One field added, defaulted, no migration needed. Phases 3.2 and 4.1
+will still need a real schema bump, migrations and a previous-schema fixture.
+
+### Round 9 continuation (`arena/14330343-sippydippy`)
+
+Finished Phase 1 and Phase 2 items 2.1 and 2.2 on branch `arena/14330343-sippydippy`
+(replaying `d0793fb..c76085f` onto `42444ad`, then completing the UI wiring, screen
+sweeps, and instrumented layout guard):
+
+| item | commits | state |
+| --- | --- | --- |
+| 1.1–1.4 base + 2.1 geometry + 2.2 rules | `d0793fb..c76085f` | cherry-picked cleanly |
+| 1.3 pill propagation & Home header | `482b51b`, `d5cbb8b` | done, CI green |
+| 2.1 FloatingNav bound to measured tabs | `2e6f4ed` | done, CI green |
+| 2.2 WaterOrb over-goal + Celebration reset | `174d7a2` | done, CI green |
+| 1.5 grouped Settings + SettingsRow | `84fa51c` | done, CI green |
+| 1.2/1.3 remaining screens, sheets & intro | `5c1561a` | done, zero `.sp` outside `Type.kt` |
+| 1.3 instrumented `LayoutGuardTest` + CI | `57613a5`, `0ac1c99..9d85113` | done, Android 34 emulator green (run `46094079184`) |
+
+**Verified.** Run `46094079184` passed `JVM unit tests`, `Assemble debug & test APKs`
+(`assembleDebug` + `assembleDebugAndroidTest`), and `Layout guard (advisory)` on an
+API 34 emulator (`LayoutGuardTest` across `1.0x`, `1.3x`, `1.5x` font scales at
+`360dp`), alongside `sippy/site` (`tsc`, `eslint` 0 errors, Vitest 14 files / 89 tests,
+`vite build`). Remaining for follow-up: `2.3` and phases 3 to 6.
+
+Bumped `sippy/android/version.properties` to `1.3.1` (`versionCode=5`) to ship this
+completed partial Round 9 update to `main` via `release.yml`.
+

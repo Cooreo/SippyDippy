@@ -1,35 +1,40 @@
 package com.cooreo.sippy.ui.glass
 
 import android.os.Build
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.FlowRowScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -38,15 +43,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
-import kotlin.math.sin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cooreo.sippy.ui.system.LocalMotionAllowed
 import com.cooreo.sippy.ui.system.motionAllowed
+import com.cooreo.sippy.ui.theme.BackdropSamples
 import com.cooreo.sippy.ui.theme.Dimens
 import com.cooreo.sippy.ui.theme.LocalSippyColors
+import com.cooreo.sippy.ui.theme.SippyType
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -55,6 +65,7 @@ import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.Shadow
+import kotlin.math.sin
 
 /**
  * Glass capability tier (brief §glass):
@@ -106,6 +117,10 @@ fun SippyBackdropHost(
                     .layerBackdrop(backdrop),
             )
         }
+        // 1.1: the theme scrim. The backdrop's art and its animation are untouched;
+        // this is a navy veil over them, light at the top so the light shafts still
+        // read, heavy at the bottom so text always has something dark to sit on.
+        ThemeScrim()
         CompositionLocalProvider(
             LocalBackdrop provides backdrop,
             LocalBackdropTint provides tint,
@@ -113,6 +128,26 @@ fun SippyBackdropHost(
             Box(Modifier.fillMaxSize()) { content() }
         }
     }
+}
+
+/**
+ * The dark-theme veil over the backdrop (round 9, 1.1): 35% navy at the top, 75% at
+ * the bottom. Light theme has no scrim — its backdrop is the pale one.
+ */
+@Composable
+private fun ThemeScrim() {
+    val c = LocalSippyColors.current
+    if (!c.isDark) return
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    0f to Color(0xFF0B1F38).copy(alpha = BackdropSamples.SCRIM_TOP_ALPHA),
+                    1f to Color(0xFF0B1F38).copy(alpha = BackdropSamples.SCRIM_BOTTOM_ALPHA),
+                ),
+            ),
+    )
 }
 
 /**
@@ -156,7 +191,9 @@ fun GlassSurface(
     val requested = level ?: LocalGlassLevel.current
     val effective = if (tier == GlassTier.FROST) GlassLevel.CHEAP else requested
     val surface = if (effective == GlassLevel.CHIP) {
-        (tint ?: c.glassTint).copy(alpha = 0.55f)
+        // 0.68 rather than 0.55: at 0.55 a chip over the brightest part of the
+        // backdrop is too pale for its own secondary text (see ContrastTest).
+        (tint ?: c.glassTint).copy(alpha = 0.68f)
     } else {
         tint ?: c.glassTint
     }
@@ -273,7 +310,7 @@ fun GlassButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     prominent: Boolean = false,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+    contentPadding: PaddingValues = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
 ) {
     val c = LocalSippyColors.current
     val shape = RoundedCornerShape(Dimens.pill)
@@ -283,41 +320,49 @@ fun GlassButton(
         else -> null
     }
     val interaction = remember { MutableInteractionSource() }
+    val base = if (enabled) {
+        modifier
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .minimumInteractiveComponentSize()
+    } else {
+        modifier.minimumInteractiveComponentSize()
+    }
     Box(
-        modifier = modifier
-            .defaultMinSize(minHeight = Dimens.touch, minWidth = Dimens.touch)
-            .clip(shape)
-            .then(
-                if (enabled) {
-                    Modifier
-                        .clickable(
-                            interactionSource = interaction,
-                            indication = null,
-                            role = Role.Button,
-                            onClick = onClick,
-                        )
-                        .then(pressScale(interaction))
-                } else {
-                    Modifier
-                },
-            ),
+        // Round 9, 1.3: the button is sized by its content, never by its caller.
+        // A 40dp pill inside a 48dp touch target, one line, no fixed width.
+        modifier = base,
         contentAlignment = Alignment.Center,
+        propagateMinConstraints = true,
     ) {
         GlassSurface(
-            modifier = Modifier.matchParentSize(),
+            modifier = Modifier
+                .defaultMinSize(minHeight = 40.dp)
+                .then(if (enabled) pressScale(interaction) else Modifier),
             shape = shape,
             tint = tint,
             shadow = false,
             level = GlassLevel.CHIP,
         ) {
-            Box(Modifier.padding(contentPadding), contentAlignment = Alignment.Center) {
-                // A1: labels are never ellipsised. If a row is too tight the text
-                // wraps to a second line and the control grows with it.
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .padding(contentPadding),
+                contentAlignment = Alignment.Center,
+            ) {
+                // 1.3: one line, always. The old two-line rule is what made a
+                // squeezed chip wrap a word letter by letter; now the pill is as
+                // wide as its label and the row is what has to give.
                 androidx.compose.material3.Text(
                     text = label,
                     color = if (prominent) Color.White else c.text1,
-                    maxLines = 2,
-                    softWrap = true,
+                    style = SippyType.emphasis,
+                    maxLines = 1,
+                    softWrap = false,
                     overflow = TextOverflow.Visible,
                     textAlign = TextAlign.Center,
                 )
@@ -339,38 +384,131 @@ fun GlassChip(
     val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = modifier
-            .defaultMinSize(minHeight = Dimens.touch, minWidth = Dimens.touch)
-            .clip(shape)
             .clickable(
                 interactionSource = interaction,
                 indication = null,
                 role = Role.Button,
                 onClick = onClick,
             )
-            .then(pressScale(interaction)),
+            .minimumInteractiveComponentSize(),
         contentAlignment = Alignment.Center,
+        propagateMinConstraints = true,
     ) {
-        // matchParentSize: the visible pill is exactly the cell the caller
-        // measured, so chips in a weighted row line up (A4).
         GlassSurface(
-            modifier = Modifier.matchParentSize(),
+            modifier = Modifier
+                .defaultMinSize(minHeight = 40.dp)
+                .then(pressScale(interaction)),
             shape = shape,
             tint = if (selected) c.accent.copy(alpha = 0.72f) else null,
             shadow = false,
             level = GlassLevel.CHIP,
         ) {
-            Box(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+            ) {
                 androidx.compose.material3.Text(
                     text = label,
                     color = if (selected) Color.White else c.text1,
-                    maxLines = 2,
-                    softWrap = true,
+                    style = SippyType.secondary,
+                    maxLines = 1,
+                    softWrap = false,
                     overflow = TextOverflow.Visible,
                     textAlign = TextAlign.Center,
                 )
             }
         }
     }
+}
+
+/**
+ * A stat: a number with its unit, as a chip (round 9, 1.3).
+ *
+ * Home and Friends both showed a bare number in a pill that had to be guessed at;
+ * this is the one shape for "a measurement", content-sized and one line.
+ */
+@Composable
+fun StatChip(
+    value: String,
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+) {
+    val c = LocalSippyColors.current
+    val shape = RoundedCornerShape(Dimens.pill)
+    val interaction = remember { MutableInteractionSource() }
+    val base = if (onClick != null) {
+        modifier
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .minimumInteractiveComponentSize()
+    } else {
+        modifier
+    }
+    Box(
+        modifier = base,
+        contentAlignment = Alignment.Center,
+        propagateMinConstraints = true,
+    ) {
+        GlassSurface(
+            modifier = Modifier
+                .defaultMinSize(minHeight = if (onClick != null) 40.dp else 36.dp)
+                .then(if (onClick != null) pressScale(interaction) else Modifier),
+            shape = shape,
+            shadow = false,
+            level = GlassLevel.CHIP,
+        ) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = value,
+                    style = SippyType.emphasis,
+                    color = c.text1,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    text = label,
+                    style = SippyType.tab,
+                    color = c.text3,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A row of chips that wraps instead of squeezing (round 9, 1.3): four chips in a
+ * 360dp phone do not fit on one line, and forcing them to is what wrapped words
+ * letter by letter. Each chip keeps its own width; the extra ones go to a second
+ * line.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun GlassChipRow(
+    modifier: Modifier = Modifier,
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.spacedBy(8.dp),
+    verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(8.dp),
+    content: @Composable FlowRowScope.() -> Unit,
+) {
+    FlowRow(
+        modifier = modifier,
+        horizontalArrangement = horizontalArrangement,
+        verticalArrangement = verticalArrangement,
+        content = content,
+    )
 }
 
 /**

@@ -25,10 +25,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.cooreo.sippy.domain.drinks.DrinkCategory
 import com.cooreo.sippy.ui.theme.DrinkTints
 import com.cooreo.sippy.domain.drinks.DrinkTable
@@ -229,6 +227,7 @@ private fun HistoryRow(entry: LogEntry, goalMl: Int, onClick: () -> Unit) {
                     color = DrinkTints.of(DrinkCategory.of(entry.drinkId)),
                 )
             }
+            Spacer(Modifier.width(8.dp))
             Text("Edit", style = SippyType.caption, color = c.text3)
         }
     }

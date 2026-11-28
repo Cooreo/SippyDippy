@@ -10,15 +10,16 @@ import com.cooreo.sippy.domain.drinks.DrinkTable
 import com.cooreo.sippy.domain.friends.FriendNameRules
 import com.cooreo.sippy.domain.friends.Mood
 import com.cooreo.sippy.domain.friends.PinRules
+import com.cooreo.sippy.domain.onboarding.Onboarding
 import com.cooreo.sippy.domain.points.PointsRules
 import com.cooreo.sippy.domain.shop.ItemTable
 import com.cooreo.sippy.domain.shop.ShopRules
 import com.cooreo.sippy.domain.shop.Wardrobe
-import com.cooreo.sippy.domain.onboarding.Onboarding
 import com.cooreo.sippy.domain.streak.StreakCalculator
 import com.cooreo.sippy.domain.updates.UpdateDecision
 import com.cooreo.sippy.domain.updates.UpdateManifest
 import com.cooreo.sippy.domain.updates.UpdatePolicy
+import com.cooreo.sippy.domain.water.CelebrationRules
 import com.cooreo.sippy.domain.water.VolumeRules
 import com.cooreo.sippy.domain.water.WaterMath
 import com.cooreo.sippy.model.AccentId
@@ -131,9 +132,16 @@ class SippyController(
             val after = repository.state.value
             val hydratedAfter = WaterMath.hydratedMl(after.log.filter { it.dayEpoch == today })
             _events.tryEmit(Event.Logged(entry.id, drink.name, volumeMl))
-            if (!WaterMath.goalMet(hydratedBefore, goalBefore) &&
-                WaterMath.goalMet(hydratedAfter, after.settings.goalMl)
-            ) {
+            // 2.2: a crossing, once a day, and the day is persisted so a second
+            // crossing after an undo does not replay it.
+            val celebrate = CelebrationRules.shouldCelebrate(
+                goalMetBefore = WaterMath.goalMet(hydratedBefore, goalBefore),
+                goalMetAfter = WaterMath.goalMet(hydratedAfter, after.settings.goalMl),
+                today = today,
+                lastCelebratedDay = after.lastCelebratedDay,
+            )
+            if (celebrate) {
+                repository.edit { it.copy(lastCelebratedDay = today) }
                 _events.tryEmit(Event.Celebration)
                 StreakCalculator.milestoneReached(after.streak.currentDays)?.let {
                     _events.tryEmit(Event.Milestone(it))

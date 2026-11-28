@@ -4,16 +4,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,23 +29,28 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cooreo.sippy.domain.drinks.Drink
+import com.cooreo.sippy.domain.drinks.DrinkCategory
 import com.cooreo.sippy.domain.drinks.DrinkTable
 import com.cooreo.sippy.domain.updates.UpdateManifest
 import com.cooreo.sippy.model.Settings
+import com.cooreo.sippy.ui.components.DrinkIcon
 import com.cooreo.sippy.ui.glass.GlassButton
 import com.cooreo.sippy.ui.glass.GlassCard
-import com.cooreo.sippy.ui.glass.GlassLevel
-import com.cooreo.sippy.ui.glass.LocalGlassLevel
 import com.cooreo.sippy.ui.glass.GlassChip
+import com.cooreo.sippy.ui.glass.GlassChipRow
+import com.cooreo.sippy.ui.glass.GlassLevel
+import com.cooreo.sippy.ui.glass.GlassSurface
+import com.cooreo.sippy.ui.glass.LocalGlassLevel
 import com.cooreo.sippy.ui.theme.Dimens
+import com.cooreo.sippy.ui.theme.DrinkTints
 import com.cooreo.sippy.ui.theme.LocalSippyColors
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.cooreo.sippy.ui.theme.SippyType
 import com.cooreo.sippy.update.UpdateManager
 import kotlinx.coroutines.flow.StateFlow
 
@@ -98,12 +103,12 @@ fun AddDrinkSheet(
                 contentPadding = PaddingValues(20.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Log a drink", color = c.text1, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("Log a drink", style = SippyType.section, color = c.text1)
                     Spacer(Modifier.weight(1f))
                     Text(
                         text = "Close",
+                        style = SippyType.secondary,
                         color = c.text3,
-                        fontSize = 13.sp,
                         modifier = Modifier
                             .clickable(onClick = onDismiss)
                             .padding(8.dp),
@@ -113,8 +118,8 @@ fun AddDrinkSheet(
                 Text(
                     text = "${selected.name} · counts ${(selected.hydrationFactor * 100).toInt()}%" +
                         if (selected.sugary) " · sugary" else "",
+                    style = SippyType.caption,
                     color = c.text3,
-                    fontSize = 12.sp,
                 )
                 Spacer(Modifier.height(10.dp))
                 LazyColumn(
@@ -122,24 +127,55 @@ fun AddDrinkSheet(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     items(DrinkTable.drinks, key = { it.id }) { drink ->
-                        GlassChip(
-                            label = "${drink.name} · ${drink.defaultVolumeMl} ml",
-                            selected = drink.id == selected.id,
-                            onClick = { selected = drink },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                        val active = drink.id == selected.id
+                        val rowShape = RoundedCornerShape(Dimens.inner)
+                        GlassSurface(
+                            shape = rowShape,
+                            tint = if (active) {
+                                c.accent.copy(alpha = 0.56f)
+                            } else {
+                                DrinkTints.card(DrinkCategory.of(drink.id))
+                            },
+                            shadow = false,
+                            level = GlassLevel.CHIP,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(rowShape)
+                                .clickable { selected = drink },
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                DrinkIcon(drinkId = drink.id, size = 24.dp, label = null)
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    text = drink.name,
+                                    style = SippyType.secondary,
+                                    color = if (active) Color.White else c.text1,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "${drink.defaultVolumeMl} ml",
+                                    style = SippyType.tab,
+                                    color = if (active) Color.White else c.text3,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                )
+                            }
+                        }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GlassChipRow {
                     listOf(150, 200, 250, 330, 500).forEach { volume ->
-                        Box(Modifier.weight(1f)) {
-                            GlassChip(
-                                label = "$volume",
-                                onClick = { onPick(selected, volume) },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
+                        GlassChip(
+                            label = "$volume",
+                            onClick = { onPick(selected, volume) },
+                        )
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -147,13 +183,13 @@ fun AddDrinkSheet(
                     value = custom,
                     onValueChange = { raw -> custom = raw.filter { it.isDigit() }.take(4) },
                     singleLine = true,
-                    label = { Text("Custom amount (ml)") },
+                    label = { Text("Custom amount (ml)", style = SippyType.caption) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(10.dp))
                 GlassButton(
-                    label = "Add ${custom.ifEmpty { selected.defaultVolumeMl.toString() }} ml of ${selected.name}",
+                    label = "Add ${custom.ifEmpty { selected.defaultVolumeMl.toString() }} ml",
                     prominent = true,
                     onClick = {
                         val volume = custom.toIntOrNull() ?: selected.defaultVolumeMl
@@ -162,8 +198,8 @@ fun AddDrinkSheet(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (onCustom != null) {
-                    Spacer(Modifier.height(4.dp))
-                    GlassChip(
+                    Spacer(Modifier.height(6.dp))
+                    GlassButton(
                         label = "Custom…",
                         onClick = onCustom,
                         modifier = Modifier.fillMaxWidth(),
@@ -188,11 +224,15 @@ fun UpdateSheet(
     val shape = RoundedCornerShape(topStart = Dimens.card, topEnd = Dimens.card)
     SheetScrim(onDismiss = onDismiss) {
         GlassCard(shape = shape, modifier = Modifier.fillMaxWidth()) {
-            Text("Sippy ${manifest.versionName} is available", color = c.text1, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text(
+                text = "Sippy ${manifest.versionName} is available",
+                style = SippyType.section,
+                color = c.text1,
+            )
             if (manifest.notes.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
                 manifest.notes.take(5).forEach { note ->
-                    Text("• $note", color = c.text2, fontSize = 12.sp)
+                    Text("• $note", style = SippyType.caption, color = c.text2)
                 }
             }
             Spacer(Modifier.height(10.dp))
@@ -205,35 +245,33 @@ fun UpdateSheet(
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = "${p.bytes / 1024} / ${if (p.total > 0) p.total / 1024 else 0} kB",
+                    style = SippyType.tab,
                     color = c.text3,
-                    fontSize = 11.sp,
                 )
             } else {
                 Text(
                     text = "Android will ask you to confirm the install, and may ask you to allow " +
                         "installs from Sippy the first time.",
+                    style = SippyType.tab,
                     color = c.text3,
-                    fontSize = 11.sp,
                 )
             }
             Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GlassButton(
-                    label = if (installing) "Working…" else "Download & install",
-                    prominent = true,
-                    onClick = { if (!installing && !p.downloading) onInstall() },
-                    modifier = Modifier.weight(1f),
-                )
-                GlassButton(
-                    label = "Later",
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            GlassButton(
+                label = if (installing) "Working…" else "Download & install",
+                prominent = true,
+                onClick = { if (!installing && !p.downloading) onInstall() },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(6.dp))
+            GlassButton(
+                label = "Later",
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
 
 /** Small alias so the sheet does not depend on the update package. */
 typealias UpdateManagerProgress = com.cooreo.sippy.update.UpdateManager.Progress
-

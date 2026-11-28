@@ -17,7 +17,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.cooreo.sippy.domain.friends.Mood
 import com.cooreo.sippy.domain.shop.ItemSlot
 import com.cooreo.sippy.domain.shop.ItemTable
@@ -28,7 +27,9 @@ import com.cooreo.sippy.ui.friends.Anchors
 import com.cooreo.sippy.ui.friends.OverlayAnchor
 import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassChip
+import com.cooreo.sippy.ui.glass.GlassChipRow
 import com.cooreo.sippy.ui.theme.LocalSippyColors
+import com.cooreo.sippy.ui.theme.SippyType
 import java.util.Locale
 
 /**
@@ -61,15 +62,15 @@ fun AnchorTunerCard() {
 
     GlassCard {
         Column {
-            Text("Anchor tuner", color = c.text1, fontSize = 15.sp)
+            Text("Anchor tuner", style = SippyType.emphasis, color = c.text1)
             Text(
                 text = "Pick a species and slot, nudge the item, then send me the numbers " +
                     "printed below. They go straight into Anchors.kt.",
+                style = SippyType.tab,
                 color = c.text3,
-                fontSize = 11.sp,
             )
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GlassChipRow {
                 GlassChip(
                     label = kind.short,
                     onClick = { kindIndex = (kindIndex + 1) % FriendKind.entries.size },
@@ -106,8 +107,8 @@ fun AnchorTunerCard() {
                     scale,
                     rotation,
                 ),
+                style = SippyType.secondary,
                 color = c.accentBright,
-                fontSize = 13.sp,
             )
             Text(
                 text = if (item == null) {
@@ -115,8 +116,8 @@ fun AnchorTunerCard() {
                 } else {
                     "Previewing ${item.name} on ${kind.short}"
                 },
+                style = SippyType.tab,
                 color = c.text3,
-                fontSize = 11.sp,
             )
             SliderRow("dx", dx, -0.5f, 0.5f) { dx = it }
             SliderRow("dy", dy, -0.5f, 0.5f) { dy = it }
@@ -138,8 +139,8 @@ private fun SliderRow(
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = label,
+            style = SippyType.tab,
             color = c.text3,
-            fontSize = 11.sp,
             modifier = Modifier.fillMaxWidth(0.16f),
         )
         Slider(

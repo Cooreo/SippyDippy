@@ -17,11 +17,10 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.cooreo.sippy.ui.theme.LocalSippyColors
+import com.cooreo.sippy.ui.theme.SippyType
 import kotlin.math.roundToInt
 
 /**
@@ -104,9 +103,8 @@ fun LogFly(
 
         Text(
             text = "+${data.volumeMl} ml",
+            style = SippyType.section,
             color = c.accentBright,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.SemiBold,
             modifier = Modifier
                 .offset {
                     IntOffset(
@@ -119,9 +117,8 @@ fun LogFly(
         if (data.points > 0) {
             Text(
                 text = "+${data.points} pt",
+                style = SippyType.secondary,
                 color = c.ok,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
                 modifier = Modifier
                     .offset {
                         IntOffset(

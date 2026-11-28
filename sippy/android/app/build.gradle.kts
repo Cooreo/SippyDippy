@@ -55,6 +55,7 @@ android {
         versionCode = sippyVersionCode
         versionName = sippyVersionName
         vectorDrawables.useSupportLibrary = true
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Only English is shipped; keep the APK small and predictable.
         resourceConfigurations += listOf("en")
     }
@@ -180,6 +181,7 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.material.ripple)
     debugImplementation(libs.compose.ui.tooling)
+    debugImplementation(libs.compose.ui.test.manifest)
 
     // B8: the only way to paint the very first frame in the backdrop's own colour
     // on API 26+, instead of the platform's default.
@@ -196,4 +198,7 @@ dependencies {
     implementation(libs.kyant.shapes)
 
     testImplementation(libs.junit)
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 }

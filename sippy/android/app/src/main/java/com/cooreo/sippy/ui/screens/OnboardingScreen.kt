@@ -3,6 +3,7 @@ package com.cooreo.sippy.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,13 +17,16 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Slider
@@ -55,6 +59,7 @@ import com.cooreo.sippy.model.Settings
 import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.ui.components.FriendImage
 import com.cooreo.sippy.ui.glass.GlassChip
+import com.cooreo.sippy.ui.glass.GlassChipRow
 import com.cooreo.sippy.ui.glass.GlassSurface
 import com.cooreo.sippy.ui.state.SippyController
 import com.cooreo.sippy.ui.theme.Dimens
@@ -275,7 +280,9 @@ private fun WelcomePage(animate: Boolean) {
 private fun GoalPage(goalMl: Int, onGoal: (Int) -> Unit, onCommit: (Int) -> Unit) {
     val c = LocalSippyColors.current
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -315,7 +322,7 @@ private fun GoalPage(goalMl: Int, onGoal: (Int) -> Unit, onCommit: (Int) -> Unit
                 },
         )
         Spacer(Modifier.height(18.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        GlassChipRow(horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)) {
             Onboarding.GOAL_PRESETS.forEach { preset ->
                 GlassChip(
                     label = "$preset ml",
@@ -341,7 +348,9 @@ private fun FriendPage(
 ) {
     val c = LocalSippyColors.current
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -355,7 +364,9 @@ private fun FriendPage(
         )
         Spacer(Modifier.height(20.dp))
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             FriendKind.entries.forEach { option ->
@@ -365,7 +376,7 @@ private fun FriendPage(
                     selected = kind == option,
                     animate = animate,
                     onClick = { onKind(option) },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.width(96.dp),
                 )
             }
         }

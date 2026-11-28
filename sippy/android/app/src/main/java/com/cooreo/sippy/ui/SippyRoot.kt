@@ -52,11 +52,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cooreo.sippy.BuildConfig
 import com.cooreo.sippy.R
@@ -94,7 +92,6 @@ import com.cooreo.sippy.ui.screens.SettingsScreen
 import com.cooreo.sippy.ui.screens.ShopScreen
 import com.cooreo.sippy.ui.screens.moodFor
 import com.cooreo.sippy.ui.screens.moodLine
-import com.cooreo.sippy.ui.sheets.AddDrinkSheet
 import com.cooreo.sippy.ui.sheets.CustomVolumeSheet
 import com.cooreo.sippy.ui.sheets.DressUpSheet
 import com.cooreo.sippy.ui.sheets.EditEntrySheet
@@ -108,6 +105,7 @@ import com.cooreo.sippy.ui.system.rememberHaptics
 import com.cooreo.sippy.ui.theme.DrinkTints
 import com.cooreo.sippy.ui.theme.LocalSippyColors
 import com.cooreo.sippy.ui.theme.SippyTheme
+import com.cooreo.sippy.ui.theme.SippyType
 import com.cooreo.sippy.ui.theme.accentFor
 import com.cooreo.sippy.util.Dates
 import kotlin.random.Random
@@ -308,10 +306,11 @@ private fun AppScaffold(
 
     // The floating pill plus the gesture inset, so nothing hides behind it.
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val navSpace = NavBarHeight + navInset + 16.dp
-    // Settings ends on a full-height card, so it gets the pill + inset + a
-    // margin of its own (A1) instead of the shared clearance.
-    val settingsBottom = navSpace + 24.dp
+    // Round 9, 1.4: one clearance for every screen — the pill, the gesture inset
+    // and 24dp of air. Settings used to add another 24 on top of a 16dp base, so
+    // the same screen scrolled to two different distances depending on the tab.
+    val navSpace = NavBarHeight + navInset + 24.dp
+    val settingsBottom = navSpace
 
     LaunchedEffect(Unit) {
         controller.events.collect { event ->
@@ -439,6 +438,7 @@ private fun AppScaffold(
             trigger = celebrationAt,
             animate = animate,
             modifier = Modifier.fillMaxSize(),
+            onFinished = { celebrationAt = 0L },
         )
 
         FloatingNav(
@@ -633,8 +633,8 @@ private fun ToastBar(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = message.text,
+                style = SippyType.body,
                 color = c.text1,
-                fontSize = 14.sp,
                 modifier = Modifier.weight(1f),
             )
             val action = message.onAction
@@ -642,9 +642,8 @@ private fun ToastBar(
                 Spacer(Modifier.size(8.dp))
                 Text(
                     text = message.actionLabel,
+                    style = SippyType.emphasis,
                     color = c.accentBright,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
                     modifier = Modifier
                         .clickable(role = Role.Button) {
                             action()
@@ -658,8 +657,8 @@ private fun ToastBar(
             Spacer(Modifier.height(4.dp))
             Text(
                 text = "Tap to dismiss",
+                style = SippyType.caption,
                 color = c.text3,
-                fontSize = 12.sp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onDismiss)
@@ -686,12 +685,11 @@ private fun Splash() {
             Spacer(Modifier.height(16.dp))
             Text(
                 text = "Sippy",
+                style = SippyType.title,
                 color = c.text1,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
             )
-            Text(text = BuildConfig.VERSION_NAME, color = c.text3, fontSize = 13.sp)
+            Text(text = BuildConfig.VERSION_NAME, style = SippyType.secondary, color = c.text3)
         }
     }
 }

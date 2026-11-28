@@ -9,6 +9,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -36,9 +38,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.cooreo.sippy.domain.friends.GrowthLevel
 import com.cooreo.sippy.domain.friends.IdleMotion
 import com.cooreo.sippy.domain.friends.Mood
@@ -54,10 +55,14 @@ import com.cooreo.sippy.model.StoredState
 import com.cooreo.sippy.ui.components.FriendAvatar
 import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassChip
+import com.cooreo.sippy.ui.glass.GlassChipRow
+import com.cooreo.sippy.ui.glass.StatChip
 import com.cooreo.sippy.ui.state.SippyController
+import com.cooreo.sippy.ui.theme.Dimens
 import com.cooreo.sippy.ui.theme.LocalSippyColors
 import com.cooreo.sippy.ui.theme.SippyType
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FriendsScreen(
     state: StoredState,
@@ -68,7 +73,7 @@ fun FriendsScreen(
     onTogglePin: (String) -> Unit,
     onOpenShop: () -> Unit = {},
     onDressUp: (Friend) -> Unit = {},
-    bottomPadding: androidx.compose.ui.unit.Dp = 24.dp,
+    bottomPadding: Dp = 24.dp,
 ) {
     val c = LocalSippyColors.current
     val goalMet = goalMl > 0 && hydratedMl >= goalMl
@@ -77,25 +82,46 @@ fun FriendsScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 28.dp, bottom = bottomPadding),
+        contentPadding = PaddingValues(
+            start = Dimens.screenPadding,
+            end = Dimens.screenPadding,
+            top = 28.dp,
+            bottom = bottomPadding,
+        ),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Friends", style = SippyType.title, color = c.text1)
+        item(key = "header") {
+            Column {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(
-                        text = "Dippy and up to four friends. They grow with your streak.",
-                        color = c.text2,
-                        fontSize = 13.sp,
+                        text = "Friends",
+                        style = SippyType.title,
+                        color = c.text1,
+                        modifier = Modifier.padding(end = 8.dp),
                     )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        StatChip(
+                            value = "${state.points}",
+                            label = "pts",
+                            onClick = onOpenShop,
+                        )
+                        GlassChip(label = "Shop", onClick = onOpenShop)
+                    }
                 }
-                // A1: both chips size to their text; the column above absorbs any
-                // squeeze instead.
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GlassChip(label = "${state.points} pts", onClick = onOpenShop)
-                    GlassChip(label = "Shop", onClick = onOpenShop)
-                }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "Dippy and up to four friends. They grow with your streak.",
+                    style = SippyType.secondary,
+                    color = c.text2,
+                )
             }
         }
         items(state.friends, key = { it.id }) { friend ->
@@ -128,15 +154,16 @@ fun FriendsScreen(
                     renaming = friend.id
                     draft = friend.name
                 },
+                onCancelRename = { renaming = null },
                 onSubmitRename = {
                     controller.renameFriend(friend.id, draft)
                     renaming = null
                 },
             )
         }
-        item {
+        item(key = "add") {
             GlassCard {
-                Text("Add a friend", color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("Add a friend", style = SippyType.emphasis, color = c.text1)
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = if (state.friends.size >= Friend.MAX_FRIENDS) {
@@ -144,26 +171,20 @@ fun FriendsScreen(
                     } else {
                         "${Friend.MAX_FRIENDS - state.friends.size} slot(s) left."
                     },
+                    style = SippyType.caption,
                     color = c.text3,
-                    fontSize = 12.sp,
                 )
                 Spacer(Modifier.height(10.dp))
-                // Every kind the player does not own yet, two per row.
                 val missing = FriendKind.entries.filter { kind ->
                     kind != FriendKind.DIPPY && state.friends.none { it.kind == kind }
                 }
-                // Three per row, each chip at its natural width: weighting them
-                // to equal shares is what turned "Axolotl" into "A…" at 1.5x.
-                missing.chunked(3).forEach { trio ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        trio.forEach { kind ->
-                            GlassChip(
-                                label = kind.short,
-                                onClick = { controller.addFriend(kind) },
-                            )
-                        }
+                GlassChipRow {
+                    missing.forEach { kind ->
+                        GlassChip(
+                            label = kind.short,
+                            onClick = { controller.addFriend(kind) },
+                        )
                     }
-                    Spacer(Modifier.height(8.dp))
                 }
             }
         }
@@ -184,6 +205,7 @@ private fun FriendCard(
     draft: String,
     onDraft: (String) -> Unit,
     onStartRename: () -> Unit,
+    onCancelRename: () -> Unit,
     onSubmitRename: () -> Unit,
 ) {
     val c = LocalSippyColors.current
@@ -282,23 +304,33 @@ private fun FriendCard(
                         value = draft,
                         onValueChange = onDraft,
                         singleLine = true,
-                        label = { Text("Name") },
+                        label = { Text("Name", style = SippyType.caption) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Spacer(Modifier.height(6.dp))
-                    GlassChip(label = "Save", onClick = onSubmitRename, modifier = Modifier.fillMaxWidth())
+                    GlassChipRow {
+                        GlassChip(
+                            label = "Save",
+                            selected = true,
+                            onClick = onSubmitRename,
+                        )
+                        GlassChip(
+                            label = "Cancel",
+                            onClick = onCancelRename,
+                        )
+                    }
                 } else {
-                    Text(friend.name, color = c.text1, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    Text(friend.name, style = SippyType.section, color = c.text1)
                     Text(
                         text = MoodLines.line(friend.kind, mood, friend.id),
+                        style = SippyType.caption,
                         color = c.text2,
-                        fontSize = 12.sp,
                     )
                     GrowthLevel.label(friend.grownAtStreak)?.let { growth ->
-                        Text(growth, color = c.text3, fontSize = 11.sp)
+                        Text(growth, style = SippyType.tab, color = c.text3)
                     }
                     Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GlassChipRow {
                         GlassChip(label = "Dress up", onClick = onDressUp)
                         GlassChip(label = "Rename", onClick = onStartRename)
                         GlassChip(

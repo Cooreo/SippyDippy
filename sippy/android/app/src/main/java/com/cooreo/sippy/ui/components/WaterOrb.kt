@@ -43,6 +43,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.cooreo.sippy.domain.water.CelebrationRules
 import com.cooreo.sippy.ui.system.rememberGravityTilt
 import com.cooreo.sippy.ui.theme.LocalSippyColors
 import com.cooreo.sippy.ui.theme.SippyType
@@ -113,7 +114,13 @@ fun WaterOrb(
     }
 
     val goalReached = target >= 1f
-    val percent = (shown * 100).roundToInt()
+    val overMl = CelebrationRules.overMl(hydratedMl, goalMl)
+    val percent = if (hydratedMl == 0 && target > 0f) {
+        (shown * 100).roundToInt()
+    } else {
+        CelebrationRules.percent(hydratedMl, goalMl)
+    }
+    val goalLabel = CelebrationRules.goalLabel(goalMl)
 
     // B5: the surface leans with the phone. Read inside the draw scope below, so a
     // sensor sample costs a draw, not a recomposition.
@@ -158,10 +165,10 @@ fun WaterOrb(
                 )
             }
             .semantics {
-                contentDescription = if (goalReached) {
-                    "Goal reached: $hydratedMl of $goalMl millilitres"
-                } else {
-                    "$hydratedMl of $goalMl millilitres, $percent percent of today's goal"
+                contentDescription = when {
+                    overMl > 0 -> "Goal reached: $hydratedMl of $goalMl millilitres, $overMl millilitres over"
+                    goalReached -> "Goal reached: $hydratedMl of $goalMl millilitres"
+                    else -> "$hydratedMl of $goalMl millilitres, $percent percent of today's goal"
                 }
             },
         contentAlignment = Alignment.Center,
@@ -174,15 +181,40 @@ fun WaterOrb(
             val radius = size.minDimension / 2f
             val center = Offset(size.width / 2f, size.height / 2f)
 
-            // Glass well behind the water.
+            // Round 9, 1.1: the vessel. A dark body, so an empty orb reads as a
+            // glass with air in it rather than a clear ring floating on the
+            // backdrop. Vignetted toward the rim, which is what gives it depth.
+            drawCircle(color = c.bg1.copy(alpha = 0.62f), radius = radius)
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(c.glassInner, c.glassTint.copy(alpha = 0.18f)),
-                    center = Offset(size.width * 0.36f, size.height * 0.28f),
-                    radius = radius * 1.25f,
+                    colors = listOf(
+                        Color.Transparent,
+                        c.bg0.copy(alpha = 0.55f),
+                    ),
+                    center = center,
+                    radius = radius,
                 ),
                 radius = radius,
             )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(c.glassInner, Color.Transparent),
+                    center = Offset(size.width * 0.36f, size.height * 0.26f),
+                    radius = radius * 1.1f,
+                ),
+                radius = radius,
+            )
+            if (shown <= 0.001f) {
+                // At zero there is still water in the glass: a faint resting line
+                // near the bottom, so "empty" reads as a level, not as nothing.
+                val lineY = size.height * 0.72f
+                drawLine(
+                    color = c.accentBright.copy(alpha = 0.22f),
+                    start = Offset(size.width * 0.18f, lineY),
+                    end = Offset(size.width * 0.82f, lineY),
+                    strokeWidth = 1.5.dp.toPx(),
+                )
+            }
 
             val surfaceY = size.height * (1f - shown)
             val disc = Path().apply {
@@ -332,7 +364,7 @@ fun WaterOrb(
                 textAlign = TextAlign.Center,
             )
             Text(
-                text = "of $goalMl ml",
+                text = goalLabel,
                 style = SippyType.caption,
                 color = c.text2,
                 textAlign = TextAlign.Center,
@@ -344,6 +376,15 @@ fun WaterOrb(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 6.dp),
             )
+            if (overMl > 0) {
+                Text(
+                    text = "+$overMl ml over",
+                    style = SippyType.caption,
+                    color = c.ok,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
         }
     }
 }
