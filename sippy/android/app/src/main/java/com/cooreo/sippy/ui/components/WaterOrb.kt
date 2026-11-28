@@ -43,6 +43,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.cooreo.sippy.domain.water.CelebrationRules
 import com.cooreo.sippy.ui.system.rememberGravityTilt
 import com.cooreo.sippy.ui.theme.LocalSippyColors
 import com.cooreo.sippy.ui.theme.SippyType
@@ -113,7 +114,13 @@ fun WaterOrb(
     }
 
     val goalReached = target >= 1f
-    val percent = (shown * 100).roundToInt()
+    val overMl = CelebrationRules.overMl(hydratedMl, goalMl)
+    val percent = if (hydratedMl == 0 && target > 0f) {
+        (shown * 100).roundToInt()
+    } else {
+        CelebrationRules.percent(hydratedMl, goalMl)
+    }
+    val goalLabel = CelebrationRules.goalLabel(goalMl)
 
     // B5: the surface leans with the phone. Read inside the draw scope below, so a
     // sensor sample costs a draw, not a recomposition.
@@ -158,10 +165,10 @@ fun WaterOrb(
                 )
             }
             .semantics {
-                contentDescription = if (goalReached) {
-                    "Goal reached: $hydratedMl of $goalMl millilitres"
-                } else {
-                    "$hydratedMl of $goalMl millilitres, $percent percent of today's goal"
+                contentDescription = when {
+                    overMl > 0 -> "Goal reached: $hydratedMl of $goalMl millilitres, $overMl millilitres over"
+                    goalReached -> "Goal reached: $hydratedMl of $goalMl millilitres"
+                    else -> "$hydratedMl of $goalMl millilitres, $percent percent of today's goal"
                 }
             },
         contentAlignment = Alignment.Center,
@@ -357,7 +364,7 @@ fun WaterOrb(
                 textAlign = TextAlign.Center,
             )
             Text(
-                text = "of $goalMl ml",
+                text = goalLabel,
                 style = SippyType.caption,
                 color = c.text2,
                 textAlign = TextAlign.Center,
@@ -369,6 +376,15 @@ fun WaterOrb(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 6.dp),
             )
+            if (overMl > 0) {
+                Text(
+                    text = "+$overMl ml over",
+                    style = SippyType.caption,
+                    color = c.ok,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
         }
     }
 }

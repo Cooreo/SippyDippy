@@ -440,6 +440,7 @@ private fun AppScaffold(
             trigger = celebrationAt,
             animate = animate,
             modifier = Modifier.fillMaxSize(),
+            onFinished = { celebrationAt = 0L },
         )
 
         FloatingNav(
