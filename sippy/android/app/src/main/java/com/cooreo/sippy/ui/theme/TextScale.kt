@@ -3,6 +3,7 @@ package com.cooreo.sippy.ui.theme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 
 /**
  * Caps the font scale for decorative labels (round 9, 1.2).
@@ -17,7 +18,11 @@ fun CappedTextScale(
     content: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
-    val capped = density.copy(fontScale = density.fontScale.coerceAtMost(max))
+    // Density is an interface; the factory function is the way to derive one.
+    val capped = Density(
+        density = density.density,
+        fontScale = cappedFontScale(density.fontScale, max),
+    )
     CompositionLocalProvider(LocalDensity provides capped) { content() }
 }
 
