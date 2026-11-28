@@ -13,12 +13,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasScrollToNodeAction
-import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -186,21 +186,21 @@ class LayoutGuardTest {
         for (scale in scales) {
             rule.runOnUiThread { fontScale = scale }
             rule.waitForIdle()
-            assertSingleLineInsideRoot("−250", scale, "settings-root")
-            assertSingleLineInsideRoot("+250", scale, "settings-root")
-            rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Appearance & feel"))
+            rule.onNode(hasScrollToIndexAction()).performScrollToIndex(1)
+            rule.waitForIdle()
+            assertSingleLineInsideRoot("−250", scale, "settings-root", scrollIntoView = true)
+            assertSingleLineInsideRoot("+250", scale, "settings-root", scrollIntoView = true)
+            rule.onNode(hasScrollToIndexAction()).performScrollToIndex(2)
             rule.waitForIdle()
             listOf("System", "Light", "Dark", "Full", "Short", "Off").forEach { chip ->
-                assertSingleLineInsideRoot(chip, scale, "settings-root")
+                assertSingleLineInsideRoot(chip, scale, "settings-root", scrollIntoView = true)
             }
-            rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Profile"))
+            rule.onNode(hasScrollToIndexAction()).performScrollToIndex(3)
             rule.waitForIdle()
-            assertSingleLineInsideRoot("Save", scale, "settings-root")
-            rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("App & updates"))
+            assertSingleLineInsideRoot("Save", scale, "settings-root", scrollIntoView = true)
+            rule.onNode(hasScrollToIndexAction()).performScrollToIndex(4)
             rule.waitForIdle()
-            assertSingleLineInsideRoot("Check for updates", scale, "settings-root")
-            rule.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Hydration"))
-            rule.waitForIdle()
+            assertSingleLineInsideRoot("Check for updates", scale, "settings-root", scrollIntoView = true)
         }
     }
 
@@ -237,9 +237,18 @@ class LayoutGuardTest {
         }
     }
 
-    private fun assertSingleLineInsideRoot(text: String, scale: Float, rootTag: String) {
+    private fun assertSingleLineInsideRoot(
+        text: String,
+        scale: Float,
+        rootTag: String,
+        scrollIntoView: Boolean = false,
+    ) {
         val rootBounds = rule.onNodeWithTag(rootTag).fetchSemanticsNode().boundsInRoot
         val nodeInteraction = rule.onNodeWithText(text, useUnmergedTree = true)
+        if (scrollIntoView) {
+            nodeInteraction.performScrollTo()
+            rule.waitForIdle()
+        }
         nodeInteraction.assertIsDisplayed()
         val node = nodeInteraction.fetchSemanticsNode()
         val layouts = mutableListOf<TextLayoutResult>()

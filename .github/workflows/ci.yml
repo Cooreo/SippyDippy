@@ -103,6 +103,7 @@ jobs:
           fi
           yes | "$sdkmanager" --licenses >/dev/null 2>&1 || true
           "$sdkmanager" --install "platform-tools" "emulator" "system-images;android-34;google_apis;x86_64" >/dev/null
+          printf '%s\n' "$sdk/platform-tools" "$sdk/emulator" >> "$GITHUB_PATH"
 
       - name: Run instrumented layout guard (1.0 / 1.3 / 1.5 font scales)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
@@ -110,6 +111,34 @@ jobs:
           api-level: 34
           target: google_apis
           arch: x86_64
-          emulator-boot-timeout: 600
+          emulator-boot-timeout: 900
           disable-animations: true
-          script: cd sippy/android && ./gradlew --no-daemon --stacktrace connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.cooreo.sippy.LayoutGuardTest
+          script: |
+            cd sippy/android
+            set +e
+            ./gradlew --no-daemon --stacktrace connectedDebugAndroidTest \
+              -Pandroid.testInstrumentationRunnerArguments.class=com.cooreo.sippy.LayoutGuardTest \
+              > /tmp/guard.log 2>&1
+            status=$?
+            set -e
+            cat /tmp/guard.log
+            if [ "$status" -ne 0 ]; then
+              python3 - <<'PY'
+            import glob, xml.etree.ElementTree as ET
+            found = False
+            for path in sorted(glob.glob("app/build/outputs/androidTest-results/connected/**/*.xml", recursive=True)):
+                found = True
+                root = ET.parse(path).getroot()
+                for tc in root.findall("testcase"):
+                    fail = tc.find("failure")
+                    if fail is None:
+                        fail = tc.find("error")
+                    if fail is not None:
+                        msg = (fail.get("message") or fail.text or "").strip().replace("\n", " ")[:400]
+                        print(f"::error::{tc.get('classname')}.{tc.get('name')}: {msg}")
+            if not found:
+                lines = [l.strip() for l in open("/tmp/guard.log").read().splitlines() if l.strip()]
+                print("::error::No androidTest XML; log tail: " + " | ".join(lines[-15:])[:400])
+            PY
+              exit "$status"
+            fi
