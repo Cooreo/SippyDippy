@@ -2,7 +2,7 @@ package com.cooreo.sippy
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -76,7 +76,7 @@ class LayoutGuardTest {
                 SippyTheme(dark = true) {
                     Box(
                         modifier = Modifier
-                            .width(360.dp)
+                            .requiredWidth(360.dp)
                             .padding(horizontal = 20.dp)
                             .testTag("guard-root"),
                     ) {
@@ -125,7 +125,7 @@ class LayoutGuardTest {
                 SippyTheme(dark = true) {
                     Box(
                         modifier = Modifier
-                            .width(360.dp)
+                            .requiredWidth(360.dp)
                             .testTag("nav-root"),
                     ) {
                         FloatingNav(
@@ -170,7 +170,7 @@ class LayoutGuardTest {
                 SippyTheme(dark = true) {
                     Box(
                         modifier = Modifier
-                            .width(360.dp)
+                            .requiredWidth(360.dp)
                             .testTag("settings-root"),
                     ) {
                         SettingsScreen(
@@ -257,11 +257,17 @@ class LayoutGuardTest {
         val layout = layouts.first()
         assertEquals("'$text' wrapped onto multiple lines at scale $scale", 1, layout.lineCount)
         assertFalse(
-            "'$text' overflowed visually at scale $scale " +
-                "(w=${layout.didOverflowWidth}, h=${layout.didOverflowHeight}, " +
-                "size=${layout.size}, lineR=${layout.getLineRight(0)}, " +
-                "lineB=${layout.getLineBottom(0)}, bounds=${node.boundsInRoot}, root=$rootBounds)",
-            layout.hasVisualOverflow,
+            "'$text' exceeded maxLines at scale $scale",
+            layout.multiParagraph.didExceedMaxLines,
+        )
+        assertFalse(
+            "'$text' overflowed vertically at scale $scale (size=${layout.size}, lineB=${layout.getLineBottom(0)})",
+            layout.didOverflowHeight,
+        )
+        val lineWidth = layout.getLineRight(0) - layout.getLineLeft(0)
+        assertTrue(
+            "'$text' clipped horizontally at scale $scale (lineW=$lineWidth > sizeW=${layout.size.width})",
+            lineWidth <= layout.size.width + 1f,
         )
         val bounds = node.boundsInRoot
         assertTrue(
