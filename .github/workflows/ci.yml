@@ -112,12 +112,4 @@ jobs:
           arch: x86_64
           emulator-boot-timeout: 600
           disable-animations: true
-          script: |
-            echo "::warning::layout-guard script started"
-            cd sippy/android
-            if ! ./gradlew --no-daemon --stacktrace connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.cooreo.sippy.LayoutGuardTest > /tmp/guard.log 2>&1; then
-              summary="$(grep -h -E 'FAILURE|Exception|AssertionError|Missing|wrapped|overflowed|FAILURES|Tests run' app/build/outputs/androidTest-results/connected/*.xml app/build/outputs/androidTest-results/connected/*/*.xml /tmp/guard.log 2>/dev/null | tr '\n' ' ' | cut -c1-450)"
-              echo "::error::LayoutGuard failed: ${summary:-$(tail -12 /tmp/guard.log | tr '\n' ' ' | cut -c1-450)}"
-              cat /tmp/guard.log
-              exit 1
-            fi
+          script: bash sippy/android/scripts/ci-layout-guard.sh
