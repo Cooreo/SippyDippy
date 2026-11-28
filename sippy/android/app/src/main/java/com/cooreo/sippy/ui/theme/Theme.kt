@@ -67,18 +67,21 @@ val DarkColors = SippyColors(
     bg1 = Color(0xFF0A101C),
     bg2 = Color(0xFF111A2E),
     text1 = Color(0xFFF4F7FF),
-    text2 = Color(0xFFA9B4CE),
-    text3 = Color(0xFF90A0BE),
+    text2 = Color(0xFFB3BFD8),
+    text3 = Color(0xFFAEBAD4),
     accent = Color(0xFF2E7CF6),
     accentBright = Color(0xFF5B9BFF),
     accentDeep = Color(0xFF1D5FE0),
     ok = Color(0xFF3ECF8E),
     warn = Color(0xFFF5B84D),
     danger = Color(0xFFF26D6D),
-    glassTint = Color(0x1AFFFFFF),
-    glassRimStart = Color(0x73FFFFFF),
-    glassRimEnd = Color(0x33FFFFFF),
-    glassInner = Color(0x1AFFFFFF),
+    // Round 9, 1.1: navy glass, not white glass. A white fill at 10% over a bright
+    // teal backdrop is exactly the frosted white-grey the screenshots showed; a
+    // navy fill at 72% keeps the surface dark and lets the rim do the "glass" work.
+    glassTint = Color(0xB8121F38),
+    glassRimStart = Color(0x2EFFFFFF),
+    glassRimEnd = Color(0x0DFFFFFF),
+    glassInner = Color(0x14FFFFFF),
     scrim = Color(0x59000000),
 )
 

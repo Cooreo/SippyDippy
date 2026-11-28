@@ -1354,3 +1354,33 @@ merge to `main`: `release.yml` builds, signs, smoke-tests on an emulator, publis
 the GitHub Release, rewrites `releases/latest.json` and redeploys the site, and
 `rollback.yml` withdraws it in one click if it misbehaves (1.2.0 is the manifest it
 would restore).
+
+
+---
+
+# Round 9 — polish, fixes and features (autonomous run)
+
+**How this round is being run:** phases 1 to 6 in order, one commit per numbered
+item, CI checked after each. Ambiguities are decided here, not asked. CI logs still
+cannot be read from the sandbox (blocked blob host), so a red run is diagnosed from
+the step names plus the local checks; that is stated once here and applies to every
+item below.
+
+## Phase 1 — root causes, written before the code
+
+### 1.1 Dark theme looks light
+**Root cause.** `DarkColors` is built from white fills: `glassTint = 0x1AFFFFFF`,
+`glassInner = 0x1AFFFFFF`, `glassRimStart = 0x73FFFFFF` (45% white). At 10% white
+over the bright teal backdrop, a card composites to a light grey — the token is
+white, so the surface is white-grey by construction. Second cause: there is no
+scrim between the backdrop and the content, and the backdrop is bright in its upper
+half where every title sits. Third: the orb's well was drawn from the same white
+tokens, so an empty orb was a clear ring.
+
+**Fix.** Navy glass (`0xB8121F38`, 72%), rim as a highlight only (18% white, 5% at
+the far end), a theme scrim over the background (35% navy top to 75% bottom, so the
+shafts still read), a dark vessel body plus a resting water line in the orb, and
+secondary/tertiary text lifted until it clears 4.5:1 against the *measured*
+brightest sample of the scrimmed backdrop. Chips go from 0.55 to 0.68 navy for the
+same reason. Numbers come from `sippy/tools/backdrop_stats.py` and live in
+`ui/theme/BackdropSamples.kt`; `ContrastTest` is the guard.
