@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import com.cooreo.sippy.domain.nav.NavLens
 import com.cooreo.sippy.ui.glass.GlassLevel
 import com.cooreo.sippy.ui.glass.GlassSurface
+import com.cooreo.sippy.ui.theme.CappedTextScale
 import com.cooreo.sippy.ui.theme.Dimens
 import com.cooreo.sippy.ui.theme.LocalSippyColors
 import kotlin.math.roundToInt
@@ -273,16 +274,20 @@ private fun RowScope.NavItem(
             tint = tint,
             size = 22.dp,
         )
-        Text(
-            text = target.label,
-            color = tint,
-            fontSize = 9.sp,
-            modifier = Modifier.graphicsLayer {
-                // Faint at rest, full under the lens: the label is magnified with
-                // the glyph instead of popping in and out.
-                alpha = 0.45f + 0.55f * NavLens.proximity(lens.value, slot)
-            },
-        )
+        // Decorative: capped at 1.3x so a large system font cannot push the label
+        // out of its slot (round 9, 1.2). Tab label floor is 11sp.
+        CappedTextScale {
+            Text(
+                text = target.label,
+                color = tint,
+                fontSize = 11.sp,
+                modifier = Modifier.graphicsLayer {
+                    // Faint at rest, full under the lens: the label is magnified with
+                    // the glyph instead of popping in and out.
+                    alpha = 0.45f + 0.55f * NavLens.proximity(lens.value, slot)
+                },
+            )
+        }
     }
 }
 

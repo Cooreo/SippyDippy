@@ -1384,3 +1384,15 @@ secondary/tertiary text lifted until it clears 4.5:1 against the *measured*
 brightest sample of the scrimmed backdrop. Chips go from 0.55 to 0.68 navy for the
 same reason. Numbers come from `sippy/tools/backdrop_stats.py` and live in
 `ui/theme/BackdropSamples.kt`; `ContrastTest` is the guard.
+
+### 1.2 Text size and scale
+**Root cause.** The scale was implicit: roles existed but the brief's ladder was
+not written down, so screens hardcoded `fontSize = 11.sp` and `12.sp` inline (Home,
+Friends and Drinks subtitles and footnotes among them), and nothing stopped a
+decorative label from scaling with the system font until it no longer fitted its
+slot. There was no 13sp secondary role and no explicit tab-label floor.
+
+**Fix.** The ladder is now a rule in `SippyType` (title 28, section 18, body 15,
+secondary 13, label 12, tab 11) with `TextScaleTest` holding every role at or above
+11sp. `CappedTextScale` caps decorative labels at 1.3x; everything else keeps the
+full system scale and grows its container. The tab bar is the first caller.

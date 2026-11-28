@@ -77,6 +77,36 @@ object SippyType {
         lineHeight = 15.sp,
         letterSpacing = 0.8.sp,
     )
+
+    // Round 9, 1.2 — the scale, as a rule rather than a habit:
+    //   title 28, section 18, body 15, secondary 13, label 12, tab label 11.
+    // Nothing in the app may go below 11sp, and nothing may be set in dp.
+
+    /** Section headings inside a screen or a card. */
+    val section = TextStyle(
+        fontFamily = Inter,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 18.sp,
+        lineHeight = 22.sp,
+        letterSpacing = (-0.2).sp,
+    )
+
+    /** Secondary copy: footnotes, helper text, the line under a title. */
+    val secondary = TextStyle(
+        fontFamily = Inter,
+        fontWeight = FontWeight.Normal,
+        fontSize = 13.sp,
+        lineHeight = 18.sp,
+    )
+
+    /** The smallest text the app is allowed to draw: tab labels and badges. */
+    val tab = TextStyle(
+        fontFamily = Inter,
+        fontWeight = FontWeight.Medium,
+        fontSize = 11.sp,
+        lineHeight = 13.sp,
+        letterSpacing = 0.3.sp,
+    )
 }
 
 /** Material's roles mapped onto [SippyType] so unstyled Text still uses Inter. */
