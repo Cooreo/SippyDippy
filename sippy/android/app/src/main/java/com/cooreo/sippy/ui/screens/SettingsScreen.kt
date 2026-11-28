@@ -49,6 +49,7 @@ import com.cooreo.sippy.model.ThemeMode
 import com.cooreo.sippy.ui.glass.GlassButton
 import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassChip
+import com.cooreo.sippy.ui.glass.GlassChipRow
 import com.cooreo.sippy.ui.state.SippyController
 import com.cooreo.sippy.ui.theme.Accent
 import com.cooreo.sippy.ui.theme.LocalSippyColors
@@ -110,16 +111,15 @@ fun SettingsScreen(
             SettingsCard {
                 SectionTitle("Theme")
                 Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // 1.3: content-sized chips that wrap to a second line instead of
+                // being stretched into equal cells and wrapping inside them.
+                GlassChipRow {
                     ThemeMode.entries.forEach { mode ->
-                        Box(Modifier.weight(1f)) {
-                            GlassChip(
-                                label = mode.label(),
-                                selected = state.settings.theme == mode,
-                                onClick = { controller.setTheme(mode) },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
+                        GlassChip(
+                            label = mode.label(),
+                            selected = state.settings.theme == mode,
+                            onClick = { controller.setTheme(mode) },
+                        )
                     }
                 }
             }
@@ -129,24 +129,16 @@ fun SettingsScreen(
             SettingsCard {
                 SectionTitle("Accent")
                 Spacer(Modifier.height(10.dp))
-                // Fixed 2-column grid: every cell is the same width, and the
-                // short labels fit one line at 360dp (A4).
-                Accent.entries.chunked(2).forEachIndexed { index, row ->
-                    if (index > 0) Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        row.forEach { accent ->
-                            Box(Modifier.weight(1f)) {
-                                GlassChip(
-                                    label = accent.short,
-                                    selected = state.settings.accent == accent.toId(),
-                                    onClick = { controller.setAccent(accent.toId()) },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .semantics { contentDescription = accent.label },
-                                )
-                            }
-                        }
-                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                // 1.3: one wrapping row, not a fixed grid. Six accents fit on two
+                // lines at 360dp and the labels keep their own width.
+                GlassChipRow {
+                    Accent.entries.forEach { accent ->
+                        GlassChip(
+                            label = accent.short,
+                            selected = state.settings.accent == accent.toId(),
+                            onClick = { controller.setAccent(accent.toId()) },
+                            modifier = Modifier.semantics { contentDescription = accent.label },
+                        )
                     }
                 }
             }
