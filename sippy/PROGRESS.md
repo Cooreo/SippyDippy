@@ -1495,6 +1495,16 @@ release and is untouched by any of this.
 | 2.1 lens geometry | `2d8f8f0` | pure geometry + tests landed; not yet bound to measured bounds |
 | 2.2 once-a-day celebration | `7049c2f` + `fbe335f` | done, CI green after the test fix |
 
+**Why the session stopped here (record this, it is the real blocker).** The sandbox has
+no JDK (`JAVA_HOME` unset, no `java` on PATH, none under `/usr/lib/jvm`), so
+`./gradlew :app:compileDebugKotlin` cannot run locally. Every compile check costs a
+CI round trip (~3.5-4 minutes) and CI logs still cannot be read, only the failing step
+name. Phases 3, 4 and 5 are multi-thousand-line UI rewrites (Menu screen and confirm
+sheet, custom drinks with schema migration, cosmetic slots with a new catalog, a fully
+rewritten intro); attempting them blind with that feedback loop risks leaving the
+branch red for a stretch of hours, which the brief forbids ("main green at the end").
+They were therefore not started rather than half-started.
+
 **Where the next session starts.** In this order: (a) bind `LensGeometry` to
 `FloatingNav` — one `onGloballyPositioned` per tab button, then draw the lens from
 `lensRect` and drop the slot model; (b) the Home orb caption using
