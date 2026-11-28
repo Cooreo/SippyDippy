@@ -1519,3 +1519,26 @@ conclusions plus the two local import checks.
 
 **Stored data.** One field added, defaulted, no migration needed. Phases 3.2 and 4.1
 will still need a real schema bump, migrations and a previous-schema fixture.
+
+### Round 9 continuation (`arena/14330343-sippydippy`)
+
+Finished Phase 1 and Phase 2 items 2.1 and 2.2 on branch `arena/14330343-sippydippy`
+(replaying `d0793fb..c76085f` onto `42444ad`, then completing the UI wiring, screen
+sweeps, and instrumented layout guard):
+
+| item | commits | state |
+| --- | --- | --- |
+| 1.1–1.4 base + 2.1 geometry + 2.2 rules | `d0793fb..c76085f` | cherry-picked cleanly |
+| 1.3 pill propagation & Home header | `482b51b`, `d5cbb8b` | done, CI green |
+| 2.1 FloatingNav bound to measured tabs | `2e6f4ed` | done, CI green |
+| 2.2 WaterOrb over-goal + Celebration reset | `174d7a2` | done, CI green |
+| 1.5 grouped Settings + SettingsRow | `84fa51c` | done, CI green |
+| 1.2/1.3 remaining screens, sheets & intro | `5c1561a` | done, zero `.sp` outside `Type.kt` |
+| 1.3 instrumented `LayoutGuardTest` + CI | `57613a5`, `0ac1c99..9d85113` | done, Android 34 emulator green (run `46094079184`) |
+
+**Verified.** Run `46094079184` passed `JVM unit tests`, `Assemble debug & test APKs`
+(`assembleDebug` + `assembleDebugAndroidTest`), and `Layout guard (advisory)` on an
+API 34 emulator (`LayoutGuardTest` across `1.0x`, `1.3x`, `1.5x` font scales at
+`360dp`), alongside `sippy/site` (`tsc`, `eslint` 0 errors, Vitest 14 files / 89 tests,
+`vite build`). Remaining for follow-up: `2.3` and phases 3 to 6.
+
