@@ -1467,3 +1467,24 @@ nothing has been half-done there.
 Settings should read as navy glass over a dark backdrop, not as frosted white; the
 light shafts should still be visible near the top; an empty orb should show a dark
 body with a faint water line rather than a clear ring.
+
+### 1.3 Buttons wrap letter by letter
+**Root cause.** `GlassButton` and `GlassChip` drew with `maxLines = 2, softWrap = true`
+(a last-round change), and the callers stretched them into fixed cells: Settings' Theme
+row and Accent grid put every chip in `Box(Modifier.weight(1f))` with `fillMaxWidth()`.
+In a narrow cell the word stopped fitting, so Compose broke it mid-word and the pill
+wrapped a letter per line.
+
+**Fix.** Both controls are content-sized, one line, 18/12dp padding, a 40dp pill inside
+a 48dp touch target. `StatChip(value, label)` is the one shape for a measurement.
+`GlassChipRow` is a `FlowRow`, so Settings' Theme and Accent groups wrap to a second
+line rather than being crushed into one.
+
+### 1.4 Content hides under the bar or the notch
+**Root cause.** All five screens already scrolled through `contentPadding`, so the
+padding was on the right thing; the clearance under it was not. `SippyRoot` computed
+the bar space as inset + 16dp and Settings then added another 24dp on top, so the same
+bar sat at two different heights depending on the tab, and neither was the 24dp the
+rule asks for. Top was correct: every screen is inside `statusBarsPadding()`.
+
+**Fix.** One clearance for every screen: pill height + gesture inset + 24dp.
