@@ -13,26 +13,26 @@ cat /tmp/guard.log
 
 if [ "$status" -ne 0 ]; then
   python3 - <<'PY'
-import glob, xml.etree.ElementTree as ET
+import glob, re, xml.etree.ElementTree as ET
 
 reports = sorted(glob.glob("app/build/outputs/androidTest-results/connected/**/*.xml", recursive=True))
 if not reports:
     lines = [l.strip() for l in open("/tmp/guard.log").read().splitlines() if l.strip()]
-    print("::error::No androidTest XML; log tail: " + " | ".join(lines[-15:])[:450])
+    print("::error::No androidTest XML; log tail: " + " | ".join(lines[-15:])[:600])
 else:
     for path in reports:
-        root = ET.parse(path).getroot()
-        tests = root.get("tests", "?")
-        failures = root.get("failures", "0")
-        errors = root.get("errors", "0")
-        print(f"::warning::Report {path}: tests={tests} failures={failures} errors={errors}")
-        for tc in root.findall("testcase"):
-            fail = tc.find("failure")
-            if fail is None:
-                fail = tc.find("error")
-            if fail is not None:
-                msg = (fail.get("message") or fail.text or "").strip().replace("\n", " ")[:450]
-                print(f"::error::{tc.get('classname')}.{tc.get('name')}: {msg}")
+        raw = open(path).read()
+        root = ET.fromstring(raw)
+        emitted = 0
+        for elem in root.iter():
+            tag = elem.tag.split("}")[-1]
+            if tag in ("failure", "error"):
+                msg = re.sub(r'\s+', ' ', (elem.get("message") or elem.text or "")).strip()
+                print(f"::error::{msg[:500]}")
+                emitted += 1
+        if emitted == 0:
+            compact = re.sub(r'\s+', ' ', raw).strip()
+            print(f"::error::XML dump ({path}): {compact[:700]}")
 PY
   exit "$status"
 fi
