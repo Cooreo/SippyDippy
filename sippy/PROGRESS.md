@@ -1419,72 +1419,93 @@ Nothing is skipped yet. Items **1.3, 1.4, 1.5 and all of phases 2 to 6 are not
 started**: this session ran out of context after 1.2, which the brief allows
 ("finish the current item, push, write HANDOFF and stop").
 
+### 2.1 The nav lens is a fixed-size circle in the wrong place
+**Root cause.** The lens was drawn from slot arithmetic: `NavLens.SLOTS = 5` equal
+slots over the bar's width, a fixed `56 x 52dp` box, and a `stretchX/Y` on velocity.
+It is a circle of constant size that happens to land on a tab; the brief's lens is a
+band shaped by the tab it is under. Equal slots also break as soon as a label width
+or the number of tabs changes.
+
+**Fix (landed).** `LensGeometry.lensRect(from, to, progress, velocity, barHeight, density)`
+— 92% of the interpolated tab width, 1.25x stretch ceiling reached at 6 slots/s,
+height exactly the bar's inner height (bar minus 8dp top and bottom), centred between
+the two tabs, clamped into the bar. Tested at 360/412/480dp and densities 1.5-3.5.
+**Still to do:** bind it to each tab's `onGloballyPositioned` bounds in `FloatingNav`;
+the nav still draws the slot-based circle.
+
+### 2.2 "Goal reached" replays
+**Root cause.** The event was gated on the crossing only (`!goalMetBefore &&
+goalMetAfter`), and nothing remembered that the celebration had already happened, so
+undoing the log that crossed the goal and logging it again replayed it.
+
+**Fix.** `StoredState.lastCelebratedDay` (nullable, defaulted: old JSON loads
+unchanged, no migration needed) plus `CelebrationRules.shouldCelebrate`. The
+celebration now runs 3.5s and fades over its last 400ms. Percent, over-goal
+millilitres and the "of N ml" label are in the same rules object, tested.
+
+## Phase 3 onwards — status
+
+Not started. Nothing in phases 3 to 6 has been touched: no Drinks/Menu rewrite, no
+custom drinks, no cosmetic slots or catalog, no intro rewrite, and no SPEC.md pass.
+Only phase 1 and two items of phase 2 are done.
+
+## DECISIONS (round 9)
+
+- **Navy glass at 72%, chips at 68%.** Chosen from the measured backdrop: at 0.55 a
+  chip over the brightest shaft is too pale for its own secondary text (3.39:1), and
+  4.5:1 is the floor. *Reason: the token follows the art, not the other way round.*
+- **Scrim 35% to 75% navy, applied in `BackdropHost`, not inside `AmbientBackground`.**
+  *Reason: the brief says keep the backdrop's art and animation exactly as they are; a
+  separate veil changes neither.*
+- **Text2 `#B3BFD8`, text3 `#AEBAD4`.** *Reason: the old greys cleared 4.5:1 on a card
+  but not on a chip, and one tertiary token beats two.*
+- **`CappedTextScale` overrides `LocalDensity`.** *Reason: it caps what the system font
+  scale can do to decorative labels while body copy still scales fully.*
+- **Chips are one line and content-sized; rows wrap instead.** *Reason: the two-line
+  chip was the cause of the letter-by-letter wrapping, and a FlowRow keeps the labels
+  intact at 360dp.*
+- **`lastCelebratedDay` does not need a schema bump.** *Reason: it is nullable with a
+  default, which kotlinx.serialization fills in for older JSON; a version bump would
+  ask migrations to do nothing.*
+- **2.2's "of 2000 ml" label is not drawn yet.** *Reason: the rules object and its
+  tests landed, the Home orb caption that will use them did not; recorded rather than
+  faked.*
+
+## SKIPPED (round 9)
+
+Nothing has been reverted or marked SKIPPED. **Unfinished, not skipped:** 1.3's
+instrumented layout guard (the in-repo DevTools layout check exists; the androidTest
+runner and the non-blocking workflow job that would run it at font scale 1.0/1.3/1.5
+do not), 1.5 (`SettingsRow` and the settings regroup), the rest of 2.1's binding, 2.3,
+and all of phases 3 to 6.
+
 ## HANDOFF — round 9 (read this first)
 
-**Where the branch is.** `arena/3dda615e-sippydippy`, tip `9b871ee`, CI green. 1.3.0
-is published and live (versionCode 4) and is **unaffected by round 9 so far**: no
-version bump has been made, and per the brief no tag or release is created until
-everything is green.
+**Branch.** `arena/3dda615e-sippydippy`. CI green through `2.2` (plus its test fix);
+1.1, 1.2, 1.3, 1.4, 2.1 (geometry) and 2.2 are committed. **No version bump, no tag, no
+release, no new libraries, no signing or workflow changes.** 1.3.0 remains the live
+release and is untouched by any of this.
 
-**Done and CI-green:**
-
-| item | commit | note |
+| item | commit | state |
 | --- | --- | --- |
-| 1.1 dark theme reads dark | `549044f` | navy tokens, theme scrim, orb vessel + resting line, `tools/backdrop_stats.py`, `BackdropSamples`, `ContrastTest` |
-| 1.2 type size and scale | `9b871ee` (`9a0c457` was red on `Density.copy`) | `SippyType.section/secondary/tab`, `CappedTextScale`, `TextScaleTest` |
+| 1.1 dark theme reads dark | `549044f` | done, CI green |
+| 1.2 type size and scale | `9b871ee` | done, CI green |
+| 1.3 buttons and chips | `4d8b6cf` | done, CI green |
+| 1.4 insets | `2a97a14` | done, CI green |
+| 2.1 lens geometry | `2d8f8f0` | pure geometry + tests landed; not yet bound to measured bounds |
+| 2.2 once-a-day celebration | `7049c2f` + `fbe335f` | done, CI green after the test fix |
 
-**Next, in order, with what is already known:**
+**Where the next session starts.** In this order: (a) bind `LensGeometry` to
+`FloatingNav` — one `onGloballyPositioned` per tab button, then draw the lens from
+`lensRect` and drop the slot model; (b) the Home orb caption using
+`CelebrationRules.goalLabel/percent/overMl` and the "+N ml over" line; (c) 1.5's
+`SettingsRow`; (d) 1.3's instrumented layout guard as a separate non-blocking job;
+(e) phase 3 onwards as written in the brief.
 
-1. **1.3 button and chip wrapping.** Root cause to confirm first: `GlassButton` and
-   `GlassChip` draw with `maxLines = 2, overflow = Visible` (changed last round), and
-   the call sites squeeze them — `Modifier.weight(1f)` in narrow Rows and
-   `Box(Modifier.size(...))` wrappers — so they wrap inside a square. Rebuild the two
-   components content-sized (`softWrap = false`, `maxLines = 1`, min height 40dp
-   inside a 48dp target, no fixed width), sweep Home, Friends, Shop, Settings, sheets
-   and History, then the layout guard: an instrumented test over the Developer
-   "Layout check" screen at font scale 1.0 / 1.3 / 1.5, run as an extra non-blocking
-   step in the dry-run workflow (the only workflow change the brief allows).
-2. **1.4 insets.** Look for padding on the parent instead of `contentPadding` on the
-   scroller; bottom = bar height + nav inset + 24dp on all five screens.
-3. **1.5 Settings layout.** One `SettingsRow(title, subtitle?, trailing)`; content-
-   sized steppers; equal widths for the name field and Save; grouped cards.
-4. Phases 2 to 6 as written in the brief.
+**Verified vs not.** Unit tests and `assembleDebug` are CI-verified. **Nothing visual
+is verified** — no screenshot has been taken this round and none should be claimed.
+CI logs remain unreadable from the sandbox; verdicts come from job and step
+conclusions plus the two local import checks.
 
-**CI-verified vs not.** Logic is unit-tested and CI-verified (`assembleDebug` +
-`testDebugUnitTest`). **Nothing visual is verified**: the navy glass, the scrim, the
-orb's resting line and the 11sp tab label have not been seen on a phone. CI logs
-cannot be read from this sandbox; every verdict above comes from job/step
-conclusions plus the two local checks (forgotten extension imports, phantom project
-imports).
-
-**Stored data.** Round 9 has changed no stored schema yet. 3.2 (custom drinks) and
-4.1 (cosmetic slots) will both need a schema bump, migrations and fixture tests;
-nothing has been half-done there.
-
-**No new libraries, no signing or workflow changes, no tags.**
-
-**What to check on the phone when 1.1 lands there:** a card in Drinks and a chip in
-Settings should read as navy glass over a dark backdrop, not as frosted white; the
-light shafts should still be visible near the top; an empty orb should show a dark
-body with a faint water line rather than a clear ring.
-
-### 1.3 Buttons wrap letter by letter
-**Root cause.** `GlassButton` and `GlassChip` drew with `maxLines = 2, softWrap = true`
-(a last-round change), and the callers stretched them into fixed cells: Settings' Theme
-row and Accent grid put every chip in `Box(Modifier.weight(1f))` with `fillMaxWidth()`.
-In a narrow cell the word stopped fitting, so Compose broke it mid-word and the pill
-wrapped a letter per line.
-
-**Fix.** Both controls are content-sized, one line, 18/12dp padding, a 40dp pill inside
-a 48dp touch target. `StatChip(value, label)` is the one shape for a measurement.
-`GlassChipRow` is a `FlowRow`, so Settings' Theme and Accent groups wrap to a second
-line rather than being crushed into one.
-
-### 1.4 Content hides under the bar or the notch
-**Root cause.** All five screens already scrolled through `contentPadding`, so the
-padding was on the right thing; the clearance under it was not. `SippyRoot` computed
-the bar space as inset + 16dp and Settings then added another 24dp on top, so the same
-bar sat at two different heights depending on the tab, and neither was the 24dp the
-rule asks for. Top was correct: every screen is inside `statusBarsPadding()`.
-
-**Fix.** One clearance for every screen: pill height + gesture inset + 24dp.
+**Stored data.** One field added, defaulted, no migration needed. Phases 3.2 and 4.1
+will still need a real schema bump, migrations and a previous-schema fixture.
