@@ -1542,3 +1542,6 @@ API 34 emulator (`LayoutGuardTest` across `1.0x`, `1.3x`, `1.5x` font scales at
 `360dp`), alongside `sippy/site` (`tsc`, `eslint` 0 errors, Vitest 14 files / 89 tests,
 `vite build`). Remaining for follow-up: `2.3` and phases 3 to 6.
 
+Bumped `sippy/android/version.properties` to `1.3.1` (`versionCode=5`) to ship this
+completed partial Round 9 update to `main` via `release.yml`.
+
