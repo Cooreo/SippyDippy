@@ -17,6 +17,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.cooreo.sippy.domain.water.CelebrationRules
 import com.cooreo.sippy.ui.theme.LocalSippyColors
 
 /**
@@ -34,7 +35,14 @@ fun Celebration(
     val c = LocalSippyColors.current
     val progress = remember(trigger) { Animatable(0f) }
     LaunchedEffect(trigger) {
-        progress.animateTo(1f, tween(durationMillis = 1700, easing = LinearEasing))
+        // 2.2: 3.5 seconds, so it can be read, with the last 400ms a fade.
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(
+                durationMillis = CelebrationRules.DURATION_MS,
+                easing = LinearEasing,
+            ),
+        )
     }
     Box(modifier, contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
@@ -50,7 +58,8 @@ fun Celebration(
                 val startY = size.height * 0.42f
                 val y = startY + (size.height * 0.6f) * local * local
                 val r = (size.minDimension * 0.012f) * (1f - local * 0.4f)
-                val alpha = (1f - local).coerceIn(0f, 1f)
+                val fadeStart = 1f - CelebrationRules.FADE_MS.toFloat() / CelebrationRules.DURATION_MS
+                val alpha = if (t <= fadeStart) 1f else (1f - (t - fadeStart) / (1f - fadeStart)).coerceIn(0f, 1f)
                 val color = if (i % 3 == 0) c.accentBright else c.accent
                 drawRoundRect(
                     color = color.copy(alpha = alpha * 0.9f),
