@@ -320,37 +320,40 @@ fun GlassButton(
         else -> null
     }
     val interaction = remember { MutableInteractionSource() }
+    val base = if (enabled) {
+        modifier
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .minimumInteractiveComponentSize()
+    } else {
+        modifier.minimumInteractiveComponentSize()
+    }
     Box(
         // Round 9, 1.3: the button is sized by its content, never by its caller.
         // A 40dp pill inside a 48dp touch target, one line, no fixed width.
-        modifier = modifier
-            .minimumInteractiveComponentSize()
-            .defaultMinSize(minHeight = 40.dp)
-            .clip(shape)
-            .then(
-                if (enabled) {
-                    Modifier
-                        .clickable(
-                            interactionSource = interaction,
-                            indication = null,
-                            role = Role.Button,
-                            onClick = onClick,
-                        )
-                        .then(pressScale(interaction))
-                } else {
-                    Modifier
-                },
-            ),
+        modifier = base,
         contentAlignment = Alignment.Center,
+        propagateMinConstraints = true,
     ) {
         GlassSurface(
-            modifier = Modifier.matchParentSize(),
+            modifier = Modifier
+                .defaultMinSize(minHeight = 40.dp)
+                .then(if (enabled) pressScale(interaction) else Modifier),
             shape = shape,
             tint = tint,
             shadow = false,
             level = GlassLevel.CHIP,
         ) {
-            Box(Modifier.padding(contentPadding), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .padding(contentPadding),
+                contentAlignment = Alignment.Center,
+            ) {
                 // 1.3: one line, always. The old two-line rule is what made a
                 // squeezed chip wrap a word letter by letter; now the pill is as
                 // wide as its label and the row is what has to give.
@@ -381,26 +384,30 @@ fun GlassChip(
     val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = modifier
-            .minimumInteractiveComponentSize()
-            .defaultMinSize(minHeight = 40.dp)
-            .clip(shape)
             .clickable(
                 interactionSource = interaction,
                 indication = null,
                 role = Role.Button,
                 onClick = onClick,
             )
-            .then(pressScale(interaction)),
+            .minimumInteractiveComponentSize(),
         contentAlignment = Alignment.Center,
+        propagateMinConstraints = true,
     ) {
         GlassSurface(
-            modifier = Modifier.matchParentSize(),
+            modifier = Modifier
+                .defaultMinSize(minHeight = 40.dp)
+                .then(pressScale(interaction)),
             shape = shape,
             tint = if (selected) c.accent.copy(alpha = 0.72f) else null,
             shadow = false,
             level = GlassLevel.CHIP,
         ) {
-            Box(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+            ) {
                 androidx.compose.material3.Text(
                     text = label,
                     color = if (selected) Color.White else c.text1,
@@ -431,35 +438,35 @@ fun StatChip(
     val c = LocalSippyColors.current
     val shape = RoundedCornerShape(Dimens.pill)
     val interaction = remember { MutableInteractionSource() }
+    val base = if (onClick != null) {
+        modifier
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .minimumInteractiveComponentSize()
+    } else {
+        modifier
+    }
     Box(
-        modifier = modifier
-            .then(if (onClick != null) Modifier.minimumInteractiveComponentSize() else Modifier)
-            .defaultMinSize(minHeight = if (onClick != null) 40.dp else 36.dp)
-            .clip(shape)
-            .then(
-                if (onClick != null) {
-                    Modifier
-                        .clickable(
-                            interactionSource = interaction,
-                            indication = null,
-                            role = Role.Button,
-                            onClick = onClick,
-                        )
-                        .then(pressScale(interaction))
-                } else {
-                    Modifier
-                },
-            ),
+        modifier = base,
         contentAlignment = Alignment.Center,
+        propagateMinConstraints = true,
     ) {
         GlassSurface(
-            modifier = Modifier.matchParentSize(),
+            modifier = Modifier
+                .defaultMinSize(minHeight = if (onClick != null) 40.dp else 36.dp)
+                .then(if (onClick != null) pressScale(interaction) else Modifier),
             shape = shape,
             shadow = false,
             level = GlassLevel.CHIP,
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(

@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,7 +33,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -56,7 +57,6 @@ import com.cooreo.sippy.domain.friends.MoodRules
 import com.cooreo.sippy.domain.friends.PinRules
 import com.cooreo.sippy.domain.layout.OrbLayout
 import com.cooreo.sippy.domain.shop.ItemSlot
-import com.cooreo.sippy.domain.shop.ShopItem
 import com.cooreo.sippy.domain.shop.ShopRules
 import com.cooreo.sippy.domain.water.VolumeRules
 import com.cooreo.sippy.domain.water.WaterMath
@@ -72,6 +72,7 @@ import com.cooreo.sippy.ui.components.WaterOrb
 import com.cooreo.sippy.ui.glass.GlassCard
 import com.cooreo.sippy.ui.glass.GlassChip
 import com.cooreo.sippy.ui.glass.GlassSurface
+import com.cooreo.sippy.ui.glass.StatChip
 import com.cooreo.sippy.ui.system.rememberHaptics
 import com.cooreo.sippy.ui.theme.Dimens
 import com.cooreo.sippy.ui.theme.DrinkTints
@@ -214,6 +215,8 @@ fun HomeScreen(
 
 /** Greeting on the left, two chips on the right. No bell — that lives in Settings. */
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
 private fun Header(
     title: String,
     subline: String,
@@ -223,22 +226,31 @@ private fun Header(
 ) {
     val c = LocalSippyColors.current
     Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
                 text = title,
                 style = SippyType.title,
                 color = c.text1,
                 maxLines = 2,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.padding(end = 8.dp),
             )
-            Spacer(Modifier.width(8.dp))
-            StreakChip(days = streakDays)
-            Spacer(Modifier.width(6.dp))
-            GlassChip(
-                label = "$points pts",
-                onClick = onOpenShop,
-                modifier = Modifier.semantics { contentDescription = "$points points, open the shop" },
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                StreakChip(days = streakDays)
+                StatChip(
+                    value = "$points",
+                    label = "pts",
+                    onClick = onOpenShop,
+                    modifier = Modifier.semantics { contentDescription = "$points points, open the shop" },
+                )
+            }
         }
         Spacer(Modifier.height(2.dp))
         Text(subline, style = SippyType.caption, color = c.text2)
@@ -260,7 +272,7 @@ private fun StreakChip(days: Int) {
     ) {
         GlassSurface(shape = shape, shadow = false) {
             Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Canvas(Modifier.size(14.dp)) {
@@ -281,7 +293,21 @@ private fun StreakChip(days: Int) {
                     drawPath(flame, c.warn)
                 }
                 Spacer(Modifier.width(5.dp))
-                Text("$days", style = SippyType.caption, color = c.text1)
+                Text(
+                    text = "$days",
+                    style = SippyType.emphasis,
+                    color = c.text1,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = if (days == 1) "day" else "days",
+                    style = SippyType.tab,
+                    color = c.text3,
+                    maxLines = 1,
+                    softWrap = false,
+                )
             }
         }
     }
@@ -493,10 +519,12 @@ private fun PillsButton(volume: Int, onClick: () -> Unit) {
             .clip(shape)
             .clickable(onClick = onClick)
             .semantics { contentDescription = "Add $volume millilitres of water" },
+        propagateMinConstraints = true,
     ) {
-        GlassSurface(shape = shape, modifier = Modifier.matchParentSize(), shadow = false) {
+        GlassSurface(shape = shape, shadow = false) {
             Row(
                 modifier = Modifier
+                    .align(Alignment.Center)
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -504,7 +532,13 @@ private fun PillsButton(volume: Int, onClick: () -> Unit) {
             ) {
                 FillIcon(fraction = fill, color = c.accentBright)
                 Spacer(Modifier.width(6.dp))
-                Text("+$volume", style = SippyType.emphasis, color = c.text1)
+                Text(
+                    text = "+$volume",
+                    style = SippyType.emphasis,
+                    color = c.text1,
+                    maxLines = 1,
+                    softWrap = false,
+                )
             }
         }
     }
